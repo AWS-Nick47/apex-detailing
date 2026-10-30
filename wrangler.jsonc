@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "apex-detailing",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/b/*", "/ack/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "apex", "database_id": "649d3c26-3a11-41c1-bf87-2f6b4d047e4d", "migrations_dir": "migrations" }
+  ],
+  "triggers": { "crons": ["*/10 * * * *"] },
+  "observability": { "enabled": true },
+  "vars": {
+    "SITE_URL": "https://apex-detailing.awsomenick47.workers.dev",
+    "NICK_EMAIL": "contact@apexdetailingoc.com",
+    "FROM_EMAIL": "Apex Detailing <bookings@send.apexdetailingoc.com>",
+    "IGNORE_CALENDARS": "Birthdays,Holidays,US Holidays,Siri Suggestions,Scheduled Reminders",
+    "JOBS_CALENDAR": "Apex Jobs",
+    "BLOCK_CALENDAR": "Apex Blocked"
+  }
+  // Secrets (set in the Cloudflare dashboard, never in this file):
+  //   ICLOUD_USER, ICLOUD_APP_PASSWORD, RESEND_API_KEY
+}

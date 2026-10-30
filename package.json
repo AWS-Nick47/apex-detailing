@@ -1,0 +1,11 @@
+{
+  "name": "apex-detailing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler d1 migrations apply apex --remote && wrangler deploy"
+  },
+  "dependencies": { "ical.js": "2.2.1" },
+  "devDependencies": { "wrangler": "4.156.0" }
+}
