@@ -20,7 +20,7 @@ export function layout(title, bodyHtml, preheader, logoUrl) {
 <span style="display:none;max-height:0;overflow:hidden;opacity:0">${h(preheader || "")}</span>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f2"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden">
-<tr><td style="background:#0b0b0b;padding:20px 28px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.18em">${logoUrl ? `<img src="${h(logoUrl)}" width="190" alt="APEX DETAILING" style="display:block;border:0;height:auto">` : "APEX DETAILING"}</td></tr>
+<tr><td style="background:#0b0b0b;padding:20px 28px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.18em">${logoUrl ? `<img src="${h(logoUrl)}" width="190" height="19" alt="APEX DETAILING" style="display:block;border:0;width:190px;height:19px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.18em">` : "APEX DETAILING"}</td></tr>
 <tr><td style="padding:28px">${bodyHtml}</td></tr>
 <tr><td style="padding:18px 28px;border-top:1px solid #eee;color:#777;font-size:12px;line-height:1.5">Apex Detailing · Mobile detailing in Brick &amp; Ocean County, NJ<br>(732) 206-7084 · contact@apexdetailingoc.com · @apexdetailingoc</td></tr>
 </table></td></tr></table></body></html>`;
