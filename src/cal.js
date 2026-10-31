@@ -80,7 +80,7 @@ export function collect(ics, fromMs, toMs, kind, out) {
   const evs = vcal.getAllSubcomponents("vevent"), byUid = {};
   for (const v of evs) { const uid = v.getFirstPropertyValue("uid") || Math.random() + ""; (byUid[uid] = byUid[uid] || []).push(v); }
   for (const uid in byUid) {
-    if (kind === "job" && /^apex-/.test(uid)) continue;   // jobs we booked ourselves are counted from the database
+    if (/^apex-/.test(uid)) continue;   // jobs we booked ourselves are counted from the database, whichever calendar they sit in
     const list = byUid[uid], main = list.find(v => !v.hasProperty("recurrence-id")) || list[0];
     const ev = new ICAL.Event(main);
     for (const v of list) if (v !== main && v.hasProperty("recurrence-id")) { try { ev.relateException(v); } catch (e) {} }
