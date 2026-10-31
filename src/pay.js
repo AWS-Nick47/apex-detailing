@@ -47,7 +47,7 @@ async function emailPayLink(env, b, cents) {
 
 // ---------- Nick's job page: /job/<ack_token> ----------
 export async function jobRoute(req, env, url, H) {
-  const m = url.pathname.match(/^\/job\/([a-f0-9]{36})(?:\/(charge|link|inperson))?$/);
+  const m = url.pathname.match(/^\/job\/([a-f0-9]{36})(?:\/(charge|link|inperson|done|weather))?$/);
   if (!m) return html(H.page("Not found", "<h1>Link not found</h1>"), 404);
   const b = await env.DB.prepare("SELECT * FROM bookings WHERE ack_token = ?").bind(m[1]).first();
   if (!b) return html(H.page("Not found", "<h1>Job not found</h1>"), 404);
@@ -55,7 +55,13 @@ export async function jobRoute(req, env, url, H) {
   const c = await customerFor(env, b), card = b.card ? JSON.parse(b.card) : null;
   let msg = "", ok = false;
 
-  if (req.method === "POST" && m[2] && !b.paid_at && b.status === "confirmed") {
+  if (req.method === "POST" && m[2] === "weather" && b.status === "confirmed" && !b.paid_at) {
+    const credit = await H.cancelByUs(env, b); ok = true;
+    msg = "Cancelled and the customer was emailed." + (credit ? " Added a " + money(credit) + " credit to their membership." : " They were asked to pick a new time.");
+  } else if (req.method === "POST" && m[2] === "done" && b.kind === "member" && b.status === "confirmed" && !b.completed_at) {
+    await env.DB.prepare("UPDATE bookings SET completed_at = ?, paid_at = ?, paid_method = 'membership', final_cents = 0 WHERE id = ?").bind(Date.now(), Date.now(), b.id).run();
+    Object.assign(b, { completed_at: Date.now(), paid_at: Date.now(), paid_method: "membership" }); ok = true; msg = "Marked done. Nice work!";
+  } else if (req.method === "POST" && m[2] && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
     const fd = await req.formData(), dollars = parseFloat(String(fd.get("amount") || "").replace(/[^\d.]/g, "")), cents = Math.round(dollars * 100);
     if (!(cents >= 100 && cents <= 200000)) msg = "Enter the final amount, like 179.";
     else if (m[2] === "inperson") {
@@ -83,6 +89,15 @@ export async function jobRoute(req, env, url, H) {
   }
 
   const est = (b.quote || 0) * 100, due = b.final_cents || est;
+  const weatherBtn = b.status === "confirmed" && !b.paid_at ? `<form method="post" action="/job/${b.ack_token}/weather" onsubmit="return confirm('Cancel this job and email the customer?${b.kind === "member" ? " They get a full credit." : ""}')" style="margin-top:22px"><button class="btn d" style="width:100%">We had to cancel (weather or our side)</button></form><p class="note">${b.kind === "member" ? "Members get a full credit for that visit." : "The customer gets an email asking them to pick a new time."}</p>` : "";
+  if (b.kind === "member") {
+    const st = b.status === "cancelled" ? "Cancelled" : b.completed_at ? "Done" : "Scheduled";
+    return html(H.page("Job", `<h1>${h(H.pkgName(b))} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))}</p>
+      ${msg ? `<p class="note" style="color:${ok ? "#c8f7c5" : "#ffb4ab"}">${h(msg)}</p>` : ""}
+      <div class="card"><div class="r"><span>Status</span><b>${st}</b></div><div class="r"><span>Payment</span><b>Included in their Apex Membership</b></div></div>
+      ${H.summaryCard(b)}
+      ${b.status === "confirmed" && !b.completed_at ? `<div class="acts"><form method="post" action="/job/${b.ack_token}/done"><button class="btn" style="width:100%">Mark visit done</button></form></div>` : ""}${weatherBtn}`));
+  }
   const status = b.status === "cancelled" ? "Cancelled" : b.paid_at ? "Paid " + money(b.final_cents) + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(b.final_cents) + " link sent)" : "Not paid yet";
   const forms = b.paid_at || b.status !== "confirmed" ? "" : `
     <h2>Job done? Get paid</h2>
@@ -100,7 +115,7 @@ export async function jobRoute(req, env, url, H) {
   return html(H.page("Job", `<h1>${h(NAMES[b.pkg])} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))}</p>
     ${msg ? `<p class="note" style="color:${ok ? "#c8f7c5" : "#ffb4ab"}">${h(msg)}</p>` : ""}
     <div class="card"><div class="r"><span>Status</span><b>${h(status)}</b></div><div class="r"><span>Saved card</span><b>${card ? h(card.brand + " ending " + card.last4) : "None"}</b></div></div>
-    ${H.summaryCard(b)}${forms}`));
+    ${H.summaryCard(b)}${forms}${weatherBtn}`));
 }
 
 // ---------- customer pay / tip page: /pay/<pay_token> ----------

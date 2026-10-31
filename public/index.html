@@ -552,6 +552,24 @@ section.block { padding-block: clamp(72px, 10vw, 120px); }
 .dact { display: grid; gap: 4px; text-align: left; border: 0; font: inherit; color: var(--fg); padding: 14px; border-radius: 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
 .dact:hover { background: rgba(255,255,255,.09); }
 .dact span { font-size: 13px; color: var(--muted); }
+#memLive { display: grid; gap: 14px; }
+.ml-warn { padding: 12px 14px; border-radius: 14px; font-size: 14.5px; background: rgba(255,200,90,.1); box-shadow: inset 0 0 0 1px rgba(255,200,90,.35); color: #ffe7b8; }
+.ml-warn.bad { background: rgba(255,90,90,.1); box-shadow: inset 0 0 0 1px rgba(255,120,120,.35); color: #ffd9d9; }
+.ml-rows { display: grid; gap: 0; }
+.ml-rows div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.ml-rows div:last-child { border: 0; } .ml-rows span { color: var(--muted); }
+.ml-days { display: grid; gap: 12px; } .ml-day b { display: block; font-size: 14px; margin-bottom: 6px; }
+.ml-ts { display: flex; flex-wrap: wrap; gap: 8px; }
+#mlDayPick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; } #mlDayPick::-webkit-scrollbar { display: none; } #mlDayPick button { flex: none; }
+.ml-ts button { min-height: 40px; padding: 0 14px; border-radius: 12px; border: 0; font: 600 14px var(--font-body); color: var(--fg); background: rgba(255,255,255,.08); cursor: pointer; }
+.ml-ts button:hover { background: rgba(255,255,255,.16); }
+.ml-visit { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.ml-visit:last-child { border: 0; }
+.ml-opts { display: grid; gap: 10px; }
+.ml-opt { text-align: left; border: 0; font: inherit; color: var(--fg); padding: 14px; border-radius: 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; display: grid; gap: 4px; }
+.ml-opt:hover { background: rgba(255,255,255,.09); } .ml-opt span { font-size: 13.5px; color: var(--muted); }
+.ml-seg { display: flex; flex-wrap: wrap; gap: 8px; } .ml-seg button { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 0; font: 600 14px var(--font-body); color: var(--fg); background: rgba(255,255,255,.07); cursor: pointer; }
+.ml-seg button[aria-pressed="true"] { background: var(--sel-bg); box-shadow: var(--sel-sh); }
 .hist { display: grid; gap: 10px; }
 .hist-item { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px; border-radius: 18px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px var(--line); }
 .hist-item img { width: 76px; height: 76px; border-radius: 13px; object-fit: cover; }
@@ -1997,6 +2015,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       </div>
 
       <div class="dash-pane" data-pane="plan" hidden>
+        <div id="memLive" hidden></div>
         <div data-if="member">
           <div class="dcard plan-card">
             <div class="pc-top"><span class="badge"><svg><use href="#i-crown"/></svg>Active</span><span class="dc-sub">Member since <span data-f="since"></span></span></div>
@@ -2603,8 +2622,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       DEMO = { first: parts[0] || "there", name: c.name || "", phone: c.phone || "", email: c.email, address: c.address || "", town: c.town || "", notes: c.notes || "",
         cars: cars.length ? cars : [{ name: "Your car", size: 1 }], color: (cars[0] || {}).color || "", card: c.card ? c.card.brand + " ending " + c.card.last4 : "No card saved", remind: c.remind,
         history: hist, next: upcoming[0] ? { date: upcoming[0].when, time: upcoming[0].time, what: NAMES[upcoming[0].pkg] + " · " + upcoming[0].car.replace(/^\d{4} /, "") } : null };
+      MEMBER = j.member || null; CANSTART = j.canStart || null;
+      mode = MEMBER && MEMBER.status !== "cancelled" ? "member" : "guest";
       if (window.__acct) window.__acct.data = DEMO;
     }
+    var MEMBER = null, CANSTART = null;
     function loadMe() {
       return fetch("/api/me", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
         if (!j || !j.signedIn) return false;
@@ -2647,6 +2669,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if (DEMO.next) { nx.querySelector(".dc-k").textContent = "Next detail"; nx.querySelector(".dc-actions").innerHTML = '<a class="btn btn-sm btn-ghost" href="' + upcoming[0].manage + '">Reschedule or cancel</a>'; }
         var rc = $("#acctProfile .acct-check"); if (rc) { rc.lastChild.textContent = " Email me a reminder the day before"; rc.querySelector("input").checked = DEMO.remind !== false; }
         if (typeof cardUI === "function") cardUI();
+        if (MEMBER && MEMBER.status !== "cancelled") { var PPm = window.__planPrice(MEMBER.type, MEMBER.size, MEMBER.freq);
+          $$('[data-f="planName"]').forEach(function (n) { n.textContent = MEMBER.label; }); $$('[data-f="planPrice"]').forEach(function (n) { n.textContent = "$" + MEMBER.monthly + "/mo"; });
+          $$('[data-f="planSave"]').forEach(function (n) { n.textContent = "$" + Math.max(0, (PPm.oneoffVisit * MEMBER.freq - MEMBER.monthly) * 12).toLocaleString(); }); }
+        $$("[data-if]").forEach(function (n) { n.hidden = n.dataset.if !== mode; });
+        memRender();
       }
       $$(".dash-demo button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.demo === mode)); });
       document.getElementById("acctHist").innerHTML = DEMO.history.map(function (h, i) {
@@ -2740,6 +2767,118 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       close(true);
       window.__bk.open({ step: slot ? 4 : 3, slot: slot, focusBack: document.querySelector(".acct-btn"), note: "Filled in from your " + h.date + " detail on your " + h.car.replace(/^\d{4} /, "") + (slot ? ". Check your info and send it." : ". Just pick a day and time.") });
     }
+    // ---- Apex Membership (live) ----
+    var PLAN_NAMES = { wash: "Wash", int: "Interior", both: "Wash + interior" }, FREQ_NAMES = { 1: "Monthly", 2: "Every 2 weeks", 4: "Weekly" };
+    function dnice(k) { if (!k) return ""; var p = k.split("-"); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }); }
+    function dprev(k) { var p = k.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] - 1)); return d.toISOString().slice(0, 10); }
+    function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function post(path, body) { return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }); }
+    function memRender() {
+      var box = document.getElementById("memLive"), pane = $('[data-pane="plan"]');
+      [].forEach.call(pane.children, function (c) { if (c !== box) c.style.display = "none"; });
+      box.hidden = false; var M = MEMBER, html = "";
+      if (M && M.status !== "cancelled") {
+        var st = { pending: "Starts " + dnice(M.since), active: "Active", past_due: "Payment failed", paused: "Paused", ending: "Ending " + dnice(M.endsOn) }[M.status] || M.status;
+        if (M.status === "ending" && !M.endsOn) st = "Ends after your 3rd payment";
+        html += '<div class="dcard plan-card"><div class="pc-top"><span class="badge"><svg><use href="#peak"/></svg>' + esc(st) + '</span><span class="dc-sub">' + (M.status === "pending" ? "With your detail" : "Member since " + esc(dnice(M.since))) + '</span></div>' +
+          '<div class="dc-big">' + esc(M.label) + '</div><div class="dc-sub">$' + M.monthly + '/mo' + (M.nextBill ? ' · next charge ' + esc(dnice(M.nextBill)) : '') + '</div>' +
+          '<div class="ml-rows" style="margin-top:8px">' +
+          (M.periodStart ? '<div><span>Paid through</span><b>' + esc(dnice(dprev(M.periodEnd))) + '</b></div>' : '') +
+          '<div><span>Visits this month</span><b>' + (M.visitsAllowed ? M.visitsBooked + ' of ' + M.visitsAllowed + ' used' : M.status === "paused" ? "Paused" : M.status === "past_due" ? "On hold" : M.nextBill ? "Book from " + esc(dnice(M.nextBill)) : "—") + '</b></div>' +
+          (M.credit ? '<div><span>Credit</span><b>$' + M.credit + ' off your next charge</b></div>' : '') +
+          '<div><span>Payment</span><b>' + esc(M.card || "No card yet") + '</b></div>' +
+          (M.minLeft && M.status !== "pending" ? '<div><span>3-month minimum</span><b>' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left</b></div>' : '') +
+          (M.winterNow && M.type !== "int" ? '<div><span>Winter</span><b>' + (M.type === "wash" ? "Paused until Mar 1" : "Interior visits until Mar 1") + '</b></div>' : '') +
+          '</div></div>';
+        if (M.needsCard && M.paymentsMade === 0) html += '<div class="ml-warn">Add a card by <b>' + esc(dnice(M.cardDeadline)) + '</b> or your membership won\'t start. <button type="button" class="link-btn" data-tab-go="profile">Add a card</button></div>';
+        if (M.status === "past_due") html += '<div class="ml-warn bad">Your last payment ($' + M.owed + ') didn\'t go through. Update your card, then retry. Visits are paused until it\'s paid.<div class="dc-actions" style="margin-top:8px"><button type="button" class="btn btn-sm btn-ghost" data-tab-go="profile">Update card</button><button type="button" class="btn btn-sm" id="mlRetry">Retry payment</button></div></div>';
+        html += '<div class="dcard"><div class="dc-k">Your visits</div>';
+        html += M.upcoming.length ? M.upcoming.map(function (v) { var d = new Date(v.start); return '<div class="ml-visit"><span><b>' + d.toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" }) + '</b> · ' + d.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) + '</span><a class="link-btn" href="' + v.manage + '">Change or skip</a></div>'; }).join("") : '<p class="dc-sub">No visits booked yet.</p>';
+        html += (M.visitsAllowed && M.visitsBooked < M.visitsAllowed ? '<button type="button" class="btn" id="mlBook" style="margin-top:8px">Book a visit</button>' : '') + '<div id="mlSlots"></div></div>';
+        html += '<div class="dash-grid2">' +
+          (M.canPause ? '<button type="button" class="dact" id="mlPause"><b>Pause Apex Membership</b><span>Up to 3 months, keep your price</span></button>' : '') +
+          '<button type="button" class="dact" data-tab-go="profile"><b>Payment method</b><span>' + esc(M.card || "Add a card") + '</span></button>' +
+          '<button type="button" class="dact" id="mlChange"><b>Change plan</b><span>Switch how often or what\'s included</span></button>' +
+          '</div><div id="mlPanel"></div>';
+        if (M.status !== "ending") html += '<button type="button" class="link-btn danger" id="mlCancel">Cancel Apex Membership</button>';
+        html += '<p class="dc-fine" style="text-align:center"><a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a></p>';
+      } else if (CANSTART) {
+        var C = CANSTART, t0 = C.plans[C.plans.length - 1];
+        html += '<div class="dcard"><div class="dc-k"><span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span></div><div class="dc-t">Start your membership</div>' +
+          '<div class="dc-sub">Your ' + esc(NAMES[C.pkg]) + ' on ' + esc(dnice(C.day)) + ' qualifies. Sign up by ' + esc(dnice(C.deadline)) + '.</div>' +
+          '<div class="dc-k" style="margin-top:10px">Each visit</div><div class="ml-seg" id="msType">' + C.plans.map(function (t) { return '<button type="button" data-v="' + t + '" aria-pressed="' + (t === t0) + '">' + PLAN_NAMES[t] + '</button>'; }).join("") + '</div>' +
+          '<div class="dc-k" style="margin-top:10px">How often</div><div class="ml-seg" id="msFreq">' + [1, 2, 4].map(function (f) { return '<button type="button" data-v="' + f + '" aria-pressed="' + (f === 1) + '">' + FREQ_NAMES[f] + '</button>'; }).join("") + '</div>' +
+          '<div class="dc-big" id="msPrice" style="margin-top:12px"></div><div class="dc-sub" id="msSub"></div>' +
+          '<label class="acct-check" style="margin-top:10px;align-items:flex-start;font-size:14px;color:var(--muted)"><input type="checkbox" id="msAuth" style="margin-top:3px"> <span id="msAuthTxt"></span></label>' +
+          (DEMO.card && !/No card/.test(DEMO.card) ? '<button type="button" class="btn" id="msGo" style="margin-top:10px">Start my membership</button>' : '<div class="ml-warn" style="margin-top:10px">Memberships need a card on file. <button type="button" class="link-btn" data-tab-go="profile">Add a card</button>, then come back here.</div>') + '</div>';
+      } else {
+        html += '<div class="dcard upsell"><div class="dc-k">You\'re not a member yet</div><div class="dc-t">Members save on every visit</div><div class="dc-sub">Memberships start within 14 days after a qualifying detail. Add one when you book your next detail.</div><a class="btn btn-sm" href="#membership" data-acct="close">See plans</a></div>';
+      }
+      box.innerHTML = html;
+      if (CANSTART && !(M && M.status !== "cancelled")) msUpdate();
+    }
+    function msUpdate() {
+      var t = $("#msType [aria-pressed=true]"), f = $("#msFreq [aria-pressed=true]"); if (!t || !f) return;
+      var P = window.__planPrice(t.dataset.v, CANSTART.size, +f.dataset.v), first = (function () { var p = CANSTART.day.split("-"); var d = new Date(Date.UTC(+p[0], +p[1], +p[2], 12)); return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); })();
+      $("#msPrice").textContent = "$" + P.monthly + "/mo"; $("#msSub").textContent = (+f.dataset.v === 1 ? "1 visit" : f.dataset.v + " visits") + " a month at $" + P.perVisit + " each, instead of $" + P.oneoffVisit;
+      $("#msAuthTxt").innerHTML = "I authorize Apex Detailing LLC to charge my card <b>$" + P.monthly + "/mo</b> starting " + first + " and on that date every month until I cancel, with a 3-month minimum, as described in the <a href=\"membership-terms.html\" target=\"_blank\" rel=\"noopener\">Membership Terms</a>.";
+    }
+    function mlTimes(i) { var d = window.__mlDays[i]; $("#mlTimes").innerHTML = d.slots.map(function (m) { return '<button type="button" data-mv="' + d.day + '|' + m + '">' + window.__tstr(m) + '</button>'; }).join(""); }
+    function memPanel(h) { var p = document.getElementById("mlPanel") || document.getElementById("mlSlots"); p.innerHTML = h; p.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+    el.addEventListener("click", function (e) {
+      if (!LIVE) return;
+      var t = e.target;
+      if (t.closest("#msType button, #msFreq button")) { var b = t.closest("button"); [].forEach.call(b.parentNode.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); }); msUpdate(); return; }
+      if (t.closest("#msGo")) {
+        if (!$("#msAuth").checked) { toast("Check the box to authorize the monthly charge"); return; }
+        post("/api/member/start", { type: $("#msType [aria-pressed=true]").dataset.v, freq: +$("#msFreq [aria-pressed=true]").dataset.v, auth: true }).then(function (x) { toast(x.ok ? x.j.message : x.j.error); if (x.ok) loadMe().then(function () { fill(); tab("plan"); }); });
+        return;
+      }
+      if (t.closest("#mlBook")) {
+        var sb = document.getElementById("mlSlots"); sb.innerHTML = '<p class="dc-sub">Loading open times…</p>';
+        fetch("/api/member/slots").then(function (r) { return r.json(); }).then(function (j) {
+          if (!j.days || !j.days.length) { sb.innerHTML = '<p class="dc-sub">' + esc(j.reason || "No open times left this month. Text us at (732) 206-7084.") + '</p>'; return; }
+          window.__mlDays = j.days;
+          sb.innerHTML = '<div class="ml-days" style="margin-top:12px"><div class="dc-k">Pick a day</div><div class="ml-seg" id="mlDayPick">' + j.days.map(function (d, i) { return '<button type="button" data-mday="' + i + '" aria-pressed="' + (i === 0) + '">' + esc(d.label) + '</button>'; }).join("") + '</div><div class="dc-k">Start time</div><div class="ml-ts" id="mlTimes"></div></div>';
+          mlTimes(0);
+        }).catch(function () { sb.innerHTML = '<p class="dc-sub">Couldn\'t load times. Try again.</p>'; });
+        return;
+      }
+      var md = t.closest("[data-mday]");
+      if (md) { [].forEach.call(md.parentNode.children, function (x) { x.setAttribute("aria-pressed", String(x === md)); }); mlTimes(+md.dataset.mday); return; }
+      var mv = t.closest("[data-mv]");
+      if (mv) {
+        var sp = mv.dataset.mv.split("|"); mv.disabled = true;
+        post("/api/member/visit", { day: sp[0], start: +sp[1] }).then(function (x) { toast(x.ok ? "Booked: " + x.j.when : x.j.error); if (x.ok) loadMe().then(function () { fill(); tab("plan"); }); else mv.disabled = false; });
+        return;
+      }
+      if (t.closest("#mlRetry")) { post("/api/member/retry").then(function (x) { toast(x.j.message || x.j.error); loadMe().then(function () { fill(); tab("plan"); }); }); return; }
+      if (t.closest("#mlChange")) { toast("To change your plan, text us at (732) 206-7084 for now"); return; }
+      if (t.closest("#mlPause")) {
+        memPanel('<div class="dcard"><div class="dc-t">Pause for how long?</div><div class="dc-sub">Your price stays the same. No charges or visits while paused.</div><div class="ml-seg" style="margin-top:8px">' + [1, 2, 3].map(function (n) { return '<button type="button" data-pause="' + n + '">' + n + ' month' + (n > 1 ? 's' : '') + '</button>'; }).join("") + '</div></div>');
+        return;
+      }
+      var pz = t.closest("[data-pause]");
+      if (pz) { post("/api/member/pause", { months: +pz.dataset.pause }).then(function (x) { toast(x.ok ? x.j.message : x.j.error); loadMe().then(function () { fill(); tab("plan"); }); }); return; }
+      if (t.closest("#mlCancel")) {
+        var M = MEMBER;
+        if (M.status === "pending" || M.paymentsMade === 0) { memPanel('<div class="dcard"><div class="dc-t">Cancel before your first charge?</div><div class="dc-sub">You haven\'t been charged for your membership yet, so cancelling now is free.</div><div class="ml-opts" style="margin-top:8px"><button type="button" class="ml-opt" data-cancel="now"><b>Cancel my membership</b></button></div></div>'); return; }
+        if (M.minLeft > 0) {
+          memPanel('<div class="dcard"><div class="dc-t">Cancel during your first 3 months</div><div class="dc-sub">You have ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left in your 3-month minimum. Pick one:</div><div class="ml-opts" style="margin-top:8px">' +
+            '<button type="button" class="ml-opt" data-cancel="finish"><b>Finish my 3 months</b><span>Keep your visits. The remaining payment' + (M.minLeft > 1 ? 's go' : ' goes') + ' through as usual, then it ends automatically. No fee.</span></button>' +
+            '<button type="button" class="ml-opt" data-cancel="now"><b>Cancel now · $' + M.cancelFee + ' fee</b><span>Half of the ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left, charged to your card. No more monthly charges.</span></button></div></div>');
+        } else {
+          memPanel('<div class="dcard"><div class="dc-t">Cancel Apex Membership?</div><div class="dc-sub">No fee. No more charges. You keep it through ' + esc(M.periodEnd ? dnice(dprev(M.periodEnd)) : "today") + '.</div><div class="ml-opts" style="margin-top:8px"><button type="button" class="ml-opt" data-cancel="after"><b>Cancel my membership</b></button></div></div>');
+        }
+        return;
+      }
+      var cx = t.closest("[data-cancel]");
+      if (cx) {
+        if (!confirm(cx.dataset.cancel === "now" && MEMBER.minLeft > 0 && MEMBER.paymentsMade > 0 ? "Cancel now and pay the $" + MEMBER.cancelFee + " fee?" : "Cancel your membership?")) return;
+        post("/api/member/cancel", { mode: cx.dataset.cancel }).then(function (x) { toast(x.ok ? "Done" : x.j.error); if (x.ok) memPanel('<div class="dcard"><div class="dc-sub">' + esc(x.j.message) + '</div></div>'); loadMe().then(function () { fill(); tab("plan"); if (x.ok) memPanel('<div class="dcard"><div class="dc-sub">' + esc(x.j.message) + '</div></div>'); }); });
+        return;
+      }
+    });
     // ---- saved card (live) ----
     var acCard = null;
     function cardUI() {
@@ -3115,7 +3254,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         address: $("bkAddr").value.trim(), town: $("q-town").value.trim(), car: [$("bkYear").value, $("bkMake").value, $("bkModel").value].join(" ").trim(), color: $("bkColor").value.trim(),
         water: radio("water"), power: radio("power"), notes: $("bkNotes").value.trim(), heard: $("bkHeard").value,
         quote: q.total, travel_fee: q.travel || 0, miles: T.miles, lat: T.lat, lon: T.lon,
-        plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type } : null,
+        plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type, freq: (window.__planInfo || {}).freq || 1 } : null,
         card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "" };
     }
     function finish() {
@@ -3133,6 +3272,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
           if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
+            if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
+            else if (x.j.membershipError) { $("dnMemRow").hidden = false; $("dnMem").textContent = "Not added: " + x.j.membershipError; }
             if (x.j.priceChanged) $("dnTotal").textContent = "$" + x.j.total + " · pay after the job" + (x.j.regularPricing ? " (regular price: launch pricing is for a first detail)" : "");
             if (window.__acctReload) window.__acctReload(); return; }
           if (x.status === 409) { fail(x.j.error); sel.time = null; loadAvail(true).then(function () { show(3); renderCal(); }); return; }

@@ -6,10 +6,13 @@ import { quote as priceQuote, travelFee } from "./pricing.js";
 import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer } from "./accounts.js";
 import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
+import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const TERMS_VERSION = "2026-10-31";   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
+const VISIT_NAMES = { exterior: "Wash visit", interior: "Interior visit", full: "Wash + interior visit" };
+const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : NAMES[b.pkg];
 const ADDON_NAMES = { pet: "Heavy pet hair", stain: "Heavy stain or odor", lights: "Headlight restoration", engine: "Engine bay" };
 
 const json = (data, status) => new Response(JSON.stringify(data), { status: status || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -76,7 +79,7 @@ function readBooking(body) {
     water: clean(body.water, 5), power: clean(body.power, 5), notes: clean(body.notes, 1500), heard: clean(body.heard, 60),
     quote: Math.round(+body.quote || 0), travel_fee: Math.round(+body.travel_fee || 0), miles: body.miles == null ? null : +body.miles,
     lat: body.lat == null ? null : +body.lat, lon: body.lon == null ? null : +body.lon,
-    plan: body.plan && typeof body.plan === "object" ? { label: clean(body.plan.label, 120), monthly: +body.plan.monthly || 0, type: clean(body.plan.type, 10) } : null,
+    plan: body.plan && typeof body.plan === "object" && MEM.plans[body.plan.type] ? { type: clean(body.plan.type, 10), freq: [1, 2, 4].includes(+body.plan.freq) ? +body.plan.freq : 1 } : null,
     card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10),
     agree: body.agree === true, sms: body.sms === true, memAuth: body.memAuth === true
   };
@@ -101,22 +104,23 @@ function readBooking(body) {
 // ---------- emails ----------
 function details(b) {
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
-  return [["When", whenText(b)], ["Package", NAMES[b.pkg] + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
-    ["Where", [b.address, b.town].filter(Boolean).join(", ")], ["Estimate", b.quote ? "$" + b.quote + (b.travel_fee ? " (includes $" + b.travel_fee + " travel)" : "") + " · pay after the job" : ""], ["Booking code", b.id]];
+  return [["When", whenText(b)], ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+    ["Where", [b.address, b.town].filter(Boolean).join(", ")], b.kind === "member" ? ["Price", "Included in your Apex Membership"] : ["Estimate", b.quote ? "$" + b.quote + (b.travel_fee ? " (includes $" + b.travel_fee + " travel)" : "") + " · pay after the job" : ""],
+    b._mem ? ["Apex Membership", b._mem.label + " · $" + b._mem.monthly + "/mo, first charge " + dayLabel(b._mem.firstBill)] : null, ["Booking code", b.id]].filter(Boolean);
 }
 function needsText(pkg) { return pkg === "interior" ? "an outlet we can reach (an indoor one is fine if we can run a cord outside)" : "an outdoor water spigot and an outlet we can reach"; }
 
 async function emailCustomer(env, b, kind) {
   const site = env.SITE_URL, manage = site + "/b/" + b.token, logo = site + "/email-logo.png";
-  const ics = jobIcs(b, { summary: "Apex Detailing · " + NAMES[b.pkg], location: [b.address, b.town].filter(Boolean).join(", "), description: "Booking " + b.id + ". Manage: " + manage, url: manage });
+  const ics = jobIcs(b, { summary: "Apex Detailing · " + pkgName(b), location: [b.address, b.town].filter(Boolean).join(", "), description: "Booking " + b.id + ". Manage: " + manage, url: manage });
   const first = b.name.split(" ")[0];
   let subject, intro;
-  if (kind === "cancel") { subject = "Cancelled: your " + NAMES[b.pkg] + " on " + dayLabel(utcToNy(b.start_utc).key); intro = `<h1 style="font-size:24px;margin:0 0 8px">Your detail is cancelled</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, we've cancelled this booking. Whenever you're ready, you can book again at <a href="${h(site)}" style="color:#111">apexdetailingoc.com</a>.</p>`; }
-  else if (kind === "move") { subject = "New time: " + NAMES[b.pkg] + " · " + whenText(b); intro = `<h1 style="font-size:24px;margin:0 0 8px">Your detail has a new time</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, you're all set for the new time below.</p>`; }
-  else if (kind === "remind") { subject = "Tomorrow: your " + NAMES[b.pkg] + " at " + tstr(utcToNy(b.start_utc).min); intro = `<h1 style="font-size:24px;margin:0 0 8px">See you tomorrow, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Just a reminder about your detail. Here are the details:</p>`; }
-  else { subject = "You're booked: " + NAMES[b.pkg] + " · " + whenText(b); intro = `<h1 style="font-size:24px;margin:0 0 8px">You're booked, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Thanks for choosing Apex. We'll come to you. Here are the details:</p>`; }
+  if (kind === "cancel") { subject = "Cancelled: your " + pkgName(b) + " on " + dayLabel(utcToNy(b.start_utc).key); intro = `<h1 style="font-size:24px;margin:0 0 8px">Your detail is cancelled</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, we've cancelled this booking. Whenever you're ready, you can book again at <a href="${h(site)}" style="color:#111">apexdetailingoc.com</a>.</p>`; }
+  else if (kind === "move") { subject = "New time: " + pkgName(b) + " · " + whenText(b); intro = `<h1 style="font-size:24px;margin:0 0 8px">Your detail has a new time</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, you're all set for the new time below.</p>`; }
+  else if (kind === "remind") { subject = "Tomorrow: your " + pkgName(b) + " at " + tstr(utcToNy(b.start_utc).min); intro = `<h1 style="font-size:24px;margin:0 0 8px">See you tomorrow, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Just a reminder about your detail. Here are the details:</p>`; }
+  else { subject = "You're booked: " + pkgName(b) + " · " + whenText(b); intro = `<h1 style="font-size:24px;margin:0 0 8px">You're booked, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Thanks for choosing Apex. We'll come to you. Here are the details:</p>`; }
   const after = kind === "cancel" ? "" :
-    `<p style="margin:0 0 6px;font-weight:700">Before we arrive</p><p style="margin:0 0 18px;color:#444;line-height:1.55">Please make sure we have ${needsText(b.pkg)}, and take valuables out of the car. Final price depends on condition; we confirm before we start, never after.</p>
+    `<p style="margin:0 0 6px;font-weight:700">Before we arrive</p><p style="margin:0 0 18px;color:#444;line-height:1.55">Please make sure we have ${needsText(b.pkg)}, and take valuables out of the car. ${b.kind === "member" ? "This visit is included in your Apex Membership." : "Final price depends on condition; we confirm before we start, never after."}</p>
      <p style="margin:0 0 20px">${button(manage, "Reschedule or cancel")}</p>
      <p style="margin:0;color:#666;font-size:13px;line-height:1.5">Questions? Just reply to this email or text (732) 206-7084.</p>`;
   return send(env, {
@@ -130,16 +134,16 @@ async function emailNick(env, b, kind, extra) {
   const site = env.SITE_URL, where = [b.address, b.town].filter(Boolean).join(", ");
   const maps = "https://maps.apple.com/?daddr=" + encodeURIComponent(where), tel = b.phone.replace(/[^\d+]/g, "");
   const town = b.town || "", label = { new: "New booking", cancel: "Cancelled", move: "Rescheduled" }[kind];
-  const subject = label + ": " + NAMES[b.pkg] + " · " + whenText(b) + (town ? " · " + town : "");
+  const subject = label + ": " + pkgName(b) + " · " + whenText(b) + (town ? " · " + town : "");
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
   const plan = b.plan ? JSON.parse(b.plan) : null;
   const list = [["When", whenText(b)], ["Customer", h(b.name) + `<br><a href="tel:${h(tel)}" style="color:#111">${h(b.phone)}</a> · <a href="sms:${h(tel)}" style="color:#111">Text</a><br><a href="mailto:${h(b.email)}" style="color:#111">${h(b.email)}</a>`, true],
     ["Address", `${h(where)}<br><a href="${h(maps)}" style="color:#111">Directions</a>` + (b.miles != null ? ` · ${h(b.miles)} mi` : ""), true],
-    ["Package", NAMES[b.pkg] + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+    ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ["Water / power", (b.pkg === "interior" ? "" : "Spigot: " + (b.water || "?") + " · ") + "Outlet: " + (b.power || "?")],
     ["Estimate", b.quote ? "$" + b.quote + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
-    ["Payment", b.card ? "Card on file: " + JSON.parse(b.card).brand + " ending " + JSON.parse(b.card).last4 + " (charge after the job)" : "In person"],
-    ["Membership", plan ? plan.label + " · $" + plan.monthly + "/mo" : ""], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
+    ["Payment", b.kind === "member" ? "Apex Membership visit (included)" : b.card ? "Card on file: " + JSON.parse(b.card).brand + " ending " + JSON.parse(b.card).last4 + " (charge after the job)" : "In person"],
+    ["Membership", b._mem ? "Signed up: " + b._mem.label + " · $" + b._mem.monthly + "/mo, first charge " + dayLabel(b._mem.firstBill) : b._memErr ? "Tried to sign up but: " + b._memErr : ""], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
   if (extra) list.unshift(["Was", extra]);
   const body = `<h1 style="font-size:22px;margin:0 0 6px">${h(label)}</h1><p style="margin:0;color:#444">${h(whenText(b))}</p>` + rows(list) +
     (kind === "new" ? `<p style="margin:0 0 10px">${button(site + "/ack/" + b.ack_token, "Got it")} &nbsp; ${button(site + "/job/" + b.ack_token, "Job done — get paid", false)}</p><p style="margin:0;color:#777;font-size:13px">The customer is already confirmed. "Got it" just marks it seen for you. After the job, open "Job done — get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.</p>` : "");
@@ -169,7 +173,18 @@ function summaryCard(b) {
 async function managePage(env, b, msg) {
   if (b.status === "cancelled") return page("Cancelled", `<h1>This booking is cancelled</h1><p class="sub">${msg ? h(msg) + " " : ""}Want a new time? <a href="/" style="color:#ededed">Book again</a>.</p>${summaryCard(b)}`);
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
-  const head = `<h1>Your ${h(NAMES[b.pkg])}</h1><p class="sub">${h(whenText(b))}</p>${msg ? `<p class="note" style="color:#c8f7c5">${h(msg)}</p>` : ""}${summaryCard(b)}`;
+  const head = `<h1>Your ${h(pkgName(b))}</h1><p class="sub">${h(whenText(b))}</p>${msg ? `<p class="note" style="color:#c8f7c5">${h(msg)}</p>` : ""}${summaryCard(b)}`;
+  const member = b.kind === "member" ? await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first() : null;
+  if (member) {
+    const credit = hoursLeft >= MEM.skipNoticeHours ? Math.round((b.visit_value_cents || 0) * MEM.skipCreditRate) : 0;
+    const skip = `<h2>Skip this visit</h2><form method="post" action="/b/${b.token}/cancel" onsubmit="return confirm('Skip this visit?')"><button class="btn d" style="width:100%">Skip this visit</button></form><p class="note">${credit ? "With 48+ hours' notice you get a $" + (credit / 100).toFixed(credit % 100 ? 2 : 0) + " credit (50%) on your next monthly charge." : "Less than 48 hours' notice, so no credit for this visit."}</p>`;
+    if (hoursLeft < RULES.noticeHours) return page("Your visit", head + skip + `<p class="note">To move it instead, text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
+    const from = addDays(todayKey(), 1), n = Math.max(1, Math.min(35, Math.round((nyToUtc(member.period_end || from, 0) - nyToUtc(from, 0)) / 864e5)));
+    const info = await days(env, from, n, b.id), opts = [];
+    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, [], Date.now()); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
+    const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.slice(0, 8).map(t => `<form method="post" action="/b/${b.token}/move"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button>${tstr(t)}</button></form>`).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
+    return page("Your visit", head + `<h2>Pick a new time</h2>${pick}${skip}`);
+  }
   if (hoursLeft < RULES.noticeHours) return page("Your booking", head + `<p class="note" style="margin-top:18px">It's less than 24 hours away, so changes go through us directly: text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
   // next open times for the same job (next 21 days), excluding this booking itself
   const adds = JSON.parse(b.adds || "[]"), start = addDays(todayKey(), 1), info = await days(env, start, 21, b.id), opts = [];
@@ -226,6 +241,10 @@ async function api(req, env, url) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
       b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at).run();
     if (f.sms) await env.DB.prepare("UPDATE customers SET sms_ok = 1, sms_ok_at = ? WHERE id = ?").bind(Date.now(), customerId).run();
+    if (f.plan && f.memAuth) {
+      try { b._mem = await createMembership(env, { customerId, booking: b, type: f.plan.type, freq: f.plan.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: b.terms_ip } }); }
+      catch (e) { b._memErr = e.message; }
+    }
     // calendar + emails: don't let a hiccup there lose the booking
     const tasks = [];
     if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));
@@ -233,13 +252,27 @@ async function api(req, env, url) {
     tasks.push(emailNick(env, b, "new").catch(e => console.log("nick email failed", e.message)));
     await Promise.all(tasks);
     return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token,
-      total: q.total, priceChanged: shownQuote !== q.total, regularPricing: !q.launch && prior.n > 0 });
+      total: q.total, priceChanged: shownQuote !== q.total, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
   }
 
   if (p === "/api/auth/start" && req.method === "POST") return authStart(req, env);
   if (p === "/api/auth/verify" && req.method === "POST") return authVerify(req, env);
   if (p === "/api/auth/logout" && req.method === "POST") return authLogout(req, env);
+  if (p === "/api/me" && req.method === "GET") {
+    const r = await me(req, env); if (r.status !== 200) return r;
+    const j = await r.json(), c = await currentCustomer(env, req), m = await activeFor(env, c.id);
+    j.member = await memSummary(env, m, c);
+    // can they start a membership from the account? (within 14 days after a qualifying detail)
+    if (!m) {
+      const since = addDays(todayKey(), -MEM.signupDays);
+      const q = await env.DB.prepare("SELECT id, pkg, size, day, car FROM bookings WHERE customer_id = ? AND kind != 'member' AND status = 'confirmed' AND day >= ? AND day <= ? ORDER BY day DESC LIMIT 1").bind(c.id, since, todayKey()).first();
+      if (q) j.canStart = { booking: q.id, pkg: q.pkg, size: q.size, day: q.day, car: q.car, deadline: addDays(q.day, MEM.signupDays),
+        plans: Object.keys(MEM.plans).filter(t => MEM.prereq[t].includes(q.pkg)) };
+    }
+    return json(j);
+  }
   if (p === "/api/me") return me(req, env);
+  if (p.startsWith("/api/member/")) return memberApi(req, env, url);
   if (p === "/api/config") return json({ square: publicConfig(env) });
   if (p === "/api/me/card") {
     const c = await currentCustomer(env, req); if (!c) return json({ error: "Sign in first." }, 401);
@@ -261,6 +294,79 @@ async function api(req, env, url) {
   return json({ error: "Not found" }, 404);
 }
 
+// ---------- Apex Membership (member actions) ----------
+async function memberApi(req, env, url) {
+  const c = await currentCustomer(env, req); if (!c) return json({ error: "Sign in first." }, 401);
+  const action = url.pathname.split("/")[3];
+  let body = {}; if (req.method === "POST") { try { body = await req.json(); } catch (e) {} }
+  if (action === "start" && req.method === "POST") {
+    if (body.auth !== true) return json({ error: "Please check the box to authorize the monthly charge." }, 400);
+    if (!c.card) return json({ error: "Add a card first (My details → Payment card)." }, 400);
+    const since = addDays(todayKey(), -MEM.signupDays);
+    const q = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? AND kind != 'member' AND status = 'confirmed' AND day >= ? AND day <= ? ORDER BY day DESC LIMIT 1").bind(c.id, since, todayKey()).first();
+    if (!q) return json({ error: "Memberships start within 14 days after a qualifying detail." }, 400);
+    try { const r = await createMembership(env, { customerId: c.id, booking: q, type: String(body.type), freq: +body.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: req.headers.get("CF-Connecting-IP") || "" } });
+      return json({ ok: true, message: "You're in! " + r.label + " at $" + r.monthly + "/mo. Your first charge is " + dayLabel(r.firstBill) + "." }); }
+    catch (e) { return json({ error: e.message }, 400); }
+  }
+  const m = await activeFor(env, c.id); if (!m) return json({ error: "You don't have an active membership." }, 400);
+  if (action === "slots") return json(await visitSlots(env, m, { days }));
+  if (action === "visit" && req.method === "POST") {
+    const day = String(body.day || ""), start = +body.start;
+    const sl = await visitSlots(env, m, { days });
+    const d = (sl.days || []).find(x => x.day === day);
+    if (!d || !d.slots.includes(start)) return json({ error: sl.reason || "That time isn't available anymore. Pick another." }, 409);
+    const pkg = MEM.visitPkg[coverOn(m.type, day)];
+    if (!(await slotOpen(env, day, start, pkg, m.size, []))) return json({ error: "That time was just taken. Pick another." }, 409);
+    const last = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1").bind(c.id).first() || {};
+    const cars = JSON.parse(c.cars || "[]"), car = m.car || (cars[0] && cars[0].name) || last.car || "";
+    const start_utc = nyToUtc(day, start), end_utc = start_utc + jobMin(pkg, m.size, []) * 60000;
+    const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day, pkg, size: m.size, adds: "[]", quote: 0, travel_fee: 0,
+      name: c.name || last.name || "", phone: c.phone || last.phone || "", email: c.email, address: c.address || last.address || "", town: c.town || last.town || "", car, color: (cars[0] && cars[0].color) || last.color || "",
+      water: last.water || null, power: last.power || null, notes: c.notes || null, remind: c.remind, customer_id: c.id, kind: "member", membership_id: m.id, visit_value_cents: m.period_visit_cents || 0 };
+    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, quote, travel_fee, name, phone, email, address, town, car, color, water, power, notes, remind, customer_id, kind, membership_id, visit_value_cents, terms_version, terms_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.quote, b.travel_fee,
+      b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.notes, b.remind, b.customer_id, b.kind, b.membership_id, b.visit_value_cents, m.terms_version, Date.now()).run();
+    const tasks = [];
+    if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));
+    tasks.push(emailCustomer(env, b, "new").catch(() => {}), emailNick(env, b, "new").catch(() => {}));
+    await Promise.all(tasks);
+    return json({ ok: true, id: b.id, when: whenText(b) });
+  }
+  if (action === "cancel" && req.method === "POST") {
+    try { return json(Object.assign({ ok: true }, await cancelMembership(env, m, String(body.mode || ""), c))); } catch (e) { return json({ error: e.message }, 400); }
+  }
+  if (action === "pause" && req.method === "POST") {
+    try { return json(Object.assign({ ok: true }, await pauseMembership(env, m, body.months))); } catch (e) { return json({ error: e.message }, 400); }
+  }
+  if (action === "retry" && req.method === "POST") {
+    if (m.status !== "past_due") return json({ ok: true, message: "Nothing to retry." });
+    const r = await retryNow(env, m); return json({ ok: /charged/.test(r), message: /charged/.test(r) ? "Paid. Thank you! You can book visits again." : "That card didn't work either. Try another card." });
+  }
+  return json({ error: "Not found" }, 404);
+}
+
+// credit for a skipped member visit (customer: 50% with 48+ hours' notice; us/weather: 100%)
+async function creditVisit(env, b, rate) {
+  if (b.kind !== "member" || !b.membership_id || !rate) return 0;
+  const credit = Math.round((b.visit_value_cents || 0) * rate);
+  if (!credit) return 0;
+  await env.DB.prepare("UPDATE bookings SET credit_cents = ? WHERE id = ?").bind(credit, b.id).run();
+  await env.DB.prepare("UPDATE memberships SET credit_cents = credit_cents + ?, updated_at = ? WHERE id = ?").bind(credit, Date.now(), b.membership_id).run();
+  return credit;
+}
+export async function cancelByUs(env, b) {
+  await env.DB.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?").bind(Date.now(), b.id).run();
+  b.status = "cancelled";
+  const credit = await creditVisit(env, b, 1);
+  await deleteJob(env, b.cal_href).catch(() => {});
+  const first = b.name.split(" ")[0], subject = "We had to cancel your " + pkgName(b) + " on " + dayLabel(b.day);
+  const body = `<h1 style="font-size:22px;margin:0 0 8px">Sorry, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">We had to cancel your ${h(pkgName(b))} on ${h(whenText(b))} (weather or something on our end). ` +
+    (credit ? `We added a ${"$" + (credit / 100).toFixed(credit % 100 ? 2 : 0)} credit to your Apex Membership, and you can book a new time in your account.` : `Please pick a new time, or reply and we'll find one together.`) + `</p><p style="margin:18px 0 0">${button(env.SITE_URL + (b.kind === "member" ? "/#account" : "/#book"), "Pick a new time")}</p>`;
+  await send(env, { to: b.email, subject, html: layout(subject, body, subject, env.SITE_URL + "/email-logo.png") }).catch(() => {});
+  return credit;
+}
+
 // Day-before reminder emails, sent from 6 PM New York time
 async function reminders(env) {
   const now = utcToNy(Date.now()); if (now.min < 18 * 60) return;
@@ -274,9 +380,9 @@ async function reminders(env) {
 
 async function calSave(env, b) {
   const where = [b.address, b.town].filter(Boolean).join(", "), adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a);
-  const desc = [b.name + " · " + b.phone, b.email, NAMES[b.pkg] + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), [b.car, b.color].filter(Boolean).join(" · "),
+  const desc = [b.name + " · " + b.phone, b.email, pkgName(b) + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), [b.car, b.color].filter(Boolean).join(" · "),
     b.quote ? "Estimate $" + b.quote : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Job done / get paid: " + env.SITE_URL + "/job/" + b.ack_token].filter(Boolean).join("\n");
-  const href = await writeJob(env, b, { summary: NAMES[b.pkg] + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/job/" + b.ack_token });
+  const href = await writeJob(env, b, { summary: pkgName(b) + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/job/" + b.ack_token });
   if (href) await env.DB.prepare("UPDATE bookings SET cal_href = ? WHERE id = ?").bind(href, b.id).run();
   b.cal_href = href;
 }
@@ -288,19 +394,31 @@ async function manage(req, env, url) {
   if (!b) return html(page("Not found", `<h1>We couldn't find that booking</h1><p class="sub">Text us at (732) 206-7084 and we'll sort it out.</p>`), 404);
   if (!m[2] || req.method !== "POST") return html(await managePage(env, b));
   if (b.status !== "confirmed") return html(await managePage(env, b));
-  if ((b.start_utc - Date.now()) / 3600e3 < RULES.noticeHours) return html(await managePage(env, b, "It's too close to change online."));
+  const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
+  if (hoursLeft < RULES.noticeHours && !(b.kind === "member" && m[2] === "cancel")) return html(await managePage(env, b, "It's too close to change online."));
   if (m[2] === "cancel") {
     await env.DB.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?").bind(Date.now(), b.id).run();
     b.status = "cancelled";
+    const credit = await creditVisit(env, b, hoursLeft >= MEM.skipNoticeHours ? MEM.skipCreditRate : 0);
+    if (b.kind === "member") {
+      await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailNick(env, b, "cancel").catch(() => {})]);
+      return html(await managePage(env, b, credit ? "Skipped. A $" + (credit / 100).toFixed(credit % 100 ? 2 : 0) + " credit goes toward your next monthly charge." : "Skipped."));
+    }
     await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailCustomer(env, b, "cancel").catch(() => {}), emailNick(env, b, "cancel").catch(() => {})]);
     return html(await managePage(env, b, "Done."));
   }
   const fd = await req.formData(), day = String(fd.get("day") || ""), start = +fd.get("start");
   const adds = JSON.parse(b.adds || "[]");
+  if (b.kind === "member") {
+    const mm = await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first();
+    const cv = mm && coverOn(mm.type, day);
+    if (!mm || !cv || (mm.period_end && day >= mm.period_end)) return html(await managePage(env, b, "Pick a day in this month's period."));
+    b.pkg = MEM.visitPkg[cv];
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !(await slotOpen(env, day, start, b.pkg, b.size, adds, b.id))) return html(await managePage(env, b, "Sorry, that time was just taken. Pick another."));
   const was = whenText(b), start_utc = nyToUtc(day, start), end_utc = start_utc + jobMin(b.pkg, b.size, adds) * 60000;
   const hist = JSON.parse(b.history || "[]"); hist.push({ at: Date.now(), from: b.start_utc });
-  await env.DB.prepare("UPDATE bookings SET start_utc = ?, end_utc = ?, day = ?, history = ? WHERE id = ?").bind(start_utc, end_utc, day, JSON.stringify(hist), b.id).run();
+  await env.DB.prepare("UPDATE bookings SET start_utc = ?, end_utc = ?, day = ?, pkg = ?, history = ? WHERE id = ?").bind(start_utc, end_utc, day, b.pkg, JSON.stringify(hist), b.id).run();
   Object.assign(b, { start_utc, end_utc, day });
   await Promise.all([calConfigured(env) ? calSave(env, b).catch(() => {}) : null, emailCustomer(env, b, "move").catch(() => {}), emailNick(env, b, "move", was).catch(() => {})]);
   return html(await managePage(env, b, "Moved. We sent you a new confirmation."));
@@ -321,7 +439,7 @@ export default {
       if (url.pathname.startsWith("/api/")) return await api(req, env, url);
       if (url.pathname.startsWith("/b/")) return await manage(req, env, url);
       if (url.pathname.startsWith("/ack/")) return await ack(env, url);
-      if (url.pathname.startsWith("/job/")) return await jobRoute(req, env, url, { page, summaryCard, whenText });
+      if (url.pathname.startsWith("/job/")) return await jobRoute(req, env, url, { page, summaryCard, whenText, cancelByUs, pkgName });
       if (url.pathname.startsWith("/pay/")) return await payPage(req, env, url, { page, summaryCard, whenText });
     } catch (e) {
       console.log("error", e.stack || e.message);
@@ -332,6 +450,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(syncBusy(env).then(r => console.log("sync", JSON.stringify(r))).catch(e => console.log("sync failed", e.message)));
     ctx.waitUntil(reminders(env).catch(e => console.log("reminders failed", e.message)));
+    ctx.waitUntil(runBilling(env).then(l => l.length && console.log("billing", JSON.stringify(l))).catch(e => console.log("billing failed", e.message)));
   }
 };
 

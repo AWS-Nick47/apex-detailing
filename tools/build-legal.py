@@ -153,6 +153,7 @@ mem = '''
 <h2 id="visits">4. Scheduling visits</h2>
 <ul>
 <li>You pick your visit times in your account from our open times.</li>
+<li>Each monthly payment covers the month that starts on that charge date. Your first visits can be booked once your first monthly payment goes through, one month after your qualifying detail.</li>
 <li>Visits are for the vehicle on your plan. Visits don't roll over to later months, except for credits described below.</li>
 </ul>
 
@@ -161,6 +162,7 @@ mem = '''
 <li><b>If we cancel</b> a visit (our scheduling, illness, or weather), you get a full credit, or a refund if you prefer.</li>
 <li><b>If you skip</b> with at least <b>48 hours'</b> notice, you get a <b>50% credit</b> for that visit.</li>
 <li>If you skip with less than 48 hours' notice, or we arrive and can't do the visit (no access, no water or power we were told would be available), no credit is given.</li>
+<li>A skipped visit counts as used for that month, so it can't be rebooked. The credit takes its place.</li>
 <li>Credits are applied to your next monthly charge.</li>
 </ul>
 
@@ -178,13 +180,14 @@ mem = '''
 <h3>Cancelling during the first 3 months</h3>
 <p>You can request to cancel anytime in your account. You choose one of these:</p>
 <ul>
+<li>Before your first monthly charge, you can cancel for free.</li>
 <li><b>Finish your 3 months:</b> you keep your visits, the remaining monthly payments in your first 3 months are charged as usual, and your membership ends automatically after your third payment. No fee.</li>
-<li><b>Cancel now:</b> your membership ends right away and you pay a one-time cancellation fee equal to <b>50% of the monthly payments left</b> in your 3-month minimum. For example, if you cancel after your first payment, two payments are left, so the fee is one month's price.</li>
+<li><b>Cancel now:</b> no more monthly charges, and you pay a one-time cancellation fee equal to <b>50% of the monthly payments left</b> in your 3-month minimum. You can still use visits you've already paid for until the end of that month. For example, if you cancel after your first payment, two payments are left, so the fee is one month's price.</li>
 </ul>
 <h3>After 3 months</h3>
 <ul>
 <li>Cancel anytime in your account, no fee. Cancelling stops future charges; your membership stays active through the period you've already paid for.</li>
-<li>You can also pause for up to 3 months and keep your current price.</li>
+<li>You can also pause for up to 3 months and keep your current price. The pause starts after the month you've already paid for, so you keep those visits.</li>
 </ul>
 <p>Questions about your membership: contact@apexdetailingoc.com or (732) 206-7084.</p>
 '''
