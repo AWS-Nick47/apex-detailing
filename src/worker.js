@@ -2,6 +2,8 @@
 import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, parseDay } from "./sched.js";
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
 import { send, layout, rows, button, h } from "./email.js";
+import { quote as priceQuote, travelFee } from "./pricing.js";
+import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail } from "./accounts.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
@@ -191,21 +193,33 @@ async function api(req, env, url) {
     const max = addDays(todayKey(), RULES.horizonDays);
     if (f.day > max) return json({ error: "That date is too far out." }, 400);
     if (!(await slotOpen(env, f.day, f.start, f.pkg, f.size, f.adds))) return json({ error: "Sorry, that time was just taken. Please pick another.", taken: true }, 409);
+    // the server sets the price: launch price is for a customer's first detail only
+    if (travelFee(f.miles) === null) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084." }, 400);
+    const prior = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE email = ? AND status != 'cancelled'").bind(normEmail(f.email)).first();
+    const q = priceQuote({ pkg: f.pkg, size: f.size, adds: f.adds, miles: f.miles, returning: prior.n > 0, member: false });
+    const shownQuote = f.quote; f.quote = q.total; f.travel_fee = q.travel;
+    const customerId = await upsertFromBooking(env, f);
     const start_utc = nyToUtc(f.day, f.start), end_utc = start_utc + jobMin(f.pkg, f.size, f.adds) * 60000;
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day: f.day, pkg: f.pkg, size: f.size, adds: JSON.stringify(f.adds),
       plan: f.plan ? JSON.stringify(f.plan) : null, quote: f.quote, travel_fee: f.travel_fee, miles: f.miles, name: f.name, phone: f.phone, email: f.email, address: f.address, town: f.town,
-      car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null };
-    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
-      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind).run();
+      car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId };
+    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
+      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id).run();
     // calendar + emails: don't let a hiccup there lose the booking
     const tasks = [];
     if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));
     tasks.push(emailCustomer(env, b, "new").catch(e => console.log("customer email failed", e.message)));
     tasks.push(emailNick(env, b, "new").catch(e => console.log("nick email failed", e.message)));
     await Promise.all(tasks);
-    return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token });
+    return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token,
+      total: q.total, priceChanged: shownQuote !== q.total, regularPricing: !q.launch && prior.n > 0 });
   }
+
+  if (p === "/api/auth/start" && req.method === "POST") return authStart(req, env);
+  if (p === "/api/auth/verify" && req.method === "POST") return authVerify(req, env);
+  if (p === "/api/auth/logout" && req.method === "POST") return authLogout(req, env);
+  if (p === "/api/me") return me(req, env);
 
   if (p === "/api/status" && req.method === "GET") {
     const s = await lastSync(env);

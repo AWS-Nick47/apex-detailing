@@ -2136,7 +2136,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
   /* ---------- Live site vs Claude preview ---------- */
   window.__LIVE = /(^|\.)apexdetailingoc\.com$|\.workers\.dev$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
-  if (window.__LIVE) document.addEventListener("DOMContentLoaded", function () { var t = document.getElementById("bkRemindTxt"); if (t) t.textContent = "Email me a reminder the day before"; var pv = document.querySelector(".bk-head .acct-preview"); if (pv) pv.hidden = true; });
+  if (window.__LIVE) document.addEventListener("DOMContentLoaded", function () { var t = document.getElementById("bkRemindTxt"); if (t) t.textContent = "Email me a reminder the day before"; var pv = document.querySelector(".bk-head .acct-preview"); if (pv) pv.hidden = true;
+    var ap = document.querySelector(".acct-top .acct-preview"); if (ap) ap.hidden = true;
+    var idf = document.getElementById("acctId"); if (idf) { idf.type = "email"; idf.placeholder = "you@email.com"; idf.autocomplete = "email"; idf.previousElementSibling.textContent = "Email"; }
+    var rs = document.getElementById("acctResend"); if (rs && rs.parentNode.firstChild.nodeType === 3) rs.parentNode.firstChild.textContent = "Didn't get it? Check your junk folder. ";
+  });
   /* ---------- Prices ---------- */
   /* ================= PRICING — change numbers here and every price on the site follows ================= */
   var PRICING = {
@@ -2552,7 +2556,30 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         { date: "Aug 16, 2026", pkg: "exterior", size: 1, car: "2021 Toyota RAV4", adds: [], img: null }
       ]
     };
-    var mode = "member", signedIn = false, intent = null, lastFocus = null;
+    var mode = window.__LIVE ? "guest" : "member", signedIn = false, intent = null, lastFocus = null, LIVE = window.__LIVE, signEmail = "", upcoming = [];
+    // Live site: turn the API answer into the same shape the demo used
+    function fromApi(j) {
+      var c = j.customer, cars = (c.cars || []).map(function (x) { return { name: x.name, color: x.color, size: x.size }; });
+      var fmt = function (ms, o) { return new Date(ms).toLocaleDateString("en-US", Object.assign({ timeZone: "America/New_York" }, o)); };
+      var tm = function (ms) { return new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }); };
+      var hist = j.bookings.filter(function (b) { return b.status !== "cancelled"; }).map(function (b) {
+        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, img: null, price: b.quote, manage: b.manage, start: b.start,
+          when: fmt(b.start, { weekday: "long", month: "short", day: "numeric" }), time: tm(b.start) + "–" + tm(b.end) };
+      });
+      upcoming = hist.filter(function (h) { return h.status === "upcoming"; }).sort(function (a, b) { return a.start - b.start; });
+      var parts = (c.name || "").trim().split(/\s+/);
+      DEMO = { first: parts[0] || "there", name: c.name || "", phone: c.phone || "", email: c.email, address: c.address || "", town: c.town || "", notes: c.notes || "",
+        cars: cars.length ? cars : [{ name: "Your car", size: 1 }], color: (cars[0] || {}).color || "", card: c.card ? c.card.brand + " ending " + c.card.last4 : "No card saved", remind: c.remind,
+        history: hist, next: upcoming[0] ? { date: upcoming[0].when, time: upcoming[0].time, what: NAMES[upcoming[0].pkg] + " · " + upcoming[0].car.replace(/^\d{4} /, "") } : null };
+      if (window.__acct) window.__acct.data = DEMO;
+    }
+    function loadMe() {
+      return fetch("/api/me", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+        if (!j || !j.signedIn) return false;
+        fromApi(j); signedIn = true; document.getElementById("acctBtnText").textContent = "My account"; window.__repriceAll && window.__repriceAll(); return true;
+      }).catch(function () { return false; });
+    }
+    window.__acctReload = function () { if (LIVE && signedIn) loadMe().then(function () { if (!el.hidden) fill(); }); };
     var el = document.getElementById("acct"), sheet = el.querySelector(".acct-sheet"), toastEl = document.getElementById("acctToast"), toastT;
     function $(s, r) { return (r || el).querySelector(s); }
     function $$(s, r) { return Array.prototype.slice.call((r || el).querySelectorAll(s)); }
@@ -2569,21 +2596,30 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       $$(".dash-pane").forEach(function (p) { p.hidden = p.dataset.pane !== t; });
     }
     function fill() {
-      var last = DEMO.history[0], PP = window.__planPrice(DEMO.planType, DEMO.cars[0].size, DEMO.planFreq);
-      DEMO.planPrice = "$" + PP.monthly + "/mo"; DEMO.planSave = "$" + ((PP.oneoffVisit * DEMO.planFreq - PP.monthly) * 12).toLocaleString();
-      var F = { first: DEMO.first, nextDate: DEMO.next.date, nextTime: DEMO.next.time, nextWhat: DEMO.next.what, planName: DEMO.plan, planPrice: DEMO.planPrice, planSave: DEMO.planSave,
+      var last = DEMO.history[0] || { pkg: "full", size: DEMO.cars[0].size, car: DEMO.cars[0].name, adds: [], date: "", img: null };
+      if (!LIVE) { var PP = window.__planPrice(DEMO.planType, DEMO.cars[0].size, DEMO.planFreq);
+        DEMO.planPrice = "$" + PP.monthly + "/mo"; DEMO.planSave = "$" + ((PP.oneoffVisit * DEMO.planFreq - PP.monthly) * 12).toLocaleString(); }
+      var NX = DEMO.next || { date: "", time: "", what: "" };
+      var F = { first: DEMO.first, nextDate: NX.date, nextTime: NX.time, nextWhat: NX.what, planName: DEMO.plan, planPrice: DEMO.planPrice, planSave: DEMO.planSave,
         since: DEMO.since, billDate: DEMO.billDate, card: DEMO.card,
-        lastWhat: NAMES[last.pkg] + " · " + last.car, lastWhen: "Last detail " + last.date, lastAdds: last.adds.length ? "+ " + addNames(last).join(", ") : "", lastPrice: "$" + priceOf(last) };
+        lastWhat: NAMES[last.pkg] + " · " + last.car, lastWhen: (last.status === "upcoming" ? "Booked for " : "Last detail ") + last.date, lastAdds: last.adds.length ? "+ " + addNames(last).join(", ") : "", lastPrice: "$" + priceOf(last) };
       $$("[data-f]").forEach(function (n) { if (F[n.dataset.f] != null) n.textContent = F[n.dataset.f]; });
-      $('[data-src="lastImg"]').src = last.img || "r-rav4-front-after.jpg";
+      var lim = $('[data-src="lastImg"]'); if (lim) lim.src = last.img || "r-rav4-front-after.jpg";
       if (window.__nextSlots) document.getElementById("nextSlots").innerHTML = window.__nextSlots(last.pkg, last.size, last.adds, 3).map(function (n) {
         return '<button type="button" class="ns" data-slot="' + n.date + "|" + n.time + '"><b>' + n.d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + "</b><span>" + window.__tstr(n.time) + "</span></button>"; }).join("");
       $$("[data-if]").forEach(function (n) { n.hidden = n.dataset.if !== mode; });
+      if (LIVE) {
+        var dd = $(".dash-demo"); if (dd) dd.style.display = "none";
+        var li = $('[data-src="lastImg"]'); if (li && !li.dataset.live) { li.dataset.live = "1"; var ph = document.createElement("div"); ph.className = "ph"; ph.innerHTML = '<svg><use href="#v-' + ["sedan", "suv", "truck"][last.size] + '"/></svg>'; ph.style.cssText = "width:64px;height:64px;border-radius:14px;display:grid;place-items:center;background:var(--well);flex:none"; ph.firstChild.style.cssText = "width:40px;height:40px"; li.replaceWith(ph); }
+        var nx = $(".dcard.next"); nx.hidden = !DEMO.next;
+        if (DEMO.next) { nx.querySelector(".dc-k").textContent = "Next detail"; nx.querySelector(".dc-actions").innerHTML = '<a class="btn btn-sm btn-ghost" href="' + upcoming[0].manage + '">Reschedule or cancel</a>'; }
+        var rc = $("#acctProfile .acct-check"); if (rc) { rc.lastChild.textContent = " Email me a reminder the day before"; rc.querySelector("input").checked = DEMO.remind !== false; }
+      }
       $$(".dash-demo button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.demo === mode)); });
       document.getElementById("acctHist").innerHTML = DEMO.history.map(function (h, i) {
         return '<div class="hist-item">' + (h.img ? '<img src="' + h.img + '" alt="">' : '<div class="ph"><svg><use href="#i-ext"/></svg></div>') +
-          '<div><div class="hi-top"><b>' + NAMES[h.pkg] + '</b><span>$' + priceOf(h) + '</span></div><div class="dc-sub">' + h.date + " · " + h.car + (h.adds.length ? " · + " + addNames(h).join(", ") : "") + "</div>" +
-          '<div class="hi-acts"><button type="button" class="link-btn" data-rebook="' + i + '">Book again</button>' + (h.job != null ? '<button type="button" class="link-btn" data-photos="' + h.job + '">See photos</button>' : "") + "</div></div></div>";
+          '<div><div class="hi-top"><b>' + NAMES[h.pkg] + (h.status === "upcoming" ? ' <span class="badge">Upcoming</span>' : "") + '</b><span>$' + (h.price != null ? h.price : priceOf(h)) + '</span></div><div class="dc-sub">' + h.date + " · " + h.car + (h.adds.length ? " · + " + addNames(h).join(", ") : "") + "</div>" +
+          '<div class="hi-acts"><button type="button" class="link-btn" data-rebook="' + i + '">Book again</button>' + (h.manage ? '<a class="link-btn" href="' + h.manage + '">Reschedule or cancel</a>' : "") + (h.job != null ? '<button type="button" class="link-btn" data-photos="' + h.job + '">See photos</button>' : "") + "</div></div></div>";
       }).join("");
       document.getElementById("acctCars").innerHTML = DEMO.cars.map(function (c) { return '<div class="car-row"><svg><use href="#v-' + ["sedan", "suv", "truck"][c.size] + '"/></svg><div><b>' + c.name + "</b><span>" + SIZES[c.size] + "</span></div></div>"; }).join("");
       $$("[data-in]").forEach(function (n) { n.value = DEMO[n.dataset.in] || ""; });
@@ -2596,6 +2632,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       else {
         document.getElementById("acctLede").textContent = intent === "member" ? "Sign in to manage your Apex Membership. We'll send a 6-digit code, no password needed."
           : intent === "rebook" ? "Sign in and we'll fill in your car, address and last detail. We'll send a 6-digit code." : "No passwords. We'll send a 6-digit code to your phone or email.";
+        if (LIVE) document.getElementById("acctLede").textContent = intent === "rebook" ? "Sign in and we'll fill in your car, address and last detail. We'll email you a 6-digit code." : "No passwords. We'll email you a 6-digit code. Use the email you booked with.";
         view("signin");
       }
     }
@@ -2606,9 +2643,19 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       else if (t.dataset.acct === "close") { if (t.tagName !== "A") e.preventDefault(); close(); }
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !el.hidden) close(); });
+    function busy(form, on, label) { var b = form.querySelector('button[type="submit"]'); if (!b) return; if (on) { b.dataset.t = b.textContent; b.textContent = label; b.disabled = true; } else { b.textContent = b.dataset.t || b.textContent; b.disabled = false; } }
+    function sendCode(v) {
+      return fetch("/api/auth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: v }) }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+    }
     document.getElementById("acctSignin").addEventListener("submit", function (e) {
       e.preventDefault(); var v = document.getElementById("acctId").value.trim(); if (!v) return;
-      document.getElementById("acctSentTo").textContent = v; $$("#otp input").forEach(function (i) { i.value = ""; }); view("code");
+      if (!LIVE) { document.getElementById("acctSentTo").textContent = v; $$("#otp input").forEach(function (i) { i.value = ""; }); view("code"); return; }
+      var f = this; busy(f, true, "Sending…");
+      sendCode(v).then(function (x) {
+        busy(f, false);
+        if (!x.ok) { toast(x.j.error || "Something went wrong"); return; }
+        signEmail = v; document.getElementById("acctSentTo").textContent = v; $$("#otp input").forEach(function (i) { i.value = ""; }); view("code");
+      }).catch(function () { busy(f, false); toast("Couldn't reach us. Check your connection."); });
     });
     var otp = $$("#otp input");
     otp.forEach(function (inp, i) {
@@ -2618,10 +2665,23 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     });
     document.getElementById("acctCode").addEventListener("submit", function (e) {
       e.preventDefault(); if (!otp.every(function (x) { return x.value; })) { otp.filter(function (x) { return !x.value; })[0].focus(); return; }
+      if (LIVE) {
+        var f = this, code = otp.map(function (x) { return x.value; }).join(""); busy(f, true, "Checking…");
+        fetch("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: signEmail, code: code }) })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok) { busy(f, false); toast(x.j.error || "That code didn't work"); otp.forEach(function (i) { i.value = ""; }); otp[0].focus(); return; }
+            return loadMe().then(function (ok) { busy(f, false); if (!ok) { toast("Signed in, but we couldn't load your account. Refresh the page."); return; } view("dash"); fill(); tab(intent === "member" ? "plan" : "overview"); });
+          }).catch(function () { busy(f, false); toast("Couldn't reach us. Check your connection."); });
+        return;
+      }
       signedIn = true; document.getElementById("acctBtnText").textContent = "My account"; window.__repriceAll && window.__repriceAll();
       view("dash"); fill(); tab(intent === "member" ? "plan" : "overview");
     });
-    document.getElementById("acctResend").addEventListener("click", function () { toast("New code sent"); });
+    document.getElementById("acctResend").addEventListener("click", function () {
+      if (!LIVE) { toast("New code sent"); return; }
+      sendCode(signEmail).then(function (x) { toast(x.ok ? "New code sent. Check your inbox (and junk)." : (x.j.error || "Couldn't send")); });
+    });
     el.addEventListener("click", function (e) {
       var g = e.target.closest("[data-goto]"); if (g) view(g.dataset.goto);
       var tb = e.target.closest(".dash-tabs button"); if (tb) tab(tb.dataset.tab);
@@ -2633,9 +2693,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var pt = e.target.closest("[data-photos]"); if (pt) { close(); var jb = document.querySelectorAll(".res-jobs button")[+pt.dataset.photos]; if (jb) jb.click(); document.getElementById("results").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
     });
     document.getElementById("acctProfile").addEventListener("submit", function (e) {
-      e.preventDefault(); $$("[data-in]").forEach(function (n) { DEMO[n.dataset.in] = n.value; }); toast("Saved");
+      e.preventDefault(); $$("[data-in]").forEach(function (n) { DEMO[n.dataset.in] = n.value; });
+      if (!LIVE) { toast("Saved"); return; }
+      var rc = $("#acctProfile .acct-check input");
+      fetch("/api/me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: DEMO.name, phone: DEMO.phone, address: DEMO.address, town: DEMO.town, notes: DEMO.notes, remind: rc ? rc.checked : true }) })
+        .then(function (r) { toast(r.ok ? "Saved" : "Couldn't save. Try again."); if (r.ok) loadMe(); }).catch(function () { toast("Couldn't save. Check your connection."); });
     });
-    document.getElementById("acctOut").addEventListener("click", function () { signedIn = false; if (window.__bk) window.__bk.reset(); setTimeout(function () { window.__repriceAll && window.__repriceAll(); }, 0); document.getElementById("acctBtnText").textContent = "Sign in"; document.getElementById("acctId").value = ""; close(); });
+    document.getElementById("acctOut").addEventListener("click", function () { if (LIVE) fetch("/api/auth/logout", { method: "POST" }); signedIn = false; if (window.__bk) window.__bk.reset(); setTimeout(function () { window.__repriceAll && window.__repriceAll(); }, 0); document.getElementById("acctBtnText").textContent = "Sign in"; document.getElementById("acctId").value = ""; close(); });
     function rebook(h, slot) {
       setSize(h.size); selectPkg(h.pkg);
       ADDONS.forEach(function (a) { var cb = document.getElementById("q-add-" + a.id); if (cb) cb.checked = h.adds.indexOf(a.id) > -1; });
@@ -2644,6 +2708,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       window.__bk.open({ step: slot ? 4 : 3, slot: slot, focusBack: document.querySelector(".acct-btn"), note: "Filled in from your " + h.date + " detail on your " + h.car.replace(/^\d{4} /, "") + (slot ? ". Check your info and send it." : ". Just pick a day and time.") });
     }
     window.__acct = { isIn: function () { return signedIn; }, data: DEMO, mode: function () { return mode; } };
+    if (LIVE) loadMe();
   })();
 
   /* ---------- Booking overlay (front end; fake availability until the real calendar is connected) ---------- */
@@ -2958,7 +3023,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       fetch("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bookingPayload()) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
-          if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); return showDone(x.j.id); }
+          if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
+            if (x.j.priceChanged) $("dnTotal").textContent = "$" + x.j.total + " · pay after the job" + (x.j.regularPricing ? " (regular price: launch pricing is for a first detail)" : "");
+            if (window.__acctReload) window.__acctReload(); return; }
           if (x.status === 409) { fail(x.j.error); sel.time = null; loadAvail(true).then(function () { show(3); renderCal(); }); return; }
           fail((x.j && x.j.error) || "Something went wrong. Please text us at (732) 206-7084.");
         })
