@@ -6,7 +6,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/b/*", "/ack/*", "/job/*", "/pay/*"]
+    "run_worker_first": ["/api/*", "/b/*", "/ack/*", "/job/*", "/pay/*", "/admin", "/admin/*"]
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "apex", "database_id": "649d3c26-3a11-41c1-bf87-2f6b4d047e4d", "migrations_dir": "migrations" }
@@ -22,7 +22,10 @@
     "BLOCK_CALENDAR": "Apex Blocked",
     "SQUARE_ENV": "sandbox",
     "SQUARE_APP_ID": "sandbox-sq0idb-JnAHSb8B9pbA0Rrhzp067g",
-    "SQUARE_LOCATION_ID": "L90KBVR7B451R"
+    "SQUARE_LOCATION_ID": "L90KBVR7B451R",
+    // Owner dashboard: Cloudflare Access team + app audience tags (comma list; add the real-domain app later)
+    "ACCESS_TEAM": "awsomenick47.cloudflareaccess.com",
+    "ACCESS_AUD": "4f6fe8ceb216e81aaaddff0ca9cc144b3fcf066ba842c22a007fc27ac528b290"
   }
   // Secrets (set in the Cloudflare dashboard, never in this file):
   //   ICLOUD_USER, ICLOUD_APP_PASSWORD, RESEND_API_KEY, SQUARE_ACCESS_TOKEN

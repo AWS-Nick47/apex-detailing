@@ -6,6 +6,7 @@ import { quote as priceQuote, travelFee } from "./pricing.js";
 import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer } from "./accounts.js";
 import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
+import { adminApi, accessUser, blockoutBusy } from "./admin.js";
 import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
@@ -52,7 +53,7 @@ async function lastSync(env) { const r = await env.DB.prepare("SELECT v FROM met
 // Days summary for the website picker
 async function days(env, fromKey, n, exceptId) {
   const from = nyToUtc(fromKey, 0), to = nyToUtc(addDays(fromKey, n), 0);
-  const busy = await cachedBusy(env, from - 864e5, to + 864e5), jobs = await jobsBetween(env, from - 864e5, to + 864e5, exceptId);
+  const busy = (await cachedBusy(env, from - 864e5, to + 864e5)).concat(await blockoutBusy(env, from - 864e5, to + 864e5)), jobs = await jobsBetween(env, from - 864e5, to + 864e5, exceptId);
   const out = {};
   for (let i = 0; i < n; i++) { const k = addDays(fromKey, i); out[k] = dayInfo(k, busy, jobs); }
   return out;
@@ -64,6 +65,7 @@ async function slotOpen(env, key, startMin, pkg, size, adds, exceptId) {
   let busy;
   if (calConfigured(env)) { try { busy = (await readBusy(env, d0, d1)).busy; } catch (e) { busy = null; } }
   if (!busy) busy = await cachedBusy(env, d0, d1);
+  busy = busy.concat(await blockoutBusy(env, d0, d1));
   const info = dayInfo(key, busy, await jobsBetween(env, d0, d1, exceptId));
   return slotsFor(key, info, pkg, size, adds, Date.now()).includes(startMin);
 }
@@ -436,6 +438,13 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     try {
+      if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/admin/")) {
+        const who = await accessUser(req, env).catch(e => { console.log("admin auth error", e.message); return null; });
+        if (!who) { console.log("admin denied", url.pathname); return url.pathname.startsWith("/api/") ? json({ error: "Not allowed" }, 403) : html(page("Not allowed", "<h1>Owner only</h1><p class='sub'>Sign in through Cloudflare Access to open the dashboard.</p>"), 403); }
+        if (url.pathname.startsWith("/api/admin/")) return await adminApi(req, env, url, { syncBusy, pkgName });
+        if (url.pathname === "/admin") return Response.redirect(url.origin + "/admin/", 302);
+        const r = await env.ASSETS.fetch(req); const out = new Response(r.body, r); out.headers.set("Cache-Control", "no-store"); out.headers.set("X-Robots-Tag", "noindex"); return out;
+      }
       if (url.pathname.startsWith("/api/")) return await api(req, env, url);
       if (url.pathname.startsWith("/b/")) return await manage(req, env, url);
       if (url.pathname.startsWith("/ack/")) return await ack(env, url);
