@@ -38,7 +38,7 @@ export async function ensureSquareCustomer(env, c) {
   if (c.square_customer_id) return c.square_customer_id;
   const parts = (c.name || "").trim().split(/\s+/);
   const j = await sq(env, "POST", "/v2/customers", { idempotency_key: key(), given_name: parts[0] || undefined, family_name: parts.slice(1).join(" ") || undefined,
-    email_address: c.email, phone_number: e164(c.phone), reference_id: c.id });
+    email_address: c.email, reference_id: c.id });   // phone left off: Square rejects some valid-looking numbers, and we keep the phone ourselves
   const id = j.customer.id;
   await env.DB.prepare("UPDATE customers SET square_customer_id = ? WHERE id = ?").bind(id, c.id).run();
   c.square_customer_id = id;
