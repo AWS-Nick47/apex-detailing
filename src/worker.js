@@ -8,6 +8,7 @@ import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
+const TERMS_VERSION = "2026-10-31";   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
 const ADDON_NAMES = { pet: "Heavy pet hair", stain: "Heavy stain or odor", lights: "Headlight restoration", engine: "Engine bay" };
 
@@ -76,7 +77,8 @@ function readBooking(body) {
     quote: Math.round(+body.quote || 0), travel_fee: Math.round(+body.travel_fee || 0), miles: body.miles == null ? null : +body.miles,
     lat: body.lat == null ? null : +body.lat, lon: body.lon == null ? null : +body.lon,
     plan: body.plan && typeof body.plan === "object" ? { label: clean(body.plan.label, 120), monthly: +body.plan.monthly || 0, type: clean(body.plan.type, 10) } : null,
-    card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10)
+    card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10),
+    agree: body.agree === true, sms: body.sms === true, memAuth: body.memAuth === true
   };
   const err = [];
   if (!NAMES[f.pkg]) err.push("package");
@@ -89,6 +91,8 @@ function readBooking(body) {
   if (f.address.length < 4) err.push("address");
   if (f.pkg !== "interior" && f.water === "no") err.push("water spigot");
   if (f.power === "no") err.push("outlet");
+  if (!f.agree) err.push("agreement to the Terms of Service");
+  if (f.plan && !f.memAuth) err.push("membership charge authorization");
   if (f.lat != null && f.lon != null && isFinite(f.lat) && isFinite(f.lon)) f.miles = Math.round(milesFromHome(f.lat, f.lon) * 10) / 10;
   if (f.miles != null && f.miles > RULES.maxMiles) err.push("distance");
   return { f, err };
@@ -216,10 +220,12 @@ async function api(req, env, url) {
     const start_utc = nyToUtc(f.day, f.start), end_utc = start_utc + jobMin(f.pkg, f.size, f.adds) * 60000;
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day: f.day, pkg: f.pkg, size: f.size, adds: JSON.stringify(f.adds),
       plan: f.plan ? JSON.stringify(f.plan) : null, quote: f.quote, travel_fee: f.travel_fee, miles: f.miles, name: f.name, phone: f.phone, email: f.email, address: f.address, town: f.town,
-      car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId, card: bookingCard ? JSON.stringify(bookingCard) : null };
-    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
-      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card).run();
+      car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId, card: bookingCard ? JSON.stringify(bookingCard) : null,
+      terms_version: TERMS_VERSION, terms_at: Date.now(), terms_ip: req.headers.get("CF-Connecting-IP") || "", sms_ok: f.sms ? 1 : 0, mem_auth_at: f.plan && f.memAuth ? Date.now() : null };
+    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card, terms_version, terms_at, terms_ip, sms_ok, mem_auth_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
+      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at).run();
+    if (f.sms) await env.DB.prepare("UPDATE customers SET sms_ok = 1, sms_ok_at = ? WHERE id = ?").bind(Date.now(), customerId).run();
     // calendar + emails: don't let a hiccup there lose the booking
     const tasks = [];
     if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));

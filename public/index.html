@@ -633,6 +633,12 @@ body.acct-open { overflow: hidden; }
 .seg.yn input:focus-visible + span { outline: 2px solid var(--fg); }
 .bk-warn { display: grid; gap: 10px; justify-items: start; padding: 14px 16px; border-radius: 16px; font-size: 14.5px; color: #ffd9d9; background: rgba(255,90,90,.1); box-shadow: inset 0 0 0 1px rgba(255,120,120,.35); }
 .bk-warn[hidden] { display: none; }
+.bk-consent { display: grid; gap: 12px; margin: 18px 0 4px; }
+.bk-consent .acct-check { align-items: flex-start; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.bk-consent .acct-check input { margin-top: 3px; flex: none; }
+.bk-consent .acct-check a { color: var(--fg); }
+.bk-consent .acct-check.need { color: #ffd9d9; }
+.bk-consent .acct-check.need input { outline: 2px solid #ff8a80; outline-offset: 2px; }
 .bk-warn b { color: #fff; }
 .bk-concern { border-radius: 16px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px var(--line); padding: 0 16px; }
 .bk-concern summary { list-style: none; display: flex; justify-content: space-between; align-items: center; padding: 14px 0; cursor: pointer; font-weight: 600; }
@@ -1585,7 +1591,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <button type="button" class="btn plan-btn" id="planAdd" aria-pressed="false">Add to my booking</button>
           <p class="plan-why" id="planWhy"></p>
           </div>
-          <p class="plan-terms">Wash plans start after an Exterior or Full Detail, Interior plans after an Interior or Full Detail, and Wash + interior after a Full Detail. Start within 14 days of that detail. Billing starts one month after it, then on that same date every month; once each month is paid, you pick that month's visit times. Visits are maintenance cleans; extra work (heavy spills, mud, pet hair) is quoted first. 3-month minimum, then pause or cancel anytime. Prices may change with 30 days' notice.</p>
+          <p class="plan-terms">Wash plans start after an Exterior or Full Detail, Interior plans after an Interior or Full Detail, and Wash + interior after a Full Detail. Start within 14 days of that detail. Billing starts one month after it, then on that same date every month; once each month is paid, you pick that month's visit times. Visits are maintenance cleans; extra work (heavy spills, mud, pet hair) is quoted first. 3-month minimum (finish your 3 months, or cancel early for a fee of half the remaining payments), then pause or cancel anytime. Prices may change with 30 days' notice. <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a></p>
           </div>
         </div>
       </div>
@@ -1712,7 +1718,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
                   <li>Visits are maintenance cleans that keep it looking like it did after the detail. If it needs more (heavy spills, mud, pet hair), we'll quote it before we start.</li>
                   <li>Missed visits: if we cancel or the weather does, you get that visit's full value back as account credit (or a refund if you prefer). Skip with at least 48 hours' notice for 50% credit; later than that or a no-show gets no credit.</li>
                   <li>Interior-only plans just need an outlet; washes need a spigot too.</li>
-                  <li>3-month minimum, then pause or cancel anytime. Prices may change with 30 days' notice.</li>
+                  <li>3-month minimum (finish your 3 months, or cancel early for a fee of half the remaining payments), then pause or cancel anytime. Prices may change with 30 days' notice. <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a></li>
                 </ul>
               </div>
             </div></details>
@@ -1862,6 +1868,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           </div>
         </section>
 
+        <div class="bk-consent">
+          <label class="acct-check" id="bkMemAuthRow" hidden><input type="checkbox" id="bkMemAuth"> <span>I authorize Apex Detailing LLC to charge my card <b id="bkMemAuthAmt"></b> starting one month after this detail and on that date every month until I cancel, with a 3-month minimum, as described in the <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a>.</span></label>
+          <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
+          <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
+        </div>
         <div class="bk-warn" id="bkErr" role="alert" hidden></div>
         <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
         <div class="bk-nav">
@@ -1928,6 +1939,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <button class="btn" type="submit">Send my code</button>
       </form>
       <p class="acct-fine">New to Apex? Your account is created automatically after your first detail. <a href="#services" data-acct="close">See packages</a></p>
+      <p class="acct-fine">By signing in you agree to our <a href="terms.html" target="_blank" rel="noopener">Terms</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</p>
     </div>
 
     <div class="acct-view" data-view="code" hidden>
@@ -2060,6 +2072,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <a href="mailto:contact@apexdetailingoc.com">contact@apexdetailingoc.com</a>
       <span>@apexdetailingoc on <a href="https://www.instagram.com/apexdetailingoc" target="_blank" rel="noopener">Instagram</a> and <a href="https://www.tiktok.com/@apexdetailingoc" target="_blank" rel="noopener">TikTok</a></span>
       <span>Brick, NJ · Mobile service only</span>
+      <span class="legal-links"><a href="terms.html">Terms</a> · <a href="membership-terms.html">Membership Terms</a> · <a href="privacy.html">Privacy</a></span>
     </div>
   </div>
 </footer>
@@ -2942,9 +2955,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         $("bkMemTxt").textContent = on ? P.label + " · $" + P.monthly + "/mo, starting after this detail" : P.label + " · $" + P.monthly + "/mo";
       }
       var cash = radio("pay") !== "card";
-      $("bkMemMore").innerHTML = !on ? "Billing starts one month after this detail, then on that same date every month. 3-month minimum, then pause or cancel anytime. Prices may change with 30 days' notice."
+      var MTL = ' <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a>';
+      $("bkMemAuthRow").hidden = !on; if (P) $("bkMemAuthAmt").textContent = "$" + P.monthly + "/mo";
+      $("bkMemMore").innerHTML = (!on ? "Billing starts one month after this detail, then on that same date every month. 3-month minimum, then pause or cancel anytime. Prices may change with 30 days' notice."
         : cash ? "<b>Paying in person today?</b> That's fine. You'll have 14 days after your detail to add a card in your Apex account, and your membership bills to it one month after the detail. 3-month minimum, then pause or cancel anytime."
-        : "We charge this detail after it's done. Your membership then bills to the same card one month later, and on that date every month. 3-month minimum, then pause or cancel anytime.";
+        : "We charge this detail after it's done. Your membership then bills to the same card one month later, and on that date every month. 3-month minimum, then pause or cancel anytime.") + MTL;
       [["#planFreq", "#bkMemFreq"], ["#planType", "#bkMemType"]].forEach(function (pr) {
         var src = document.querySelector(pr[0] + " button[aria-pressed='true']");
         document.querySelectorAll(pr[1] + " button").forEach(function (b) { b.setAttribute("aria-pressed", String(src && b.dataset.v === src.dataset.v)); });
@@ -3056,7 +3071,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if (!$("bkName").value.trim()) m2.push("bkName");
         if ($("bkPhone").value.replace(/\D/g, "").length < 10) m2.push("bkPhone");
         if (!/^\S+@\S+\.\S+$/.test($("bkEmail").value.trim())) m2.push("bkEmail");
-        return setErr(m2);
+        if (!setErr(m2)) return false;
+        var needs2 = [["bkAgree", "bkAgreeRow"]]; if (window.__plan) needs2.unshift(["bkMemAuth", "bkMemAuthRow"]);
+        var miss2 = needs2.filter(function (x) { var row = $(x[1]); row.classList.toggle("need", !$(x[0]).checked); return !$(x[0]).checked; });
+        if (miss2.length) { var w2 = $("bkErr"); w2.innerHTML = miss2[0][0] === "bkAgree" ? "Please check the box to agree to the Terms of Service to book." : "Please check the box to authorize the monthly membership charge, or turn the membership off."; w2.hidden = false; $(miss2[0][0]).focus(); return false; }
+        $("bkErr").hidden = true; return true;
       }
       return true;
     }
@@ -3097,7 +3116,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         water: radio("water"), power: radio("power"), notes: $("bkNotes").value.trim(), heard: $("bkHeard").value,
         quote: q.total, travel_fee: q.travel || 0, miles: T.miles, lat: T.lat, lon: T.lon,
         plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type } : null,
-        card: radio("pay") === "card", texts: $("bkTexts").checked, website: (form.querySelector('input[name="website"]') || {}).value || "" };
+        card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "" };
     }
     function finish() {
       if (!window.__LIVE) return showDone("APX-" + (10000 + Math.floor(Math.random() * 89999)));
