@@ -93,7 +93,7 @@ export async function visitSlots(env, m, H) {
   const cover = m.period_type || m.type; const pkg = MEM.visitPkg[cover];
   let from = today > m.period_start ? today : m.period_start; const n = Math.min(35, Math.round((nyToUtc(m.period_end, 0) - nyToUtc(from, 0)) / 864e5));
   const info = await H.days(env, from, n), out = [];
-  for (const k of Object.keys(info)) { if (k >= m.period_end) break; if (coverOn(m.type, k) === null) continue; const s = slotsFor(k, info[k], MEM.visitPkg[coverOn(m.type, k)], m.size, [], Date.now()); if (s.length) out.push({ day: k, label: niceDay(k), slots: s }); }
+  for (const k of Object.keys(info)) { if (k >= m.period_end) break; if (coverOn(m.type, k) === null) continue; const s = slotsFor(k, info[k], MEM.visitPkg[coverOn(m.type, k)], m.size, ["_member"], Date.now()); if (s.length) out.push({ day: k, label: niceDay(k), slots: s }); }
   return { days: out, pkg, left: m.freq - booked.n };
 }
 

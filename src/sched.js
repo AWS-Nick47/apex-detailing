@@ -15,13 +15,14 @@ export const RULES = {
   winter: { start: [12, 15], end: [3, 1] },   // [month, day]: Interior only
   baseMin: { exterior: [90, 90, 150], interior: [210, 210, 210], full: [300, 300, 360] },
   addonMin: { pet: 40, stain: 40, lights: 45, engine: 30 },
+  memberLessMin: { exterior: 0, interior: 60, full: 60 },   // Apex Membership upkeep visits are shorter than a first detail
   addonPkgs: { pet: ["interior", "full"], stain: ["interior", "full"], lights: ["exterior", "interior", "full"], engine: ["exterior", "interior", "full"] },
   home: [40.060, -74.120],
   maxMiles: 30
 };
 
 export function jobMin(pkg, size, adds) {
-  const m = RULES.baseMin[pkg][size] + (adds || []).reduce((t, id) => t + (RULES.addonMin[id] || 20), 0);
+  const m = RULES.baseMin[pkg][size] + (adds || []).reduce((t, id) => t + (id === "_member" ? -(RULES.memberLessMin[pkg] || 0) : (RULES.addonMin[id] || 20)), 0);
   return Math.round(m / 15) * 15;
 }
 

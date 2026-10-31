@@ -181,7 +181,7 @@ async function managePage(env, b, msg) {
     if (hoursLeft < RULES.noticeHours) return page("Your visit", head + skip + `<p class="note">To move it instead, text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
     const from = addDays(todayKey(), 1), n = Math.max(1, Math.min(35, Math.round((nyToUtc(member.period_end || from, 0) - nyToUtc(from, 0)) / 864e5)));
     const info = await days(env, from, n, b.id), opts = [];
-    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, [], Date.now()); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
+    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, ["_member"], Date.now()); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
     const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.slice(0, 8).map(t => `<form method="post" action="/b/${b.token}/move"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button>${tstr(t)}</button></form>`).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
     return page("Your visit", head + `<h2>Pick a new time</h2>${pick}${skip}`);
   }
@@ -317,10 +317,10 @@ async function memberApi(req, env, url) {
     const d = (sl.days || []).find(x => x.day === day);
     if (!d || !d.slots.includes(start)) return json({ error: sl.reason || "That time isn't available anymore. Pick another." }, 409);
     const pkg = MEM.visitPkg[coverOn(m.type, day)];
-    if (!(await slotOpen(env, day, start, pkg, m.size, []))) return json({ error: "That time was just taken. Pick another." }, 409);
+    if (!(await slotOpen(env, day, start, pkg, m.size, ["_member"]))) return json({ error: "That time was just taken. Pick another." }, 409);
     const last = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1").bind(c.id).first() || {};
     const cars = JSON.parse(c.cars || "[]"), car = m.car || (cars[0] && cars[0].name) || last.car || "";
-    const start_utc = nyToUtc(day, start), end_utc = start_utc + jobMin(pkg, m.size, []) * 60000;
+    const start_utc = nyToUtc(day, start), end_utc = start_utc + jobMin(pkg, m.size, ["_member"]) * 60000;
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day, pkg, size: m.size, adds: "[]", quote: 0, travel_fee: 0,
       name: c.name || last.name || "", phone: c.phone || last.phone || "", email: c.email, address: c.address || last.address || "", town: c.town || last.town || "", car, color: (cars[0] && cars[0].color) || last.color || "",
       water: last.water || null, power: last.power || null, notes: c.notes || null, remind: c.remind, customer_id: c.id, kind: "member", membership_id: m.id, visit_value_cents: m.period_visit_cents || 0 };
@@ -408,7 +408,7 @@ async function manage(req, env, url) {
     return html(await managePage(env, b, "Done."));
   }
   const fd = await req.formData(), day = String(fd.get("day") || ""), start = +fd.get("start");
-  const adds = JSON.parse(b.adds || "[]");
+  const adds = b.kind === "member" ? ["_member"] : JSON.parse(b.adds || "[]");
   if (b.kind === "member") {
     const mm = await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first();
     const cv = mm && coverOn(mm.type, day);
