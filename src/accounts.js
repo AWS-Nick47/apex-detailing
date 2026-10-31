@@ -17,9 +17,12 @@ export async function customerByEmail(env, email) {
 }
 
 // Create or update the customer behind a booking; returns the customer id
-export async function upsertFromBooking(env, f) {
+// trusted = the person booking is signed in as this customer (or it's a brand-new customer).
+// Someone typing another person's email can't change that person's saved details.
+export async function upsertFromBooking(env, f, sessionCustomerId) {
   const email = normEmail(f.email), now = Date.now();
   let c = await customerByEmail(env, email);
+  if (c && sessionCustomerId !== c.id) return c.id;
   const car = f.car ? { name: f.car, color: f.color || "", size: f.size } : null;
   if (!c) {
     const id = newId();

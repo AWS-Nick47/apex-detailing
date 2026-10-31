@@ -693,6 +693,13 @@ body.acct-open { overflow: hidden; }
 .pay-opt small { color: var(--muted); font-size: 13px; }
 .pay-opt input:checked + span { background: var(--sel-bg); box-shadow: var(--sel-sh); }
 .pay-opt input:focus-visible + span { outline: 2px solid var(--fg); }
+.sq-card { margin-top: 12px; }
+.sq-form { background: #fff; border-radius: 14px; padding: 8px 12px 10px; color: #333; }
+.sq-form #sq-card-container { min-height: 56px; }
+.sq-note { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: #555; margin-top: 4px; }
+.sq-note svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.sq-saved { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); font-size: 14.5px; }
+.sq-saved svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .card-ph { display: flex; gap: 12px; align-items: center; margin-top: 12px; padding: 14px; border-radius: 14px; border: 1px dashed rgba(255,255,255,.22); }
 .card-ph[hidden] { display: none; }
 .card-ph svg { width: 22px; height: 22px; flex: none; }
@@ -1829,6 +1836,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               <label class="pay-opt"><input type="radio" name="pay" value="person" checked><span><b>Pay in person</b><small>Card or cash when we're done</small></span></label>
               <label class="pay-opt"><input type="radio" name="pay" value="card"><span><b>Card on file</b><small>Charged automatically after the detail</small></span></label>
             </div>
+            <div class="sq-card" id="sqCard" hidden>
+              <div class="sq-saved" id="sqSaved" hidden><svg aria-hidden="true"><use href="#i-lock"/></svg><span>We'll use your <b id="sqSavedTxt"></b> on file. <button type="button" class="link-btn" id="sqUseNew">Use a different card</button></span></div>
+              <div class="sq-form" id="sqForm"><div id="sq-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site. Nothing is charged until after your detail.</small><small class="sq-note" id="sqTest" hidden>Test mode: card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</small></div>
+            </div>
             <div class="card-ph" id="cardPh" hidden><svg aria-hidden="true"><use href="#i-lock"/></svg><div><b>Secure card entry goes here</b><small>Handled by the payment processor once it's connected. Card numbers never touch this site.</small></div></div>
           </div>
 
@@ -2016,6 +2027,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           </div>
           <button class="btn" type="submit">Save changes</button>
         </form>
+        <div class="prof-sec acct-card" id="acctCardSec" hidden>
+          <h4>Payment card</h4>
+          <p class="dc-sub" id="acctCardTxt">No card saved</p>
+          <div class="sq-form" id="acctCardForm" hidden><div id="acct-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site.</small><small class="sq-note acct-sq-test" hidden>Test mode: card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</small></div>
+          <div class="dc-actions"><button type="button" class="btn btn-sm" id="acctCardAdd">Add a card</button><button type="button" class="btn btn-sm btn-ghost" id="acctCardSave" hidden>Save card</button><button type="button" class="link-btn" id="acctCardRemove" hidden>Remove card</button></div>
+        </div>
       </div>
 
       <button type="button" class="link-btn acct-out" id="acctOut">Sign out</button>
@@ -2614,6 +2631,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         var nx = $(".dcard.next"); nx.hidden = !DEMO.next;
         if (DEMO.next) { nx.querySelector(".dc-k").textContent = "Next detail"; nx.querySelector(".dc-actions").innerHTML = '<a class="btn btn-sm btn-ghost" href="' + upcoming[0].manage + '">Reschedule or cancel</a>'; }
         var rc = $("#acctProfile .acct-check"); if (rc) { rc.lastChild.textContent = " Email me a reminder the day before"; rc.querySelector("input").checked = DEMO.remind !== false; }
+        if (typeof cardUI === "function") cardUI();
       }
       $$(".dash-demo button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.demo === mode)); });
       document.getElementById("acctHist").innerHTML = DEMO.history.map(function (h, i) {
@@ -2707,6 +2725,40 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       close(true);
       window.__bk.open({ step: slot ? 4 : 3, slot: slot, focusBack: document.querySelector(".acct-btn"), note: "Filled in from your " + h.date + " detail on your " + h.car.replace(/^\d{4} /, "") + (slot ? ". Check your info and send it." : ". Just pick a day and time.") });
     }
+    // ---- saved card (live) ----
+    var acCard = null;
+    function cardUI() {
+      var sec = document.getElementById("acctCardSec"); if (!LIVE) return; sec.hidden = false;
+      var has = DEMO.card && !/No card/.test(DEMO.card);
+      document.getElementById("acctCardTxt").textContent = has ? DEMO.card + " is saved for card-on-file bookings." : "No card saved. Add one to pay automatically after each detail.";
+      document.getElementById("acctCardAdd").textContent = has ? "Replace card" : "Add a card";
+      document.getElementById("acctCardRemove").hidden = !has;
+    }
+    document.getElementById("acctCardAdd").addEventListener("click", function () {
+      var btn = this; btn.disabled = true;
+      fetch("/api/config").then(function (r) { return r.json(); }).then(function (j) {
+        var cfg = j.square; if (!cfg) throw new Error("Saving cards isn't available yet.");
+        $(".acct-sq-test").hidden = !cfg.sandbox;
+        return new Promise(function (ok, bad) { if (window.Square) return ok(); var sc = document.createElement("script"); sc.src = cfg.script; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); })
+          .then(function () { return window.Square.payments(cfg.appId, cfg.locationId).card(); })
+          .then(function (c) { acCard = c; document.getElementById("acctCardForm").hidden = false; return c.attach("#acct-card-container"); })
+          .then(function () { btn.hidden = true; document.getElementById("acctCardSave").hidden = false; });
+      }).catch(function (e) { btn.disabled = false; toast(e.message || "The card form didn't load."); });
+    });
+    document.getElementById("acctCardSave").addEventListener("click", function () {
+      var btn = this; if (!acCard) return; btn.disabled = true; btn.textContent = "Saving…";
+      acCard.tokenize().then(function (t) {
+        if (t.status !== "OK") throw new Error((t.errors && t.errors[0] && t.errors[0].message) || "Check your card details.");
+        return fetch("/api/me/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t.token, postal: t.details && t.details.billing && t.details.billing.postalCode }) });
+      }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Couldn't save the card."); return j; }); })
+        .then(function (j) { toast("Card saved"); DEMO.card = j.card.brand + " ending " + j.card.last4; acCard.destroy && acCard.destroy(); acCard = null;
+          document.getElementById("acctCardForm").hidden = true; btn.hidden = true; btn.disabled = false; btn.textContent = "Save card"; var a = document.getElementById("acctCardAdd"); a.hidden = false; a.disabled = false; cardUI(); loadMe(); })
+        .catch(function (e) { btn.disabled = false; btn.textContent = "Save card"; toast(e.message); });
+    });
+    document.getElementById("acctCardRemove").addEventListener("click", function () {
+      if (!confirm("Remove your saved card?")) return;
+      fetch("/api/me/card", { method: "DELETE" }).then(function (r) { if (r.ok) { DEMO.card = "No card saved"; cardUI(); toast("Card removed"); loadMe(); } });
+    });
     window.__acct = { isIn: function () { return signedIn; }, data: DEMO, mode: function () { return mode; } };
     if (LIVE) loadMe();
   })();
@@ -2898,7 +2950,30 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     [["#bkMemFreq", "#planFreq"], ["#bkMemType", "#planType"]].forEach(function (pr) {
       document.querySelectorAll(pr[0] + " button").forEach(function (b) { b.addEventListener("click", function () { var t = document.querySelector(pr[1] + ' button[data-v="' + b.dataset.v + '"]'); if (t) t.click(); memText(); updateQuote(); }); });
     });
-    function payUI() { $("cardPh").hidden = radio("pay") !== "card"; memText(); }
+    // ---- Square card form (live site) ----
+    var SQ = null, sqCard = null, sqLoading = null, useSaved = false;
+    function sqConfig() { return SQ ? Promise.resolve(SQ) : fetch("/api/config").then(function (r) { return r.json(); }).then(function (j) { SQ = j.square; return SQ; }); }
+    function sqMount() {
+      if (sqCard || sqLoading) return sqLoading || Promise.resolve(sqCard);
+      sqLoading = sqConfig().then(function (cfg) {
+        if (!cfg) throw new Error("off");
+        $("sqTest").hidden = !cfg.sandbox;
+        return new Promise(function (ok, bad) { if (window.Square) return ok(); var sc = document.createElement("script"); sc.src = cfg.script; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); })
+          .then(function () { return window.Square.payments(cfg.appId, cfg.locationId).card(); })
+          .then(function (c) { sqCard = c; return c.attach("#sq-card-container").then(function () { return c; }); });
+      }).catch(function (e) { sqLoading = null; if (e && e.message !== "off") { var w = $("bkErr"); w.innerHTML = "The card form didn't load. Choose Pay in person, or refresh and try again."; w.hidden = false; } return null; });
+      return sqLoading;
+    }
+    function payUI() {
+      var card = radio("pay") === "card";
+      if (!window.__LIVE) { $("cardPh").hidden = !card; memText(); return; }
+      $("cardPh").hidden = true; $("sqCard").hidden = !card;
+      var D = window.__acct && window.__acct.isIn() && window.__acct.data, saved = D && D.card && !/No card/.test(D.card) ? D.card : null;
+      useSaved = !!(card && saved); $("sqSaved").hidden = !useSaved; $("sqForm").hidden = useSaved; if (saved) $("sqSavedTxt").textContent = saved;
+      if (card && !useSaved) sqMount();
+      memText();
+    }
+    $("sqUseNew").addEventListener("click", function () { useSaved = false; $("sqSaved").hidden = true; $("sqForm").hidden = false; sqMount(); });
     form.addEventListener("change", function (e) { if (e.target.name === "pay") payUI(); if (e.target.name === "water" || e.target.name === "power") accessCheck(); });
     function fmtPhone(v) { var d = v.replace(/\D/g, "").replace(/^1/, "").slice(0, 10); if (d.length < 4) return d; if (d.length < 7) return "(" + d.slice(0, 3) + ") " + d.slice(3); return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); }
     $("bkPhone").addEventListener("input", function () { var el = this, end = el.selectionEnd === el.value.length; el.value = fmtPhone(el.value); if (end) el.selectionStart = el.selectionEnd = el.value.length; });
@@ -3020,7 +3095,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (sending) return; sending = true;
       var btn = $("bkNext"), was = btn.innerHTML; btn.disabled = true; btn.innerHTML = "Booking…";
       var fail = function (msg) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) { w.innerHTML = msg; w.hidden = false; } };
-      fetch("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bookingPayload()) })
+      var needCard = radio("pay") === "card" && !useSaved;
+      (needCard ? sqMount().then(function (c) { if (!c) throw new Error("Choose Pay in person, or refresh to load the card form."); return c.tokenize(); })
+        .then(function (t) { if (!t || t.status !== "OK") throw new Error((t && t.errors && t.errors[0] && t.errors[0].message) || "Check your card details."); return t; }) : Promise.resolve(null))
+        .then(function (t) {
+          var pl = bookingPayload(); if (t) { pl.cardToken = t.token; pl.postal = t.details && t.details.billing && t.details.billing.postalCode; }
+          return fetch("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pl) });
+        }, function (e) { fail(e.message); throw "handled"; })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
           if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
@@ -3029,7 +3110,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           if (x.status === 409) { fail(x.j.error); sel.time = null; loadAvail(true).then(function () { show(3); renderCal(); }); return; }
           fail((x.j && x.j.error) || "Something went wrong. Please text us at (732) 206-7084.");
         })
-        .catch(function () { fail("We couldn't reach our booking system. Check your connection and try again, or text us at (732) 206-7084."); });
+        .catch(function (e) { if (e === "handled") return; fail("We couldn't reach our booking system. Check your connection and try again, or text us at (732) 206-7084."); });
     }
     function showDone(ref) {
       var q = current();

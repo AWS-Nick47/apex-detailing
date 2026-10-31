@@ -3,7 +3,9 @@ import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromH
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
 import { send, layout, rows, button, h } from "./email.js";
 import { quote as priceQuote, travelFee } from "./pricing.js";
-import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail } from "./accounts.js";
+import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer } from "./accounts.js";
+import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
+import { squareOn, saveCard, removeCard } from "./square.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
@@ -74,7 +76,7 @@ function readBooking(body) {
     quote: Math.round(+body.quote || 0), travel_fee: Math.round(+body.travel_fee || 0), miles: body.miles == null ? null : +body.miles,
     lat: body.lat == null ? null : +body.lat, lon: body.lon == null ? null : +body.lon,
     plan: body.plan && typeof body.plan === "object" ? { label: clean(body.plan.label, 120), monthly: +body.plan.monthly || 0, type: clean(body.plan.type, 10) } : null,
-    card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1
+    card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10)
   };
   const err = [];
   if (!NAMES[f.pkg]) err.push("package");
@@ -132,11 +134,11 @@ async function emailNick(env, b, kind, extra) {
     ["Package", NAMES[b.pkg] + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ["Water / power", (b.pkg === "interior" ? "" : "Spigot: " + (b.water || "?") + " · ") + "Outlet: " + (b.power || "?")],
     ["Estimate", b.quote ? "$" + b.quote + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
-    ["Payment", b.card_on_file ? "Wants card on file (Square not connected yet — collect in person)" : "In person"],
+    ["Payment", b.card ? "Card on file: " + JSON.parse(b.card).brand + " ending " + JSON.parse(b.card).last4 + " (charge after the job)" : "In person"],
     ["Membership", plan ? plan.label + " · $" + plan.monthly + "/mo" : ""], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
   if (extra) list.unshift(["Was", extra]);
   const body = `<h1 style="font-size:22px;margin:0 0 6px">${h(label)}</h1><p style="margin:0;color:#444">${h(whenText(b))}</p>` + rows(list) +
-    (kind === "new" ? `<p style="margin:0 0 10px">${button(site + "/ack/" + b.ack_token, "Got it")}</p><p style="margin:0;color:#777;font-size:13px">The customer is already confirmed. "Got it" just marks it seen for you. It's in your Apex Jobs calendar.</p>` : "");
+    (kind === "new" ? `<p style="margin:0 0 10px">${button(site + "/ack/" + b.ack_token, "Got it")} &nbsp; ${button(site + "/job/" + b.ack_token, "Job done — get paid", false)}</p><p style="margin:0;color:#777;font-size:13px">The customer is already confirmed. "Got it" just marks it seen for you. After the job, open "Job done — get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.</p>` : "");
   return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body, label, site + "/email-logo.png") });
 }
 
@@ -153,7 +155,7 @@ function page(title, inner) {
 .acts{display:grid;gap:10px;margin-top:20px}h2{font-size:18px;margin:28px 0 10px}.days{display:grid;gap:14px}.day b{display:block;margin-bottom:8px}
 .ts{display:flex;flex-wrap:wrap;gap:8px}.ts button{min-height:42px;padding:0 14px;border-radius:12px;border:0;background:rgba(255,255,255,.08);color:#ededed;font:600 14px inherit;cursor:pointer}
 .ts button:hover{background:rgba(255,255,255,.16)}.note{color:#a3a3a3;font-size:14px}.ok{width:56px;height:56px;border-radius:50%;background:#ededed;color:#0a0a0a;display:grid;place-items:center;font-size:28px;margin-top:24px}
-form{margin:0}</style></head><body><div class="w"><a class="brand" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX DETAILING</a>${inner}</div></body></html>`;
+form{margin:0}.ts button[aria-pressed="true"]{background:#ededed;color:#0a0a0a}.r input[type=radio]{margin-right:8px}.btn:disabled{opacity:.5}</style></head><body><div class="w"><a class="brand" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX DETAILING</a>${inner}</div></body></html>`;
 }
 
 function summaryCard(b) {
@@ -198,14 +200,26 @@ async function api(req, env, url) {
     const prior = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE email = ? AND status != 'cancelled'").bind(normEmail(f.email)).first();
     const q = priceQuote({ pkg: f.pkg, size: f.size, adds: f.adds, miles: f.miles, returning: prior.n > 0, member: false });
     const shownQuote = f.quote; f.quote = q.total; f.travel_fee = q.travel;
-    const customerId = await upsertFromBooking(env, f);
+    const session = await currentCustomer(env, req);
+    const customerId = await upsertFromBooking(env, f, session && session.id);
+    let bookingCard = null;
+    if (f.card && f.cardToken && squareOn(env)) {
+      const cust = await env.DB.prepare("SELECT * FROM customers WHERE id = ?").bind(customerId).first();
+      try { const cd = await saveCard(env, cust, f.cardToken, f.postal); bookingCard = { id: cd.id, brand: cd.brand, last4: cd.last4 }; }
+      catch (e) { return json({ error: e.message + " Or choose Pay in person.", card: true }, 402); }
+    } else if (f.card && squareOn(env)) {
+      // "use my saved card" only works when you're signed in as the owner of that card
+      const cust = session && session.id === customerId ? await env.DB.prepare("SELECT card FROM customers WHERE id = ?").bind(customerId).first() : null;
+      if (!cust || !cust.card) return json({ error: "Enter your card, or choose Pay in person.", card: true }, 400);
+      const cd = JSON.parse(cust.card); bookingCard = { id: cd.id, brand: cd.brand, last4: cd.last4 };
+    } else if (f.card && !squareOn(env)) f.card = 0;
     const start_utc = nyToUtc(f.day, f.start), end_utc = start_utc + jobMin(f.pkg, f.size, f.adds) * 60000;
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day: f.day, pkg: f.pkg, size: f.size, adds: JSON.stringify(f.adds),
       plan: f.plan ? JSON.stringify(f.plan) : null, quote: f.quote, travel_fee: f.travel_fee, miles: f.miles, name: f.name, phone: f.phone, email: f.email, address: f.address, town: f.town,
-      car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId };
-    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
-      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id).run();
+      car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId, card: bookingCard ? JSON.stringify(bookingCard) : null };
+    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
+      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card).run();
     // calendar + emails: don't let a hiccup there lose the booking
     const tasks = [];
     if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));
@@ -220,6 +234,16 @@ async function api(req, env, url) {
   if (p === "/api/auth/verify" && req.method === "POST") return authVerify(req, env);
   if (p === "/api/auth/logout" && req.method === "POST") return authLogout(req, env);
   if (p === "/api/me") return me(req, env);
+  if (p === "/api/config") return json({ square: publicConfig(env) });
+  if (p === "/api/me/card") {
+    const c = await currentCustomer(env, req); if (!c) return json({ error: "Sign in first." }, 401);
+    if (req.method === "DELETE") { await removeCard(env, c); return json({ ok: true }); }
+    if (req.method !== "POST" || !squareOn(env)) return json({ error: "Not available" }, 400);
+    let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
+    try { const card = await saveCard(env, c, String(body.token || ""), String(body.postal || "").slice(0, 10)); return json({ ok: true, card: { brand: card.brand, last4: card.last4 } }); }
+    catch (e) { return json({ error: e.message }, 402); }
+  }
+  if (p.startsWith("/api/pay/") && req.method === "POST") return payApi(req, env, url);
 
   if (p === "/api/status" && req.method === "GET") {
     const s = await lastSync(env);
@@ -245,8 +269,8 @@ async function reminders(env) {
 async function calSave(env, b) {
   const where = [b.address, b.town].filter(Boolean).join(", "), adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a);
   const desc = [b.name + " · " + b.phone, b.email, NAMES[b.pkg] + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), [b.car, b.color].filter(Boolean).join(" · "),
-    b.quote ? "Estimate $" + b.quote : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id].filter(Boolean).join("\n");
-  const href = await writeJob(env, b, { summary: NAMES[b.pkg] + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc });
+    b.quote ? "Estimate $" + b.quote : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Job done / get paid: " + env.SITE_URL + "/job/" + b.ack_token].filter(Boolean).join("\n");
+  const href = await writeJob(env, b, { summary: NAMES[b.pkg] + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/job/" + b.ack_token });
   if (href) await env.DB.prepare("UPDATE bookings SET cal_href = ? WHERE id = ?").bind(href, b.id).run();
   b.cal_href = href;
 }
@@ -291,6 +315,8 @@ export default {
       if (url.pathname.startsWith("/api/")) return await api(req, env, url);
       if (url.pathname.startsWith("/b/")) return await manage(req, env, url);
       if (url.pathname.startsWith("/ack/")) return await ack(env, url);
+      if (url.pathname.startsWith("/job/")) return await jobRoute(req, env, url, { page, summaryCard, whenText });
+      if (url.pathname.startsWith("/pay/")) return await payPage(req, env, url, { page, summaryCard, whenText });
     } catch (e) {
       console.log("error", e.stack || e.message);
       return url.pathname.startsWith("/api/") ? json({ error: "Something went wrong on our side. Please text (732) 206-7084." }, 500) : html(page("Error", "<h1>Something went wrong</h1><p class='sub'>Please text (732) 206-7084.</p>"), 500);
