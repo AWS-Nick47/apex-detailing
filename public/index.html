@@ -2136,7 +2136,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
   /* ---------- Live site vs Claude preview ---------- */
   window.__LIVE = /(^|\.)apexdetailingoc\.com$|\.workers\.dev$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
-  if (window.__LIVE) document.addEventListener("DOMContentLoaded", function () { var t = document.getElementById("bkRemindTxt"); if (t) t.textContent = "Email me a reminder the day before"; });
+  if (window.__LIVE) document.addEventListener("DOMContentLoaded", function () { var t = document.getElementById("bkRemindTxt"); if (t) t.textContent = "Email me a reminder the day before"; var pv = document.querySelector(".bk-head .acct-preview"); if (pv) pv.hidden = true; });
   /* ---------- Prices ---------- */
   /* ================= PRICING — change numbers here and every price on the site follows ================= */
   var PRICING = {
@@ -2972,8 +2972,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       $("dnMemRow").hidden = !window.__plan; if (window.__plan) $("dnMem").textContent = window.__plan.label + " · $" + window.__plan.monthly + "/mo, billed from one month after this detail";
       if (window.__LIVE) {
         done.querySelector("h3").textContent = "You're booked";
-        done.querySelector(".bk-lede").innerHTML = "We emailed your confirmation to <b></b>. Need to change it? Use the link in that email.";
-        done.querySelector(".bk-lede b").textContent = $("bkEmail").value.trim();
+        done.querySelector(".bk-lede").innerHTML = 'We emailed your confirmation to <b id="dnPhone"></b>. Need to change it? Use the link in that email.';
+        $("dnPhone").textContent = $("bkEmail").value.trim();
         $("dnTotal").textContent = "$" + q.total + " · pay after the job";
         var fb = done.querySelector(".done-fallback"); if (fb) fb.hidden = true;
         var rl = done.querySelector(".dn-row span"); if (rl) rl.textContent = "Booking code";
@@ -3002,7 +3002,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     }
     function open(o) {
       o = o || {}; lastFocus = document.activeElement;
-      loadAvail();
+      loadAvail(); var be = $("bkErr"); if (be) be.hidden = true;
       var nav = document.querySelector(".nav"); if (nav && nav.classList.contains("open")) $("menuBtn").click();
       if (!done.hidden) { done.hidden = true; form.hidden = false; document.querySelector("#bk .bk-steps").hidden = false; sel = { date: null, time: null }; maxStep = 1; syncWhen(); }
       if (winterNow() && current().pkg !== "interior") { selectPkg("interior"); o.note = o.note || "We only do Interior details from Dec 15 to Mar 1, so we switched you to Interior. Exterior and Full Details are back in spring."; }
