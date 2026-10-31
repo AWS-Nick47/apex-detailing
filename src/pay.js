@@ -2,6 +2,7 @@
 import { squareOn, saveCard, charge, ensureSquareCustomer } from "./square.js";
 import { send, layout, rows, button, h } from "./email.js";
 
+const methodLabel = m => m === "card_on_file" ? "card on file" : m === "online" ? "paid online" : /^in_person/.test(m || "") ? "in person (" + (m.split(":")[1] || "") + ")" : (m || "");
 const money = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const json = (d, s) => new Response(JSON.stringify(d), { status: s || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -82,7 +83,7 @@ export async function jobRoute(req, env, url, H) {
   }
 
   const est = (b.quote || 0) * 100, due = b.final_cents || est;
-  const status = b.status === "cancelled" ? "Cancelled" : b.paid_at ? "Paid " + money(b.final_cents) + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + (b.paid_method || "").replace("_", " ").replace("card on file", "card on file").replace("in person:", "in person, ") : b.final_cents ? "Waiting on payment (" + money(b.final_cents) + " link sent)" : "Not paid yet";
+  const status = b.status === "cancelled" ? "Cancelled" : b.paid_at ? "Paid " + money(b.final_cents) + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(b.final_cents) + " link sent)" : "Not paid yet";
   const forms = b.paid_at || b.status !== "confirmed" ? "" : `
     <h2>Job done? Get paid</h2>
     <form method="post" id="jf"><label class="note" for="amt">Final amount (estimate was ${money(est)}${b.travel_fee ? ", includes $" + b.travel_fee + " travel" : ""})</label>

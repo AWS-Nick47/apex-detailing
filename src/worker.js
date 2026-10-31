@@ -145,7 +145,7 @@ async function emailNick(env, b, kind, extra) {
 // ---------- pages (manage booking / got it) ----------
 function page(title, inner) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${h(title)} · Apex Detailing</title><meta name="robots" content="noindex">
-<style>:root{color-scheme:dark}body{margin:0;background:#0a0a0a;color:#ededed;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+<style>:root{color-scheme:dark}html{background:#0a0a0a;min-height:100%}body{margin:0;background:#0a0a0a;min-height:100vh;color:#ededed;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .w{max-width:560px;margin:0 auto;padding:28px 16px 60px}.brand{font-weight:700;letter-spacing:.18em;font-size:13px;color:#bbb;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
 .brand svg{width:20px;height:20px}h1{font-size:28px;line-height:1.15;margin:22px 0 6px;letter-spacing:-.02em}.sub{color:#a3a3a3;margin:0 0 20px}
 .card{background:rgba(255,255,255,.06);border-radius:20px;padding:6px 18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}

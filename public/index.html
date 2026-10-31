@@ -495,6 +495,7 @@ section.block { padding-block: clamp(72px, 10vw, 120px); }
 
 /* Account sheet */
 .acct { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; }
+[hidden] { display: none !important; }
 .acct[hidden] { display: none; }
 .acct-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fadeIn .25s ease; }
 .acct-sheet { position: relative; width: min(100%, 460px); max-height: calc(100svh - 32px); overflow: auto; overscroll-behavior: contain; border-radius: 28px; padding: 18px 26px 26px;
