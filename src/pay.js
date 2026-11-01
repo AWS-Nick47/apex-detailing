@@ -7,6 +7,8 @@ const methodLabel = m => m === "card_on_file" ? "card on file" : m === "online" 
 const money = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const TAX_LABEL = TAX.name + " (" + TAX.pct + ")", TAX_UNITS = Math.round(TAX.rate * 100000);
+// biggest tip the pay page takes: half the price before tax, at least $50 (a bigger one: text us). Audit IA-039.
+const tipLimit = sub => Math.max(5000, Math.round(sub / 2));
 // what the customer owes for a detail: price before tax (Nick's final amount, or the estimate) + NJ sales tax
 // (final amounts set before sales tax started have tax_cents NULL: keep the amount that was already emailed)
 function bill(b) { const sub = b.final_cents || (b.quote || 0) * 100, tax = b.final_cents != null ? (b.tax_cents || 0) : taxCents(sub); return { sub, tax, total: sub + tax }; }
@@ -54,7 +56,7 @@ async function emailPayLink(env, b, cents, tax) {
 
 // ---------- Nick's job page: /job/<ack_token> ----------
 export async function jobRoute(req, env, url, H) {
-  const m = url.pathname.match(/^\/job\/([a-f0-9]{36})(?:\/(charge|link|inperson|done|weather))?$/);
+  const m = url.pathname.match(/^\/job\/([a-f0-9]{36})(?:\/(charge|link|inperson|done|weather|undo))?$/);
   if (!m) return html(H.page("Not found", "<h1>Link not found</h1>"), 404);
   const b = await env.DB.prepare("SELECT * FROM bookings WHERE ack_token = ?").bind(m[1]).first();
   if (!b) return html(H.page("Not found", "<h1>Job not found</h1>"), 404);
@@ -68,10 +70,15 @@ export async function jobRoute(req, env, url, H) {
   } else if (req.method === "POST" && m[2] === "done" && b.kind === "member" && b.status === "confirmed" && !b.completed_at) {
     await env.DB.prepare("UPDATE bookings SET completed_at = ?, paid_at = ?, paid_method = 'membership', final_cents = 0 WHERE id = ?").bind(Date.now(), Date.now(), b.id).run();
     Object.assign(b, { completed_at: Date.now(), paid_at: Date.now(), paid_method: "membership" }); ok = true; msg = "Marked done. Nice work!";
-  } else if (req.method === "POST" && m[2] && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
-    const fd = await req.formData(), dollars = parseFloat(String(fd.get("amount") || "").replace(/[^\d.]/g, "")), cents = Math.round(dollars * 100);
-    const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)";
-    if (!(cents >= 100 && cents <= 200000)) msg = "Enter the price before tax, like 179.";
+  } else if (req.method === "POST" && m[2] === "undo" && b.paid_at && /^in_person/.test(b.paid_method || "") && b.status === "confirmed") {
+    // undo a "paid in person" tap (mis-tap or wrong amount): back to not paid
+    await env.DB.prepare("UPDATE bookings SET paid_at = NULL, paid_method = NULL, final_cents = NULL, tax_cents = NULL WHERE id = ?").bind(b.id).run();
+    Object.assign(b, { paid_at: null, paid_method: null, final_cents: null, tax_cents: null }); ok = true; msg = "Undone. It's marked not paid again.";
+  } else if (req.method === "POST" && m[2] && m[2] !== "undo" && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
+    const fd = await req.formData(), raw = String(fd.get("amount") || "").trim(), dollars = /^\$?\d+(\.\d{1,2})?$/.test(raw.replace(/,/g, "")) ? parseFloat(raw.replace(/[$,]/g, "")) : NaN, cents = Math.round(dollars * 100);
+    const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)", est = (b.quote || 0) * 100;
+    if (!(cents >= 100 && cents <= 200000)) msg = "Enter the price before tax as a number, like 179.";
+    else if (est && cents > 2 * est && fd.get("big") !== "1") msg = "That's more than double the " + money(est) + " estimate. Check the amount and confirm it when asked.";
     else if (m[2] === "inperson") {
       const how = String(fd.get("how") || "cash").slice(0, 20);
       await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).run();
@@ -107,17 +114,23 @@ export async function jobRoute(req, env, url, H) {
       ${b.status === "confirmed" && !b.completed_at ? `<div class="acts"><form method="post" action="/job/${b.ack_token}/done"><button class="btn" style="width:100%">Mark visit done</button></form></div>` : ""}${weatherBtn}`));
   }
   const B = bill(b), paidTotal = (b.final_cents || 0) + (b.tax_cents || 0);
-  const status = b.status === "cancelled" ? "Cancelled" : b.paid_at ? "Paid " + money(paidTotal) + (b.tax_cents ? " incl. tax" : "") + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(B.total) + " link sent)" : "Not paid yet";
+  const status = b.status === "cancelled" ? (b.paid_at ? "Cancelled, but paid " + money(paidTotal + (b.tip_cents || 0)) + ": refund it in Square" : "Cancelled") : b.paid_at ? "Paid " + money(paidTotal) + (b.tax_cents ? " incl. tax" : "") + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(B.total) + " link sent)" : "Not paid yet";
+  const undoBtn = b.paid_at && /^in_person/.test(b.paid_method || "") && b.status === "confirmed" ? `<form method="post" action="/job/${b.ack_token}/undo" onsubmit="return confirm('Mark this job as not paid again?')" style="margin-top:18px"><button class="btn g" style="width:100%">Undo "paid in person"</button></form>` : "";
   const forms = b.paid_at || b.status !== "confirmed" ? "" : `
     <h2>Job done? Get paid</h2>
     <form method="post" id="jf"><label class="note" for="amt">Price before tax (estimate was ${money(est)}${b.travel_fee ? ", includes $" + b.travel_fee + " travel" : ""})</label>
-    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 12px"><span style="font-size:22px">$</span><input id="amt" name="amount" inputmode="decimal" value="${(due / 100).toFixed(due % 100 ? 2 : 0)}" style="flex:1;min-height:52px;border-radius:14px;border:0;padding:0 14px;font:600 22px inherit;background:rgba(255,255,255,.08);color:#ededed"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 12px"><span style="font-size:22px">$</span><input id="amt" name="amount" inputmode="decimal" value="${(due / 100).toFixed(due % 100 ? 2 : 0)}" style="flex:1;min-height:52px;border-radius:14px;border:0;padding:0 14px;font-family:inherit;font-size:22px;font-weight:600;background:rgba(255,255,255,.08);color:#ededed"></div>
     <div class="card" style="margin-bottom:4px"><div class="r"><span>${h(TAX_LABEL)}</span><b id="taxAmt">${money(taxCents(due))}</b></div><div class="r"><span>Customer pays</span><b id="totAmt" style="font-size:20px">${money(due + taxCents(due))}</b></div></div>
-    <script>(function(){var a=document.getElementById("amt"),t=document.getElementById("taxAmt"),T=document.getElementById("totAmt");function m(c){return "$"+(c/100).toFixed(c%100?2:0);}
+    <script>(function(){var a=document.getElementById("amt"),t=document.getElementById("taxAmt"),T=document.getElementById("totAmt"),f=document.getElementById("jf"),EST=${est};function m(c){return "$"+(c/100).toFixed(c%100?2:0);}
+      f.addEventListener("submit",function(e){var s=e.submitter,act=(s&&s.getAttribute("formaction"))||"",c=Math.round((parseFloat(String(a.value).replace(/[$,]/g,""))||0)*100),tot=T.textContent,q;
+        if(!/^\\$?[\\d,]+(\\.\\d{1,2})?$/.test(String(a.value).trim())){e.preventDefault();alert("Enter the price before tax as a number, like 179.");return;}
+        if(/charge$/.test(act))q="Charge "+tot+" (with tax) to "+(s.dataset.card||"the saved card")+"?";else if(/inperson$/.test(act))q="Mark paid in person ("+f.how.value+"): "+tot+" with tax?";else if(/link$/.test(act))q="Email them a link to pay "+tot+"?";
+        if(q&&!confirm(q)){e.preventDefault();return;}
+        if(EST&&c>2*EST){if(!confirm("That's more than double the "+m(EST)+" estimate. Continue with "+tot+"?")){e.preventDefault();return;}f.big.value="1";}});
       function up(){var c=Math.round((parseFloat(String(a.value).replace(/[^\\d.]/g,""))||0)*100),x=c>0?Math.floor((c*${TAX_UNITS}+50000)/100000):0;t.textContent=m(x);T.textContent=m(c+x);}a.addEventListener("input",up);up();})();</script>
-    <input type="hidden" name="how" value="cash">
+    <input type="hidden" name="how" value="cash"><input type="hidden" name="big" value="0">
     <div class="acts">
-      ${card && squareOn(env) ? `<button class="btn" formaction="/job/${b.ack_token}/charge" onclick="return confirm('Charge ' + document.getElementById('totAmt').textContent + ' (with tax) to ${h(card.brand)} ending ${h(card.last4)}?')">Charge ${h(card.brand)} ending ${h(card.last4)}</button>` : ""}
+      ${card && squareOn(env) ? `<button class="btn" formaction="/job/${b.ack_token}/charge" data-card="${h(card.brand)} ending ${h(card.last4)}">Charge ${h(card.brand)} ending ${h(card.last4)}</button>` : ""}
       ${squareOn(env) ? `<button class="btn ${card ? "g" : ""}" formaction="/job/${b.ack_token}/link">Email them a pay link</button>` : ""}
       <button class="btn g" formaction="/job/${b.ack_token}/inperson" onclick="this.form.how.value='cash'">Paid in person: cash</button>
       <button class="btn g" formaction="/job/${b.ack_token}/inperson" onclick="this.form.how.value='card'">Paid in person: card / Tap to Pay</button>
@@ -127,7 +140,7 @@ export async function jobRoute(req, env, url, H) {
   return html(H.page("Job", `<h1>${h(NAMES[b.pkg])} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))}</p>
     ${msg ? `<p class="note" style="color:${ok ? "#c8f7c5" : "#ffb4ab"}">${h(msg)}</p>` : ""}
     <div class="card"><div class="r"><span>Status</span><b>${h(status)}</b></div><div class="r"><span>Saved card</span><b>${card ? h(card.brand + " ending " + card.last4) : "None"}</b></div></div>
-    ${H.summaryCard(b)}${forms}${weatherBtn}`));
+    ${H.summaryCard(b)}${forms}${undoBtn}${weatherBtn}`));
 }
 
 // ---------- customer pay / tip page: /pay/<pay_token> ----------
@@ -135,44 +148,51 @@ export async function payPage(req, env, url, H) {
   const t = (url.pathname.split("/")[2] || "");
   const b = /^[a-f0-9]{36}$/.test(t) ? await env.DB.prepare("SELECT * FROM bookings WHERE pay_token = ?").bind(t).first() : null;
   if (!b) return html(H.page("Not found", "<h1>Link not found</h1><p class='sub'>Text us at (732) 206-7084.</p>"), 404);
+  if (b.status !== "confirmed" && !b.paid_at) return html(H.page("Cancelled", `<h1>This job was cancelled</h1><p class="sub">There's nothing to pay. Questions? Text us at (732) 206-7084.</p>`));
   const c = await customerFor(env, b), card = c && c.card ? JSON.parse(c.card) : null, cfg = publicConfig(env);
   const tipMode = !!b.paid_at;
   if (tipMode && b.tip_cents) return html(H.page("Thank you", `<div class="ok">✓</div><h1>Thank you!</h1><p class="sub">We got your ${money(b.tip_cents)} tip.</p>`));
   if (tipMode && !/^card_on_file|^online/.test(b.paid_method || "")) return html(H.page("Thank you", `<div class="ok">✓</div><h1>You're all paid up</h1><p class="sub">Thanks for choosing Apex.</p>`));
   if (!cfg) return html(H.page("Pay", "<h1>Online payment isn't set up yet</h1><p class='sub'>Text us at (732) 206-7084.</p>"));
   const B = bill(b), due = tipMode ? 0 : B.total, base = B.sub, paid = (b.final_cents || 0) + (b.tax_cents || 0);   // tips are a % of the price before tax
-  const tips = [0, 15, 20, 25].map(p => ({ p, c: Math.round(base * p / 100 / 100) * 100 }));
+  const tips = [0, 15, 20, 25].map(p => ({ p, c: Math.round(base * p / 100 / 100) * 100 })), tipCap = tipLimit(base);
   return html(H.page(tipMode ? "Add a tip" : "Pay", `
   <h1>${tipMode ? "Add a tip" : "Pay for your detail"}</h1><p class="sub">${h(NAMES[b.pkg])} · ${h(b.car || "")} · ${h(H.whenText(b))}</p>
   <div class="card">${tipMode ? `<div class="r"><span>Paid</span><b>${money(paid)}</b></div>` : `<div class="r"><span>Price</span><b>${money(B.sub)}</b></div><div class="r"><span>${h(TAX_LABEL)}</span><b>${money(B.tax)}</b></div><div class="r"><span>Amount due</span><b>${money(due)}</b></div>`}</div>
   <h2>${tipMode ? "How much?" : "Add a tip?"} <span class="note">Never expected, always appreciated</span></h2>
-  <div class="ts" id="tips">${tips.filter(x => !tipMode || x.p).map((x, i) => `<button type="button" data-c="${x.c}" ${i === (tipMode ? 1 : 0) ? 'aria-pressed="true"' : ""}>${x.p ? x.p + "% · " + money(x.c) : "No tip"}</button>`).join("")}<button type="button" data-c="custom">Other</button></div>
-  <input id="tipOther" inputmode="decimal" placeholder="Tip amount, like 25" hidden style="margin-top:10px;width:100%;min-height:48px;border-radius:12px;border:0;padding:0 14px;font:600 16px inherit;background:rgba(255,255,255,.08);color:#ededed">
+  <div class="ts" id="tips">${tips.filter(x => !tipMode || x.p).map((x, i) => `<button type="button" data-c="${x.c}" ${!tipMode && i === 0 ? 'aria-pressed="true"' : ""}>${x.p ? x.p + "% · " + money(x.c) : "No tip"}</button>`).join("")}<button type="button" data-c="custom">Other</button></div>
+  <input id="tipOther" inputmode="decimal" placeholder="Tip amount, like 25" hidden style="margin-top:10px;width:100%;min-height:48px;border-radius:12px;border:0;padding:0 14px;font-family:inherit;font-size:16px;font-weight:600;background:rgba(255,255,255,.08);color:#ededed">
   <h2>Card</h2>
   ${card ? `<label class="r" style="cursor:pointer"><span><input type="radio" name="src" value="saved" checked> ${h(card.brand)} ending ${h(card.last4)}</span></label><label class="r" style="cursor:pointer"><span><input type="radio" name="src" value="new"> Use a different card</span></label>` : ""}
   <div id="cardBox" ${card ? "hidden" : ""} style="margin-top:10px;background:#fff;border-radius:14px;padding:6px 10px"><div id="card-container"></div></div>
+  ${c ? `<label class="r" id="saveRow" style="cursor:pointer;justify-content:flex-start;gap:10px" ${card ? "hidden" : ""}><input type="checkbox" id="saveCard" style="width:20px;height:20px;margin:2px 0 0;flex:none"><span style="color:#d6d6d6">Save this card for future details${card ? " (replaces your " + h(card.brand) + " ending " + h(card.last4) + ", including for Apex Membership)" : " and Apex Membership"}</span></label>` : ""}
   ${cfg.sandbox ? `<p class="note">Test mode: use card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</p>` : ""}
   <div class="acts"><button class="btn" id="payBtn">${tipMode ? "Send tip" : "Pay " + money(due)}</button></div>
   <p class="note" id="payMsg" role="alert"></p>
   <script src="${cfg.script}"></script>
   <script>
   (function(){
-    var due=${due}, tipMode=${tipMode}, tip=${tipMode ? tips[2].c : 0}, cardObj=null, btn=document.getElementById("payBtn"), msg=document.getElementById("payMsg");
+    var due=${due}, tipMode=${tipMode}, tip=0, CAP=${tipCap}, cardObj=null, btn=document.getElementById("payBtn"), msg=document.getElementById("payMsg"), SAVED=${JSON.stringify(card ? card.brand + " ending " + card.last4 : "")};
+    function money(c){return "$"+(c/100).toFixed(c%100?2:0);}
     function label(){ var t=due+tip; btn.textContent=tipMode?("Send "+(tip?"$"+(tip/100).toFixed(tip%100?2:0)+" ":"")+"tip"):("Pay $"+(t/100).toFixed(t%100?2:0)); }
     document.getElementById("tips").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;[].forEach.call(this.children,function(x){x.setAttribute("aria-pressed",String(x===b));});
       var o=document.getElementById("tipOther"); if(b.dataset.c==="custom"){o.hidden=false;o.focus();tip=Math.round((parseFloat(o.value)||0)*100);}else{o.hidden=true;tip=+b.dataset.c;} label();});
     document.getElementById("tipOther").addEventListener("input",function(){tip=Math.round((parseFloat(this.value.replace(/[^\\d.]/g,""))||0)*100);label();});
-    [].forEach.call(document.querySelectorAll('input[name=src]'),function(r){r.addEventListener("change",function(){document.getElementById("cardBox").hidden=this.value!=="new";if(this.value==="new")mount();});});
+    [].forEach.call(document.querySelectorAll('input[name=src]'),function(r){r.addEventListener("change",function(){document.getElementById("cardBox").hidden=this.value!=="new";var sr=document.getElementById("saveRow");if(sr)sr.hidden=this.value!=="new";if(this.value==="new")mount();});});
     function mount(){ if(cardObj||!window.Square)return; var p=Square.payments(${JSON.stringify(cfg.appId)},${JSON.stringify(cfg.locationId)}); p.card().then(function(c){cardObj=c;return c.attach("#card-container");}).catch(function(e){msg.textContent="The card form didn't load. Refresh, or text us at (732) 206-7084.";}); }
+    if(!window.Square){msg.textContent="The secure card form didn't load. Refresh the page, or text us at (732) 206-7084.";}
     if(${card ? "false" : "true"}) mount();
     label();
     btn.addEventListener("click",function(){
       if(tipMode&&!tip){msg.textContent="Pick a tip amount.";return;}
+      if(tip>CAP){msg.textContent="For a tip over "+money(CAP)+", text us at (732) 206-7084. Thank you!";return;}
       var saved=document.querySelector('input[name=src]:checked'); saved=saved&&saved.value==="saved";
+      if(saved&&!confirm("Charge "+money(due+tip)+" to your "+SAVED+"?"))return;
+      var keep=document.getElementById("saveCard"); keep=!!(keep&&keep.checked&&!saved);
       btn.disabled=true; msg.textContent="Processing…";
-      (saved?Promise.resolve(null):(cardObj?cardObj.tokenize():Promise.reject(new Error("Card form not ready")))).then(function(r){
+      (saved?Promise.resolve(null):(cardObj?cardObj.tokenize():Promise.reject(new Error("The card form didn't load. Refresh the page and try again.")))).then(function(r){
         if(r&&r.status!=="OK") throw new Error((r.errors&&r.errors[0]&&r.errors[0].message)||"Check your card details.");
-        return fetch("/api/pay/${t}",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({saved:saved,token:r?r.token:null,tip:tip})});
+        return fetch("/api/pay/${t}",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({saved:saved,token:r?r.token:null,tip:tip,save:keep})});
       }).then(function(res){return res.json().then(function(j){return {ok:res.ok,j:j};});}).then(function(x){
         if(!x.ok) throw new Error(x.j.error||"Payment didn't go through.");
         document.querySelector(".w").innerHTML='<div class="ok">✓</div><h1>'+(tipMode?"Thank you!":"Paid. Thank you!")+'</h1><p class="sub">'+x.j.message+'</p><p><a class="btn g" href="/">Back to Apex Detailing</a></p>';
@@ -186,15 +206,18 @@ export async function payApi(req, env, url) {
   const t = url.pathname.split("/")[3] || "";
   const b = /^[a-f0-9]{36}$/.test(t) ? await env.DB.prepare("SELECT * FROM bookings WHERE pay_token = ?").bind(t).first() : null;
   if (!b) return json({ error: "Link not found." }, 404);
+  if (b.status !== "confirmed" && !b.paid_at) return json({ error: "This job was cancelled, so there's nothing to pay." }, 409);
   let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
-  const tipMode = !!b.paid_at, tip = Math.max(0, Math.min(100000, Math.round(+body.tip || 0)));
+  if (!body || typeof body !== "object") return json({ error: "Bad request" }, 400);
+  const tipMode = !!b.paid_at, tip = Math.max(0, Math.round(+body.tip || 0)), cap = tipLimit(bill(b).sub);
+  if (tip > cap) return json({ error: "For a tip over " + money(cap) + ", text us at (732) 206-7084. Thank you!" }, 400);
   if (tipMode && (b.tip_cents || !tip)) return json({ error: b.tip_cents ? "Tip already received. Thank you!" : "Pick a tip amount." }, 400);
   const c = await customerFor(env, b), saved = c && c.card ? JSON.parse(c.card) : null;
   let source;
   try {
     if (body.saved && saved) source = saved.id;
-    else if (body.token && c) source = (await saveCard(env, c, String(body.token))).id;   // keep the new card on file for next time
-    else if (body.token) source = String(body.token);
+    else if (body.token && c && body.save === true) source = (await saveCard(env, c, String(body.token))).id;   // only when they ticked "Save this card" (audit IA-006)
+    else if (body.token) source = String(body.token);                                                            // otherwise charge it once, don't keep it
     else return json({ error: "Enter your card." }, 400);
     const cardNow = c && c.card ? JSON.parse(c.card) : null, sqCust = c ? await ensureSquareCustomer(env, c) : null;
     if (tipMode) {

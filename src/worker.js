@@ -175,10 +175,10 @@ function page(title, inner) {
 .brand svg{width:20px;height:20px}h1{font-size:28px;line-height:1.15;margin:22px 0 6px;letter-spacing:-.02em}.sub{color:#a3a3a3;margin:0 0 20px}
 .card{background:rgba(255,255,255,.06);border-radius:20px;padding:6px 18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
 .r{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08)}.r:last-child{border:0}.r span{color:#a3a3a3}.r b{text-align:right;font-weight:600}
-.btn{display:inline-flex;justify-content:center;align-items:center;min-height:48px;padding:0 20px;border-radius:999px;border:0;background:#ededed;color:#0a0a0a;font:600 15px/1 inherit;cursor:pointer;text-decoration:none}
+.btn{display:inline-flex;justify-content:center;align-items:center;min-height:48px;padding:0 20px;border-radius:999px;border:0;background:#ededed;color:#0a0a0a;font-family:inherit;font-size:15px;font-weight:600;line-height:1;cursor:pointer;text-decoration:none}
 .btn.g{background:rgba(255,255,255,.08);color:#ededed}.btn.d{background:transparent;color:#ff8a80;box-shadow:inset 0 0 0 1px rgba(255,138,128,.4)}
 .acts{display:grid;gap:10px;margin-top:20px}h2{font-size:18px;margin:28px 0 10px}.days{display:grid;gap:14px}.day b{display:block;margin-bottom:8px}
-.ts{display:flex;flex-wrap:wrap;gap:8px}.ts button{min-height:42px;padding:0 14px;border-radius:12px;border:0;background:rgba(255,255,255,.08);color:#ededed;font:600 14px inherit;cursor:pointer}
+.ts{display:flex;flex-wrap:wrap;gap:8px}.ts button{min-height:42px;padding:0 14px;border-radius:12px;border:0;background:rgba(255,255,255,.08);color:#ededed;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .ts button:hover{background:rgba(255,255,255,.16)}.note{color:#a3a3a3;font-size:14px}.ok{width:56px;height:56px;border-radius:50%;background:#ededed;color:#0a0a0a;display:grid;place-items:center;font-size:28px;margin-top:24px}
 form{margin:0}.ts button[aria-pressed="true"]{background:#ededed;color:#0a0a0a}.r input[type=radio]{margin-right:8px}.btn:disabled{opacity:.5}</style></head><body><div class="w"><a class="brand" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX DETAILING</a>${inner}</div></body></html>`;
 }
@@ -447,12 +447,14 @@ async function manage(req, env, url) {
   return html(await managePage(env, b, "Moved. We sent you a new confirmation."));
 }
 
-async function ack(env, url) {
+async function ack(req, env, url) {
   const t = url.pathname.split("/")[2] || "";
   const b = /^[a-f0-9]{36}$/.test(t) ? await env.DB.prepare("SELECT * FROM bookings WHERE ack_token = ?").bind(t).first() : null;
   if (!b) return html(page("Not found", "<h1>Link not found</h1>"), 404);
-  if (!b.acked_at) await env.DB.prepare("UPDATE bookings SET acked_at = ? WHERE id = ?").bind(Date.now(), b.id).run();
-  return html(page("Got it", `<div class="ok">✓</div><h1>Got it</h1><p class="sub">${h(b.name)} · ${h(whenText(b))}</p>${summaryCard(b)}`));
+  // only a tap on the button marks it seen; email link scanners open links with GET/HEAD
+  if (req.method === "POST" && !b.acked_at) { b.acked_at = Date.now(); await env.DB.prepare("UPDATE bookings SET acked_at = ? WHERE id = ?").bind(b.acked_at, b.id).run(); }
+  if (b.acked_at) return html(page("Got it", `<div class="ok">✓</div><h1>Got it</h1><p class="sub">${h(b.name)} · ${h(whenText(b))}</p>${summaryCard(b)}<div class="acts"><a class="btn g" href="/job/${b.ack_token}">Open the job page</a></div>`));
+  return html(page("New booking", `<h1>${h(pkgName(b))} · ${h(b.name)}</h1><p class="sub">${h(whenText(b))}</p>${summaryCard(b)}<form method="post" class="acts"><button class="btn" style="width:100%">Got it</button></form><p class="note">"Got it" just marks it seen for you. The customer is already confirmed.</p>`));
 }
 
 export default {
@@ -468,8 +470,13 @@ export default {
       }
       if (url.pathname.startsWith("/api/")) return await api(req, env, url);
       if (url.pathname.startsWith("/b/")) return await manage(req, env, url);
-      if (url.pathname.startsWith("/ack/")) return await ack(env, url);
-      if (url.pathname.startsWith("/job/")) return await jobRoute(req, env, url, { page, summaryCard, whenText, cancelByUs, pkgName });
+      if (url.pathname.startsWith("/ack/") || url.pathname.startsWith("/job/")) {
+        // owner-only pages: they can charge cards, mark jobs paid and cancel jobs (audit IA-034)
+        const who = await accessUser(req, env).catch(e => { console.log("job auth error", e.message); return null; });
+        if (!who) return html(page("Owner only", "<h1>Owner only</h1><p class='sub'>Sign in through Cloudflare Access to open this job.</p>"), 403);
+        if (url.pathname.startsWith("/ack/")) return await ack(req, env, url);
+        return await jobRoute(req, env, url, { page, summaryCard, whenText, cancelByUs, pkgName });
+      }
       if (url.pathname.startsWith("/pay/")) return await payPage(req, env, url, { page, summaryCard, whenText });
     } catch (e) {
       console.log("error", e.stack || e.message);
