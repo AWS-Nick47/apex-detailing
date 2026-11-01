@@ -1080,7 +1080,23 @@ summary .am { font-size: .78em; letter-spacing: .14em; vertical-align: .05em; ma
 .hero-offer .ho-k { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .75; }
 .hero-offer .ho-p { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 .hero-offer .ho-p s { font-size: 14px; font-weight: 500; opacity: .55; margin-right: 6px; }
-.hero-offer .ho-f { font-size: 11px; opacity: .6; }
+.hero-offer .ho-f { font-size: 13px; opacity: .82; }
+.hero .hero-eb { font-size: 15px; opacity: 1; }
+.hero-alt { margin: 14px 0 0; font-size: 14.5px; color: rgba(255,255,255,.86); text-shadow: 0 2px 18px rgba(0,0,0,.4); }
+.hero-alt a, .hero-alt .link-btn { color: #fff; text-decoration: underline; text-underline-offset: 3px; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+@media (max-width: 560px) { .hero-alt .ha-sep { display: none; } .hero-alt .ha-2 { display: block; margin-top: 6px; } }
+@media (min-width: 900px) { .hero-alt { display: none; } }   /* desktop: the nav has Sign in and the footer has the phone number */
+.menu-panel .menu-contact { color: var(--muted); }
+.foot-contact a { color: inherit; }
+.plan-commit { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); text-align: left; }
+.plan-commit svg { width: 16px; height: 16px; flex: none; margin-top: 2px; } .plan-commit b { color: var(--fg); font-weight: 600; }
+.save.fq { display: grid; gap: 2px; }
+.fq-h { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.fq-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 10px; border-radius: 10px; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fq-row b { color: var(--fg); font-weight: 650; } .fq-row em { font-style: normal; font-size: 13px; color: var(--accent); margin-left: 8px; }
+.fq-row.on { background: rgba(255,255,255,.07); color: var(--fg); }
+.fq-note { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+.plan ul.plan-terms { list-style: disc; text-align: left; padding-left: 20px; margin: 14px 4px 0; display: grid; gap: 6px; font-size: 14.5px; line-height: 1.5; color: var(--muted); opacity: 1; }
 @media (max-width: 600px) { .hero-offer { gap: 2px 8px; padding: 7px 14px; border-radius: 16px; margin-top: 14px; } .hero-offer .ho-p { font-size: 19px; } .hero-offer .ho-l { font-size: 14px; } .hero-offer .ho-k { font-size: 10px; } }
 /* end-of-page CTA */
 .endcta { text-align: center; padding-block: clamp(56px, 8vw, 96px) clamp(64px, 9vw, 110px); }
@@ -1502,7 +1518,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   </div>
 </header>
 <div class="menu-panel" id="menuPanel">
-  <a href="#services">Services</a><a href="#membership">Apex Membership</a><a href="#how">How it works</a><a href="#results">Results</a><a href="#area">Service area</a><a href="#faq">FAQ</a><a href="#book">Book a detail</a><a href="#" data-acct="open" class="menu-acct">Sign in / My account</a>
+  <a href="#services">Services</a><a href="#membership">Apex Membership</a><a href="#how">How it works</a><a href="#results">Results</a><a href="#area">Service area</a><a href="#faq">FAQ</a><a href="#book">Book a detail</a><a href="sms:+17322067084" class="menu-contact">Text (732) 206-7084</a><a href="tel:+17322067084" class="menu-contact">Call (732) 206-7084</a><a href="#" data-acct="open" class="menu-acct">Sign in / My account</a>
 </div>
 
 <div class="page-bg"><img id="bgImg" src="hero.jpg" alt="Dark gray sedan parked on an empty lot below rocky mountains" width="1999" height="1500" fetchpriority="high"></div>
@@ -1511,14 +1527,15 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   <section class="hero" aria-label="Apex Detailing" id="hero">
     <canvas id="scene" aria-hidden="true" hidden></canvas>
     <div class="wrap hero-copy" id="heroCopy">
-      <div class="eyebrow">Mobile detailing<span class="eb-sep"> · </span><span class="eb-2">Ocean County, NJ</span></div>
+      <div class="eyebrow hero-eb">Mobile car detailing<span class="eb-sep"> · </span><span class="eb-2">Ocean County, NJ</span></div>
       <h1>Peak condition.</h1>
-      <p class="sub">We come to your driveway. You get your car back looking better than the day you bought it.</p>
+      <p class="sub">We detail your car in your driveway, anywhere in Ocean County. You get it back looking better than the day you bought it.</p>
       <div class="hero-offer" id="heroOffer"><span class="ho-k" id="hoK">Launch pricing</span><span class="ho-p"><s id="hoReg">$249</s><span id="hoNow">$179</span></span><span class="ho-l">Full Detail</span><span class="ho-f" id="hoF">first detail only · sedan · plus tax</span></div>
       <div class="hero-actions">
         <a class="btn" href="#book" id="heroBook">Book my first detail</a>
         <a class="btn btn-ghost" href="#services">See packages</a>
       </div>
+      <p class="hero-alt">Questions? <a href="sms:+17322067084">Text</a> or <a href="tel:+17322067084">call (732) 206-7084</a><span class="ha-sep"> · </span><span class="ha-2">Been here before? <button type="button" class="link-btn" data-acct="open" data-intent="rebook">Sign in to rebook</button></span></p>
     </div>
     <div class="hero-socials" id="heroSocials" aria-label="Social media">
       <div class="socials">
@@ -1535,7 +1552,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   </section>
   </div>
 
-  <section class="path" id="path" aria-labelledby="pathTitle">
+  <section class="path" id="path" aria-labelledby="pathTitle" hidden>   <!-- pre-launch: replaced by the "Been here before? Sign in" line under the hero (audit IA-047) -->
     <div class="wrap">
       <div class="section-head path-head reveal">
         <div class="eyebrow">Welcome</div>
@@ -1581,7 +1598,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="pk-tabs" role="group" aria-label="Package">
             <button type="button" data-pkg="exterior" aria-pressed="false"><svg><use href="#i-ext"/></svg>Exterior</button>
             <button type="button" data-pkg="interior" aria-pressed="false"><svg><use href="#i-int"/></svg>Interior</button>
-            <button type="button" data-pkg="full" aria-pressed="true"><svg><use href="#i-full"/></svg>Full Detail<span class="pop">Most popular</span></button>
+            <button type="button" data-pkg="full" aria-pressed="true"><svg><use href="#i-full"/></svg>Full Detail<span class="pop">Recommended</span></button>
           </div>
           <div class="sizes vcards" role="group" aria-label="Vehicle size">
             <button type="button" data-size="0" aria-pressed="true"><svg class="vi" aria-hidden="true"><use href="#v-sedan"/></svg><span class="vt"><b>Sedan<span class="sfx"> / Coupe</span></b><span class="vk">Sedans, coupes, hatchbacks</span><small>Civic, Camry, Model&nbsp;3</small></span></button>
@@ -1593,7 +1610,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <div class="pk-hero">
           <div class="pk-info">
             <div class="price" data-p="179,199,229" id="pkPrice"><span class="cur">$</span><span class="odo" aria-hidden="true"></span><span class="sr-only">$179</span><small>starting + tax</small></div>
-            <div class="pk-reg" id="pkReg"><span class="launch">Launch price</span><s id="pkRegAmt">$249</s><span class="pk-reg-n">first detail, for a limited time</span></div>
+            <div class="pk-reg" id="pkReg"><span class="launch">Launch price</span><s id="pkRegAmt">$249</s><span class="pk-reg-n">first detail only</span></div>
           <p class="pk-blurb" id="pkBlurb">Inside and out. The full reset for a car that needs it.</p>
           <ul class="specs" id="pkSpecs">
             <li><svg><use href="#i-clock"/></svg><span id="pkTime">~5 hrs</span></li>
@@ -1710,7 +1727,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <div class="pk-tabs plan-tabs" id="planType" role="group" aria-label="Each visit" style="--n:3">
               <button type="button" data-v="wash" aria-pressed="false"><svg><use href="#i-ext"/></svg>Wash</button>
               <button type="button" data-v="int" aria-pressed="false"><svg><use href="#i-int"/></svg>Interior</button>
-              <button type="button" data-v="both" aria-pressed="true"><svg><use href="#i-full"/></svg>Wash + interior<span class="pop">Most popular</span></button>
+              <button type="button" data-v="both" aria-pressed="true"><svg><use href="#i-full"/></svg>Wash + interior<span class="pop">Recommended</span></button>
             </div>
           </div>
           <div class="plan-field">
@@ -1732,7 +1749,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <ul class="perks">
             <li><svg><use href="#check"/></svg>Priority booking on weekends</li>
             <li><svg><use href="#check"/></svg>10% off all add-ons</li>
-            <li><svg><use href="#check"/></svg>Pause or cancel anytime after 3 months</li>
+            <li><svg><use href="#check"/></svg>Pick your own visit times</li>
           </ul>
           </div>
           <div class="plan-col">
@@ -1740,18 +1757,18 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="plan-price">
             <div><span class="big" id="planMonthly">$100</span><span class="per">/mo + tax</span></div>
             <div class="sub" id="planPerVisit">$100 per visit · <span id="planSize">Sedan</span></div>
+            <div class="plan-commit"><svg aria-hidden="true"><use href="#i-cal"/></svg><span><b>3-month minimum.</b> Then pause or cancel anytime.</span></div>
           </div>
-          <div class="save" aria-label="Price comparison">
-            <div class="bar-row"><span id="planOneOffLabel">Booking an Exterior each time</span><span id="planOneOff">$120</span></div>
-            <div class="bar"><i id="barOneOff" style="width:100%"></i></div>
-            <div class="bar-row"><span>With Apex Membership</span><span id="planMember">$100</span></div>
-            <div class="bar member"><i id="barMember" style="width:80%"></i></div>
-            <div class="save-total" id="planSave">You save $20 a month</div>
-          </div>
+          <div class="save fq" aria-label="Price per visit by how often" id="planFq"></div>
           <button type="button" class="btn plan-btn" id="planAdd" aria-pressed="false">Add to my booking</button>
           <p class="plan-why" id="planWhy"></p>
           </div>
-          <p class="plan-terms">Wash plans start after an Exterior or Full Detail, Interior plans after an Interior or Full Detail, and Wash + interior after a Full Detail. Start within 14 days of that detail. Billing starts one month after it, then on that same date every month; once each month is paid, you pick that month's visit times. Visits are maintenance cleans; extra work (heavy spills, mud, pet hair) is quoted first. 3-month minimum (finish your 3 months, or cancel early for a fee of half the remaining payments), then pause or cancel anytime. Prices may change with 30 days' notice. <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a></p>
+          <ul class="plan-terms">
+            <li>Starts after a qualifying detail: Wash after an Exterior or Full Detail, Interior after an Interior or Full Detail, Wash + interior after a Full Detail. Sign up within 14 days of it.</li>
+            <li>Billed to your card one month after that detail, then on that date every month, plus NJ sales tax. Once each month is paid, you pick its visit times.</li>
+            <li>3-month minimum: finish your 3 months, or cancel early for a fee of half the remaining payments. After that, pause or cancel anytime.</li>
+            <li>Visits are maintenance cleans. Heavy messes are quoted first. Prices can change with 30 days' notice. <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a></li>
+          </ul>
           </div>
         </div>
       </div>
@@ -1776,8 +1793,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     <div class="wrap">
       <div class="section-head reveal">
         <div class="eyebrow">Results</div>
-        <h2>Real jobs. Real driveways.</h2>
-        <p>Unedited photos from recent Apex details. Drag the slider to see the difference.</p>
+        <h2 id="resH">A real job. A real driveway.</h2>
+        <p id="resP">Unedited photos from a recent Apex detail. Drag the slider to see the difference.</p>
       </div>
       <div class="res reveal" id="res">
         <div class="res-stage">
@@ -1883,6 +1900,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               </div>
             </div></details>
           <details><summary>How do I pay?</summary><p>After the job, once you've walked around the car and you're happy with it. Pay by card or cash in person, or save a card on file when you book and we'll charge it automatically after the detail. Apex Membership is always billed to a card on file.</p><p>Our prices are before New Jersey sales tax (6.625%). The tax is added to your bill and shown on its own line on your estimate and receipt. Tips aren't taxed.</p></details>
+          <details><summary>What if I'm not happy with it?</summary><p>We walk the car with you before you pay. If something isn't right, tell us then, or within 48 hours with photos by text or email, and we'll come back and fix the areas the package covers at no charge.</p></details>
+          <details><summary>Can I reschedule or cancel?</summary><p>Yes, free up to 24 hours before. Use the link in your confirmation email. Closer than that, text or call us at (732) 206-7084.</p></details>
+          <details><summary>Do I need to be home?</summary><p>Only at the start, to hand us the keys and show us the spigot and outlet, and at the end for the walk-around and payment. You don't need to stay outside with us. If you can't be there, text us and we'll work it out.</p></details>
+          <details><summary>How should I get my car ready?</summary><p>Take out valuables and anything you don't want moved, like car seats or gear in the trunk. Park where we can reach it with a hose and an extension cord. That's it. We bring everything else.</p></details>
           <details><summary>Are you insured?</summary><p>Yes. Your car is covered while we work on it.</p></details>
         </div>
       </div>
@@ -2019,7 +2040,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               <div class="plan-brand"><svg aria-hidden="true"><use href="#peak"/></svg><span>Apex Membership</span></div>
               <span class="mem-save" id="bkMemSave">Save $0/mo</span>
             </div>
-            <p class="mem-hook">After today, keep it this clean for <b id="bkMemMonthly">$0/mo</b>. That's <span id="bkMemN">1 visit a month</span> at <b id="bkMemPer">$0</b> each, instead of <s id="bkMemOne">$0</s> for <span id="bkMemOf">an Exterior</span>.</p>
+            <p class="mem-hook">After today, keep it this clean for <b id="bkMemMonthly">$0/mo</b>. That's <span id="bkMemN">1 visit a month</span> at <b id="bkMemPer">$0</b> each. 3-month minimum, then pause or cancel anytime.</p>
             <ul class="mem-perks"><li>Up to 20% off with weekly visits</li><li>Priority weekends</li><li>10% off add-ons</li><li>Pick your own visit times</li></ul>
             <div class="mem-pick">
               <div class="seg" id="bkMemType" role="group" aria-label="Each visit"><button type="button" data-v="wash" aria-pressed="false">Wash</button><button type="button" data-v="int" aria-pressed="false">Interior</button><button type="button" data-v="both" aria-pressed="true">Wash + int.</button></div>
@@ -2163,7 +2184,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <div class="dcard plan-mini" data-if="member">
           <div class="dc-k"><span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span></div>
           <div class="dc-t" data-f="planName"></div>
-          <div class="dc-sub"><span data-f="planPrice"></span> · saving <span data-f="planSave"></span> a year</div>
+          <div class="dc-sub"><span data-f="planPrice"></span></div>
           <button type="button" class="link-btn" data-tab-go="plan">Manage plan</button>
         </div>
         <div class="dcard upsell" data-if="guest">
@@ -2248,6 +2269,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         </div>
     </div>
     <div class="links">
+      <span class="foot-contact">Call or text <a href="tel:+17322067084">(732) 206-7084</a> · <a href="sms:+17322067084">Text us</a></span>
       <a href="mailto:contact@apexdetailingoc.com">contact@apexdetailingoc.com</a>
       <span>@apexdetailingoc on <a href="https://www.instagram.com/apexdetailingoc" target="_blank" rel="noopener">Instagram</a> and <a href="https://www.tiktok.com/@apexdetailingoc" target="_blank" rel="noopener">TikTok</a></span>
       <span>Brick, NJ · Mobile service only</span>
@@ -2552,9 +2574,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   var ZONES = { exterior: ["paint", "wheels", "glass"], interior: ["cabin", "glass"], full: ["paint", "wheels", "glass", "cabin"] };
   var DET = {
     exterior: { time: "", need: ["i-drop", "Water + outlet"], blurb: "The outside, washed and sealed. Good for a car that's clean inside.",
-      on: ["wash", "wheels", "sealant", "glassout"] },
+      on: ["wash", "wheels", "sealant", "glassout", "walk"] },
     interior: { time: "", need: ["i-plug", "Outlet only"], blurb: "Seats, carpets and every surface you touch, deep cleaned.",
-      on: ["vacuum", "shampoo", "dash", "mats", "spots", "leather", "glassin"] },
+      on: ["vacuum", "shampoo", "dash", "mats", "spots", "leather", "glassin", "walk"] },
     full: { time: "", need: ["i-drop", "Water + outlet"], blurb: "Inside and out. The full reset for a car that needs it.",
       on: ["wash", "wheels", "sealant", "clay", "jambs", "glassout", "vacuum", "shampoo", "dash", "mats", "spots", "leather", "glassin", "walk"] }
   };
@@ -2650,11 +2672,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     document.getElementById("planMonthly").textContent = "$" + monthly;
     document.getElementById("planPerVisit").firstChild.nodeValue = "$" + perVisit + " per visit · ";
     document.getElementById("planSize").textContent = VEH[size];
-    document.getElementById("planOneOffLabel").textContent = "Booking " + (P.of === "exterior" ? "an Exterior" : P.of === "interior" ? "an Interior" : "a Full Detail") + " each time";
-    document.getElementById("planOneOff").textContent = "$" + oneoff + "/mo";
-    document.getElementById("planMember").textContent = "$" + monthly + "/mo";
-    document.getElementById("barMember").style.width = (monthly / oneoff * 100).toFixed(1) + "%";
-    document.getElementById("planSave").innerHTML = "You save $" + save + " a month<small>$" + (save * 12).toLocaleString() + " a year</small>";
+    // the honest comparison: the same visit, cheaper when it's more often (audit IA-040)
+    var base1 = planPrice(planState.type, size, 1).perVisit;
+    document.getElementById("planFq").innerHTML = '<div class="fq-h">Price per visit</div>' + [1, 2, 4].map(function (f) {
+      var pv = planPrice(planState.type, size, f).perVisit, less = base1 - pv;
+      return '<div class="fq-row' + (f === planState.freq ? " on" : "") + '"><span>' + FREQ[f].name + '</span><span><b>$' + pv + '</b>' + (less > 0 ? '<em>$' + less + ' less</em>' : '') + '</span></div>'; }).join("") +
+      '<div class="fq-note">Visits are maintenance cleans that keep your car where the detail left it.</div>';
     var label = t.name + ", " + f.name.toLowerCase() + " (" + VEH[size] + ")";
     window.__plan = planState.added ? { label: label, monthly: monthly, type: planState.type } : null;
     window.__planInfo = { label: label, monthly: monthly, perVisit: perVisit, oneoffVisit: P.oneoffVisit, save: save, freq: planState.freq, type: planState.type, visits: planState.freq, of: P.of };
@@ -3317,9 +3340,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (P) {
         $("bkMemSave").textContent = "$" + P.perVisit + " a visit";
         $("bkMemMonthly").textContent = "$" + P.monthly + "/mo + tax";
-        $("bkMemPer").textContent = "$" + P.perVisit; $("bkMemOne").textContent = "$" + P.oneoffVisit;
+        $("bkMemPer").textContent = "$" + P.perVisit;
         $("bkMemN").textContent = P.freq === 1 ? "1 visit a month" : P.freq + " visits a month";
-        $("bkMemOf").textContent = P.of === "exterior" ? "an Exterior" : P.of === "interior" ? "an Interior detail" : "a Full Detail";
         $("bkMemTxt").textContent = on ? P.label + " · $" + P.monthly + "/mo + tax, starting after this detail" : P.label + " · $" + P.monthly + "/mo + tax";
       }
       var cash = radio("pay") !== "card";
@@ -3711,12 +3733,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   /* ---------- Results gallery: before / after slider ---------- */
   var JOBS = [
     { id: "rav4", name: "Toyota RAV4", isNew: true, size: 1, pkg: "full", shots: [
-      { k: "rav4-dash", label: "Dash", alt: "Steering wheel, dash and center console of a Toyota RAV4" },
-      { k: "rav4-front", label: "Front seats", alt: "Front seats and floor of a Toyota RAV4" },
       { k: "rav4-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Toyota RAV4" },
+      { k: "rav4-front", label: "Front seats", alt: "Front seats and floor of a Toyota RAV4" },
+      { k: "rav4-dash", label: "Dash", alt: "Steering wheel, dash and center console of a Toyota RAV4" },
       { k: "rav4-ext", label: "Exterior", alt: "Front of a red Toyota RAV4 in a driveway" } ] }
   ];
   if (JOBS.length < 2) document.querySelector(".res-jobs").style.display = "none";
+  else { document.getElementById("resH").textContent = "Real jobs. Real driveways."; document.getElementById("resP").textContent = "Unedited photos from recent Apex details. Drag the slider to see the difference."; }
   var ba = document.getElementById("ba"), range = document.getElementById("baRange"), before = document.getElementById("baBefore"), after = document.getElementById("baAfter"),
       handle = document.getElementById("baHandle"), count = document.getElementById("baCount"), nav = document.querySelector(".ba-nav"),
       jobsEl = document.querySelector(".res-jobs"), thumbs = document.getElementById("resThumbs");
@@ -3742,9 +3765,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     jobsEl.querySelectorAll("button").forEach(function (b, i) { b.setAttribute("aria-pressed", String(i === ji)); });
     document.getElementById("resTitle").textContent = job.name;
     document.getElementById("resSub").textContent = SIZES[job.size] + " · " + NAMES[job.pkg];
-    window.__resPrice = function () { var now = pkgPrice("full", 0); document.getElementById("resPrice").textContent = "$" + now; var rg = document.getElementById("resReg"); rg.textContent = "$" + REG.full[0]; rg.hidden = now >= REG.full[0]; };
+    // this job's own package and size (audit IA-042)
+    window.__resPrice = function () { var j = JOBS[cur.job], now = pkgPrice(j.pkg, j.size), reg = REG[j.pkg][j.size]; document.querySelector(".res-price > span").textContent = NAMES[j.pkg] + " · " + VEH[j.size] + " from"; document.getElementById("resPrice").textContent = "$" + now; var rg = document.getElementById("resReg"); rg.textContent = "$" + reg; rg.hidden = now >= reg; };
     window.__resPrice();
-    document.getElementById("resBook").textContent = "Book a detail";
+    document.getElementById("resBook").textContent = "Book this detail";
     var INCL = { full: ["Full vacuum & trunk", "Seats & carpets shampooed", "Floor mats scrubbed", "Spot stain treatment", "Leather conditioning", "Dash & panels protected", "Glass, inside & out", "Hand wash, clay bar & sealant"],
       interior: ["Full vacuum & trunk", "Seats & carpets shampooed", "Floor mats scrubbed", "Spot stain treatment", "Leather conditioning", "Dash & panels protected", "Glass, inside"],
       exterior: ["Foam pre-wash & hand wash", "Wheels, tires & wells", "Spray sealant for gloss", "Glass, outside"] };
@@ -3762,6 +3786,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     b.addEventListener("click", function () { if (i !== cur.job) { show(i, 0); tweenBA(50, 300); } });
     jobsEl.appendChild(b);
   });
+  document.getElementById("resBook").addEventListener("click", function () { var j = JOBS[cur.job]; selectPkg(j.pkg); setSize(j.size); });   // runs before the booking opens
   function step(d) { var n = JOBS[cur.job].shots.length; show(cur.job, (cur.shot + d + n) % n); tweenBA(50, 300); }
   document.getElementById("baPrev").addEventListener("click", function () { step(-1); });
   document.getElementById("baNext").addEventListener("click", function () { step(1); });

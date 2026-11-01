@@ -42,6 +42,7 @@ async function emailReceipt(env, b, opts) {
         ["Paid with", opts.method], ["Booking code", b.id]]) +
     (opts.receipt ? `<p style="margin:0 0 14px"><a href="${h(opts.receipt)}" style="color:#111">View the Square receipt</a></p>` : "") +
     (tipLink ? `<p style="margin:0 0 6px;font-weight:700">Happy with it?</p><p style="margin:0 0 16px;color:#444">Tips are never expected, always appreciated.</p><p style="margin:0 0 18px">${button(tipLink, "Add a tip")}</p>` : "") +
+    (opts.tipOnly ? "" : `<p style="margin:0 0 6px;font-weight:700">How did we do?</p><p style="margin:0 0 18px;color:#444;line-height:1.55">Just reply to this email. We read every one, and if anything isn't right, we'll come back and fix it within 48 hours.</p>`) +
     `<p style="margin:0">${button(site + "/#book", "Book your next detail", false)}</p>`;
   return send(env, { to: b.email, subject, html: layout(subject, body, opts.tipOnly ? "Thanks for the tip" : "Receipt " + money(total), site + "/email-logo.png") });
 }
@@ -82,7 +83,9 @@ export async function jobRoute(req, env, url, H) {
     else if (m[2] === "inperson") {
       const how = String(fd.get("how") || "cash").slice(0, 20);
       await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).run();
-      Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ".";
+      Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
+      // in-person customers get a receipt too (audit IA-051)
+      await emailReceipt(env, b, { amount: cents, tax, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
     } else if (m[2] === "link") {
       await ensurePayToken(env, b);
       await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ? WHERE id = ?").bind(Date.now(), cents, tax, b.id).run();
