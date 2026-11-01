@@ -788,6 +788,130 @@ body.acct-open { overflow: hidden; }
 @media (max-width: 600px) { .cal-d { height: auto; aspect-ratio: 1; } }
 @media (max-width: 420px) { .cal { padding: 12px 10px; } .cal-dow, .cal-grid { gap: 4px; } .cal-d { font-size: 14px; border-radius: 10px; } .slots-g { grid-template-columns: 1fr 1fr; } }
 
+/* ===== Booking redesign (Nov 1): hero photo stays behind, one glass panel, clearer controls ===== */
+@media (hover: none) { .btn:hover { filter: none; } }
+/* page content steps aside; the fixed hero photo stays and eases into its full blur (JS) */
+main, header.nav, footer { transition: opacity .45s ease, visibility 0s linear 0s; }
+body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .pbar, body.bk-open .menu-panel { opacity: 0; visibility: hidden; transition: opacity .35s ease, visibility 0s linear .35s; }
+#bgImg.bg-anim { transition: filter .6s cubic-bezier(.3,.7,.2,1), transform .6s cubic-bezier(.3,.7,.2,1); }
+.bk { background: rgba(0,0,0,.22); scroll-padding: 150px 0 120px;
+  --line: rgba(255,255,255,.2); --well: rgba(255,255,255,.06);
+  --sel-bg: rgba(255,255,255,.2); --sel-sh: inset 0 0 0 1.5px rgba(255,255,255,.92), 0 6px 18px -10px rgba(0,0,0,.8); }
+.bk::before { display: none; }
+.bk ::placeholder { color: rgba(255,255,255,.34); }
+/* header: title + close, then a slim progress bar */
+.bk-top { background: rgba(10,10,10,.5); border-bottom: 1px solid rgba(255,255,255,.1); }
+.bk-top-in { grid-template-columns: 1fr auto; gap: 6px 16px; padding-bottom: 10px; }
+.bk-head h2 { margin: 0; font-size: 22px; }
+.bk-top-in > .acct-x { grid-column: 2 !important; grid-row: 1; }
+.bk .acct-x { width: 44px; height: 44px; }
+.bk-stepl { grid-column: 1 / -1; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.bk-stepl b { color: var(--fg); }
+.bk-steps { grid-column: 1 / -1; grid-row: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; justify-content: stretch; }
+.bk-steps li { min-width: 0; }
+.bk-steps button, .bk-steps li.cur button { width: 100%; display: grid; gap: 7px; justify-items: start; min-height: 30px; padding: 6px 0 0 !important; background: none !important; box-shadow: none !important; border-radius: 0; font-size: 12.5px; color: rgba(255,255,255,.62); }
+.bk-steps button::before { content: ""; width: 100%; height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); transition: background .3s; }
+.bk-steps li.done button::before { background: rgba(255,255,255,.62); }
+.bk-steps li.cur button::before { background: #f5f5f5; }
+.bk-steps li.cur button, .bk-steps li.done button { color: var(--fg); }
+.bk-steps button:disabled { opacity: .75; }
+.bk-steps i { display: none !important; }
+.bk-steps span { display: inline !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.bk-stepl { display: none; }
+/* one frosted panel for the step content */
+.bk-wrap { padding-block: 22px 40px; }
+.bk-main { background: rgba(14,14,14,.62); border-radius: 26px; padding: 28px 28px 0; box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 0 0 1px rgba(255,255,255,.14), 0 30px 80px -40px rgba(0,0,0,.8); }
+.bk-sum { top: 132px; background: rgba(14,14,14,.62) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.bk-sum-h { display: flex; justify-content: space-between; align-items: center; }
+.bk-sum-x { display: none; }
+.bk-sum-scrim { display: none; }
+.bk .rebook-note { margin-top: 0; }
+/* Continue is always on screen: sticky at the bottom of the panel */
+.bk-nav { position: sticky; bottom: 0; z-index: 4; margin: 24px -28px 0; padding: 14px 28px calc(14px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid rgba(255,255,255,.12);
+  background: rgba(16,16,16,.86); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 0 0 26px 26px; }
+.bk-tot { display: none; border: 0; background: none; color: var(--fg); font: inherit; padding: 4px 6px; cursor: pointer; text-align: left; }
+.bk-tot b { display: block; font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.bk-tot small { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.bk-tot svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
+#bkBack[hidden] { display: none; }
+#bkNext { margin-left: auto; }
+/* fields */
+.bk .acct-field > span, .bk .field > span { color: rgba(255,255,255,.72); }
+.bk .acct-field input, .bk .acct-field textarea, .bk .acct-field select { background-color: rgba(255,255,255,.06); }
+.bk .acct-field input.err, .bk .acct-field textarea.err, .bk input.err { box-shadow: inset 0 0 0 1.5px #ff8a8a !important; background-color: rgba(255,90,90,.06); }
+.bk .acct-field input.err:focus { outline: 2px solid #ff8a8a; outline-offset: 2px; }
+.bk-ferr { display: block; margin: 6px 2px 0; font-size: 13px; font-weight: 600; color: #ffb3ad; text-transform: none; letter-spacing: 0; }
+.bk-ferr[hidden] { display: none; }
+.bk-ferr-block { margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; background: rgba(255,90,90,.1); box-shadow: inset 0 0 0 1px rgba(255,120,120,.35); }
+/* one clear "selected" look */
+.bk .chip label, .bk .slot, .bk .pay-opt > span, .bk-q, .bk-concern, .bk-box, .cal { box-shadow: inset 0 0 0 1px var(--line); }
+.bk .chip input:checked + label, .bk .pay-opt input:checked + span, .bk .seg.yn input:checked + span, .bk .seg button[aria-pressed="true"] { background: var(--sel-bg); color: #fff; box-shadow: var(--sel-sh); }
+.bk .chip label { position: relative; }
+.bk .chip input:checked + label::after, .bk .pay-opt input:checked + span::after { content: ""; position: absolute; top: 8px; right: 8px; width: 16px; height: 16px; border-radius: 50%; background: #f5f5f5 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 8.3l2.3 2.3 4.7-5' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/16px no-repeat; }
+.bk .chips:not(.bk-pk):not(#addonChips) .chip input:checked + label { padding-right: 32px; }
+.bk .chips:not(.bk-pk):not(#addonChips) .chip input:checked + label::after { top: 50%; margin-top: -8px; }
+.bk-pk .chip input:checked + label { padding-right: 30px; }
+#addonChips .chip input:checked + label { padding-right: 34px !important; }
+#addonChips .chip input:checked + label::after { top: 12px; right: 12px; }
+#addonChips .chip input:checked + label .lt { padding-right: 0; }
+.bk .pay-opt > span { position: relative; }
+.bk .seg.yn span { padding: 11px 6px; }
+/* calendar: calmer, bigger targets */
+.bk .cal-nav { width: 44px; height: 44px; }
+.bk .cal-d:disabled { color: rgba(255,255,255,.26); }
+.bk .cal-d.full:disabled { text-decoration: none; }
+.bk .cal-d.today:disabled { box-shadow: none; }
+.bk .cal-d.today:not(:disabled) { box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); }
+.bk .cal-d::after { width: 6px; height: 6px; margin-left: -3px; }
+.bk .cal-d:not(:disabled) { background: rgba(255,255,255,.1); }
+.bk .cal-d:not(:disabled):hover { background: rgba(255,255,255,.17); }
+.bk .cal-d.on, .bk .cal-d.on:hover { background: #f5f5f5 !important; color: #000; }
+.slots-empty { box-shadow: none; border: 1px dashed rgba(255,255,255,.22); }
+.bk .slot.on { box-shadow: none; }
+.bk-th button { width: 30px; height: 30px; }
+/* step 4 review card (phones/tablets; the summary sits beside it on wide screens) */
+.bk-review { display: none; margin-top: 18px; padding: 14px 16px; border-radius: 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px var(--line); }
+.bk-review h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.bk-review .rv { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; font-size: 14.5px; border-top: 1px solid rgba(255,255,255,.08); }
+.bk-review .rv:first-of-type { border-top: 0; }
+.bk-review .rv span { color: var(--muted); } .bk-review .rv b { text-align: right; font-weight: 600; }
+.bk-review .rv.tot b { font-size: 17px; }
+.bk-review .lnk { border: 0; background: none; color: var(--fg); text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: 13px; padding: 2px 0; cursor: pointer; }
+/* mini 3D car */
+.bk3d { position: relative; height: 0; margin: 0 -6px; border-radius: 18px; overflow: hidden; opacity: 0; transition: opacity .5s, height .45s cubic-bezier(.3,.7,.2,1), margin .45s; background: radial-gradient(ellipse at 50% 85%, rgba(255,255,255,.07), transparent 65%); }
+.bk3d.on, .bk3d-ph.on { opacity: 1; }
+.bk3d.on { height: 170px; margin: -6px -6px 4px; }
+.bk3d-ph.on { height: 150px; margin: -8px -8px 10px; }
+.bk3d canvas, .bk3d-ph canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+.bk3d-ph { display: none; position: relative; height: 0; margin: 0 -8px; border-radius: 18px; overflow: hidden; opacity: 0; transition: opacity .5s, height .45s cubic-bezier(.3,.7,.2,1), margin .45s; background: radial-gradient(ellipse at 50% 85%, rgba(255,255,255,.07), transparent 65%); }
+@media (min-width: 861px) { .bk-steps button { font-size: 13px; } }
+@media (max-width: 960px) { .bk-steps span { display: inline !important; } }
+@media (max-width: 860px) {
+  .bk-wrap { padding: 12px 10px 110px; }
+  .bk-main { padding: 22px 18px 6px; border-radius: 22px; }
+  .bk-top-in { padding-bottom: 10px; }
+  .bk-stepl { display: block; }
+  .bk-steps button { min-height: 22px; padding-top: 2px !important; }
+  .bk-steps span { display: none !important; }
+  .bk-head h2 { font-size: 19px; }
+  .bk-nav { position: fixed; margin: 0; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-radius: 0; background: rgba(14,14,14,.88); }
+  .bk-tot { display: block; }
+  .bk-review { display: block; }
+  .bk3d-ph { display: block; }
+  .bk3d { display: none; }
+  /* summary becomes a sheet opened from the total */
+  .bk-sum { position: fixed !important; left: 8px; right: 8px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); top: auto; z-index: 6; max-height: 70svh; overflow-y: auto; order: 0;
+    transform: translateY(24px); opacity: 0; visibility: hidden; pointer-events: none; transition: transform .28s cubic-bezier(.2,.7,.2,1), opacity .2s, visibility 0s linear .28s;
+    background: rgba(20,20,20,.97) !important; border-radius: 22px; padding: 18px 18px 20px; }
+  .bk.sum-open .bk-sum { transform: none; opacity: 1; visibility: visible; pointer-events: auto; transition: transform .28s cubic-bezier(.2,.7,.2,1), opacity .2s; }
+  .bk-sum .total { font-size: 40px; }
+  .bk-sum-x { display: grid; }
+  .bk.sum-open .bk-sum-scrim { display: block; position: fixed; inset: 0; z-index: 5; background: rgba(0,0,0,.45); }
+  .bk.sum-open .bk-tot svg { transform: rotate(180deg); }
+}
+@media (max-width: 420px) { .bk-main { padding: 20px 14px 6px; } .bk-wrap { padding-inline: 8px; } }
+@media (prefers-reduced-motion: reduce) { #bgImg.bg-anim { transition: none; } main, header.nav, footer { transition: none !important; } }
+
 .faq-list { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 6px; color: var(--muted); }
 .faq-list b { color: var(--fg); font-weight: 600; }
 
@@ -1762,7 +1886,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   <div class="bk-top">
     <div class="wrap bk-top-in">
       <div class="bk-head"><span class="acct-preview">Preview · live booking coming soon</span><h2 id="bkTitle">Book your detail</h2></div>
-      <ol class="bk-steps" id="bkSteps">
+      <p class="bk-stepl" id="bkStepL" aria-live="polite">Step 1 of 4 · Service</p>
+      <ol class="bk-steps" id="bkSteps" aria-label="Booking steps">
         <li data-s="1"><button type="button" data-go="1"><i>1</i><span>Service</span></button></li>
         <li data-s="2"><button type="button" data-go="2"><i>2</i><span>Car &amp; place</span></button></li>
         <li data-s="3"><button type="button" data-go="3"><i>3</i><span>Date &amp; time</span></button></li>
@@ -1778,7 +1903,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
         <section class="bk-step" data-step="1">
           <h3>What are we doing?</h3>
-          <p class="bk-lede">Picked from the package viewer. Change anything you like.</p>
+          <div class="bk3d-ph" id="bk3dPh" aria-hidden="true"></div>
+          <p class="bk-lede">Change anything you like.</p>
           <div class="field"><span>Package</span>
             <div class="chips bk-pk">
               <div class="chip"><input type="radio" name="pkg" id="q-pkg-exterior" value="exterior"><label for="q-pkg-exterior"><b>Exterior</b><small data-pp="exterior"></small></label></div>
@@ -1798,20 +1924,19 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <p class="bk-fine" id="bkAddHint" style="margin-top:8px">Light pet hair, everyday spills and leather conditioning are included. Pick a "heavy" add-on if your car needs extra work so your price is right from the start.</p>
             <div class="added" id="qAddNote" role="status"></div>
           </div>
-          <div class="bk-needs" id="bkNeeds"></div>
         </section>
 
         <section class="bk-step" data-step="2" hidden>
           <h3>Your car &amp; where it'll be</h3>
           <div class="bk-grid4">
-            <label class="acct-field"><span>Year</span><input id="bkYear" inputmode="numeric" maxlength="4" placeholder="2021" required></label>
-            <label class="acct-field"><span>Make</span><input id="bkMake" placeholder="Toyota" required></label>
-            <label class="acct-field"><span>Model</span><input id="bkModel" placeholder="RAV4" required></label>
-            <label class="acct-field"><span>Color</span><input id="bkColor" placeholder="Red"></label>
+            <label class="acct-field"><span>Year</span><input id="bkYear" inputmode="numeric" maxlength="4" placeholder="e.g. 2021" required></label>
+            <label class="acct-field"><span>Make</span><input id="bkMake" placeholder="e.g. Toyota" required></label>
+            <label class="acct-field"><span>Model</span><input id="bkModel" placeholder="e.g. RAV4" required></label>
+            <label class="acct-field"><span>Color</span><input id="bkColor" placeholder="e.g. Silver"></label>
           </div>
           <div class="bk-grid2">
             <div class="acct-field bk-wide addr-wrap"><label for="bkAddr"><span>Street address</span></label><input id="bkAddr" autocomplete="off" placeholder="Start typing your address" required role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addrList"><ul class="addr-list" id="addrList" role="listbox" hidden></ul></div>
-            <label class="acct-field"><span>Town</span><input type="text" id="q-town" autocomplete="off" list="townList" placeholder="Brick" required></label>
+            <label class="acct-field"><span>Town</span><input type="text" id="q-town" autocomplete="off" list="townList" placeholder="e.g. Brick" required></label>
             <datalist id="townList"></datalist>
             <div class="area-msg bk-wide" id="areaMsg" hidden></div>
           </div>
@@ -1833,6 +1958,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <section class="bk-step" data-step="3" hidden>
           <h3>Pick a day and time</h3>
           <p class="bk-lede">Only times we're free and can finish your <b data-f="pkgName">detail</b> (about <b data-f="durText"></b>) are shown.</p>
+          <p class="bk-ferr bk-ferr-block" id="slotErr" role="alert" hidden style="margin:-8px 0 14px"></p>
           <div class="cal">
             <div class="cal-head"><button type="button" class="cal-nav" id="calPrev" aria-label="Previous month"><svg viewBox="0 0 20 20"><path d="M12 4 6 10l6 6"/></svg></button><b id="calMonth"></b><button type="button" class="cal-nav" id="calNext" aria-label="Next month"><svg viewBox="0 0 20 20"><path d="m8 4 6 6-6 6"/></svg></button></div>
             <div class="cal-dow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
@@ -1884,24 +2010,27 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <label class="mem-toggle"><input type="checkbox" id="bkMemOn"><span class="tgl" aria-hidden="true"></span><span><b>Add Apex Membership after this detail</b><small id="bkMemTxt"></small></span></label>
             <p class="bk-fine mem-fine" id="bkMemMore"></p>
           </div>
+          <div class="bk-review" id="bkReview" aria-label="Your booking"></div>
+          <div class="bk-consent">
+            <label class="acct-check" id="bkMemAuthRow" hidden><input type="checkbox" id="bkMemAuth"> <span>I authorize Apex Detailing LLC to charge my card <b id="bkMemAuthAmt"></b> starting one month after this detail and on that date every month until I cancel, with a 3-month minimum, as described in the <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a>.</span></label>
+            <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
+            <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
+          </div>
+          <div class="bk-warn" id="bkErr" role="alert" hidden></div>
         </section>
 
-        <div class="bk-consent">
-          <label class="acct-check" id="bkMemAuthRow" hidden><input type="checkbox" id="bkMemAuth"> <span>I authorize Apex Detailing LLC to charge my card <b id="bkMemAuthAmt"></b> starting one month after this detail and on that date every month until I cancel, with a 3-month minimum, as described in the <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a>.</span></label>
-          <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
-          <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
-        </div>
-        <div class="bk-warn" id="bkErr" role="alert" hidden></div>
+
         <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
         <div class="bk-nav">
           <button type="button" class="btn btn-ghost" id="bkBack">Back</button>
-          <span class="bk-tot" id="bkTot"></span>
+          <button type="button" class="bk-tot" id="bkTotBtn" aria-controls="bkSum" aria-expanded="false"><b id="bkTot"></b><small>Details <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12l5-5 5 5"/></svg></small></button>
           <button type="submit" class="btn" id="bkNext">Continue</button>
         </div>
       </div>
 
-      <aside class="bk-sum panel summary">
-        <h3>Your detail</h3>
+      <aside class="bk-sum panel summary" id="bkSum">
+        <div class="bk3d" id="bk3d" aria-hidden="true"></div>
+        <div class="bk-sum-h"><h3>Your detail</h3><button type="button" class="acct-x bk-sum-x" data-sum="close" aria-label="Close summary"><svg><use href="#i-x"/></svg></button></div>
         <div class="total" id="qTotal">$200</div>
         <div class="lines" id="qLines"></div>
         <div class="bk-sum-rows">
@@ -1911,6 +2040,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         </div>
         <p class="fine">Pay after the job. Final price depends on condition; we confirm before we start, never after.</p>
       </aside>
+      <div class="bk-sum-scrim" data-sum="close"></div>
     </form>
 
     <div class="bk-done" id="bkDone" hidden>
@@ -2158,6 +2288,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   function layoutHero() {
     var range = Math.max(1, track.offsetHeight - hero.offsetHeight);
     var p = reduce ? 0 : Math.min(1, Math.max(0, window.scrollY / range));
+    if (document.body.classList.contains("bk-open")) p = 1;   // booking open: photo sits at its fully scrolled blur
     var z = p * p * (3 - 2 * p), e = p * (2 - p);
     bgImg.style.setProperty("--z", (1 + 0.08 * z).toFixed(4));
     bgImg.style.filter = e > 0.002 ? "blur(" + (14 * e).toFixed(1) + "px) brightness(" + (1 - 0.32 * e).toFixed(3) + ") saturate(" + (1 + 0.1 * e).toFixed(3) + ")" : "";
@@ -2171,6 +2302,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   }
   function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(layoutHero); } }
   layoutHero();
+  // booking opens/closes: ease the photo between its current blur and the full blur
+  window.__bgBlur = function (on) {
+    var b = document.body; if (b.classList.contains("bk-open") === on) return;
+    bgImg.classList.add("bg-anim"); void bgImg.offsetWidth;
+    b.classList.toggle("bk-open", on); layoutHero();
+    clearTimeout(window.__bgT); window.__bgT = setTimeout(function () { bgImg.classList.remove("bg-anim"); }, 650);
+  };
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", onScroll);
 
@@ -3046,8 +3184,6 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       document.querySelectorAll("[data-pp]").forEach(function (n) { var k = n.dataset.pp, now = pkgPrice(k, q.size); n.innerHTML = (now < REG[k][q.size] ? "<s>$" + REG[k][q.size] + "</s>" : "") + "$" + now + " · " + TIMES[k][q.size]; });
       document.querySelectorAll('#bk [data-f="pkgName"]').forEach(function (n) { n.textContent = NAMES[q.pkg]; });
       document.querySelectorAll('#bk [data-f="durText"]').forEach(function (n) { n.textContent = durText(dur()); });
-      var nd = q.pkg === "interior" ? "an outlet we can reach" : "an outdoor water spigot and an outlet we can reach";
-      $("bkNeeds").innerHTML = '<svg><use href="#' + (q.pkg === "interior" ? "i-plug" : "i-drop") + '"/></svg><span>This package needs ' + nd + ". We'll ask on the next step.</span>";
       $("bkTot").textContent = "$" + q.total;
       ["exterior", "full"].forEach(function (k) { var r = $("q-pkg-" + k); if (!r) return; var cold = winterNow(); r.disabled = cold; r.closest(".chip").classList.toggle("is-winter", cold); });
       memText();
@@ -3055,6 +3191,22 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (step === 2) accessCheck();
     }
     window.__bkSum = sumRefresh;
+    // phone: the total in the bottom bar opens the summary as a sheet
+    function sumSheet(on) { bk.classList.toggle("sum-open", !!on); $("bkTotBtn").setAttribute("aria-expanded", String(!!on)); }
+    $("bkTotBtn").addEventListener("click", function () { sumSheet(!bk.classList.contains("sum-open")); });
+    bk.addEventListener("click", function (e) { if (e.target.closest('[data-sum="close"]')) sumSheet(false); var g = e.target.closest("[data-rv]"); if (g) show(+g.dataset.rv); });
+    // step 4: compact "here's your booking" card above Confirm (phones/tablets)
+    function review() {
+      var q = current(), esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+      var car = [$("bkYear").value, $("bkMake").value, $("bkModel").value].join(" ").trim(), where = [$("bkAddr").value.trim(), $("q-town").value.trim()].filter(Boolean).join(", ");
+      var adds = q.adds.length ? " + " + q.adds.map(function (x) { return x.short || x.name; }).join(", ") : "";
+      $("bkReview").innerHTML = '<h4>Your booking</h4>' +
+        '<div class="rv"><span>What</span><b>' + esc(NAMES[q.pkg] + " · " + SIZES[q.size] + adds) + ' <button type="button" class="lnk" data-rv="1">Edit</button></b></div>' +
+        '<div class="rv"><span>When</span><b>' + esc(window.__bkWhenText || "—") + ' <button type="button" class="lnk" data-rv="3">Edit</button></b></div>' +
+        '<div class="rv"><span>Car</span><b>' + esc((car || SIZES[q.size]) + ($("bkColor").value ? " · " + $("bkColor").value : "")) + '</b></div>' +
+        '<div class="rv"><span>Where</span><b>' + esc(where || "—") + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
+        '<div class="rv tot"><span>Estimate</span><b>$' + q.total + '</b></div>';
+    }
     function nextSlots(pkg, size, addIds, n) {
       var m = jobMin(pkg, size, addIds), out = [], d = new Date(first);
       while (d <= last && out.length < n) { var sl = slots(d, m, pkg) || []; for (var i = 0; i < sl.length && out.length < n; i++) { if (i > 0 && sl[i] - sl[i - 1] < 120) continue; out.push({ date: key(d), time: sl[i], d: new Date(d) }); } d.setDate(d.getDate() + 1); }
@@ -3086,7 +3238,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       $("bkMem").classList.toggle("on", on);
       document.querySelectorAll("#bkMemType button").forEach(function (b) { var ok = PREREQ[b.dataset.v].indexOf(q.pkg) > -1; b.disabled = !ok; b.hidden = !ok; });
       if (P) {
-        $("bkMemSave").textContent = P.save > 0 ? "Save $" + P.save + "/mo" : "Members save";
+        $("bkMemSave").textContent = "$" + P.perVisit + " a visit";
         $("bkMemMonthly").textContent = "$" + P.monthly + "/mo";
         $("bkMemPer").textContent = "$" + P.perVisit; $("bkMemOne").textContent = "$" + P.oneoffVisit;
         $("bkMemN").textContent = P.freq === 1 ? "1 visit a month" : P.freq + " visits a month";
@@ -3193,8 +3345,15 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function $$li() { return Array.prototype.slice.call($("addrList").querySelectorAll("li")); }
     $("addrList").addEventListener("mousedown", function (e) { var li = e.target.closest("li"); if (li) { e.preventDefault(); pickAc(+li.dataset.i); } });
     $("bkAddr").addEventListener("blur", function () { setTimeout(closeAc, 150); });
-    form.addEventListener("input", function (e) { if (e.target.classList) e.target.classList.remove("err"); if (/^bk(Year|Make|Model|Color)$/.test(e.target.id)) sumRefresh(); });
-    function setErr(ids) { var firstEl = null; ids.forEach(function (id) { var el = $(id); if (el) { el.classList.add("err"); firstEl = firstEl || el; } }); if (firstEl) firstEl.focus(); return !ids.length; }
+    form.addEventListener("input", function (e) { if (e.target.classList && e.target.id) clearErr(e.target); else if (e.target.classList) e.target.classList.remove("err"); if (/^bk(Year|Make|Model|Color)$/.test(e.target.id)) sumRefresh(); });
+    var ERRS = { bkYear: "Enter the year", bkMake: "Enter the make", bkModel: "Enter the model", bkAddr: "Enter your street address", "q-town": "Enter your town",
+      bkName: "Enter your name", bkPhone: "Enter a 10-digit phone number", bkEmail: "Enter a valid email" };
+    function clearErr(el) { el.classList.remove("err"); el.removeAttribute("aria-invalid"); var m = document.getElementById(el.id + "-err"); if (m) m.remove(); }
+    function setErr(ids) { var firstEl = null; ids.forEach(function (id) { var el = $(id); if (!el) return; el.classList.add("err"); el.setAttribute("aria-invalid", "true");
+        if (!document.getElementById(id + "-err")) { var m = document.createElement("small"); m.className = "bk-ferr"; m.id = id + "-err"; m.textContent = ERRS[id] || "Required"; el.setAttribute("aria-describedby", m.id);
+          var host = el.closest(".acct-field") || el.parentNode; host.appendChild(m); }
+        firstEl = firstEl || el; });
+      if (firstEl) firstEl.focus(); return !ids.length; }
     function validate(n) {
       if (n === 2) {
         var miss = ["bkYear", "bkMake", "bkModel", "bkAddr", "q-town"].filter(function (id) { return !$(id).value.trim(); });
@@ -3204,7 +3363,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if ((nd.water && !radio("water")) || !radio("power")) { $("bkWarn").innerHTML = "<b>Let us know about water and power</b> so we show up ready."; $("bkWarn").hidden = false; return false; }
         return accessCheck();
       }
-      if (n === 3) { if (sel.time == null) { $("slots").classList.add("shake"); setTimeout(function () { $("slots").classList.remove("shake"); }, 500); if (!sel.date) { var fb = $("calGrid").querySelector("button:not([disabled])") || $("calNext"); if (fb && !fb.disabled) fb.focus(); } return false; } return true; }
+      if (n === 3) { if (sel.time == null) { var se = $("slotErr"); se.textContent = sel.date ? "Pick a start time below to continue." : "Pick a day, then a start time."; se.hidden = false; if (sel.date) $("slots").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); else bk.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" }); $("slots").classList.add("shake"); setTimeout(function () { $("slots").classList.remove("shake"); }, 500); if (!sel.date) { var fb = $("calGrid").querySelector("button:not([disabled])") || $("calNext"); if (fb && !fb.disabled) fb.focus(); } return false; } return true; }
       if (n === 4) {
         var m2 = [];
         if (!$("bkName").value.trim()) m2.push("bkName");
@@ -3222,7 +3381,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       step = n; maxStep = Math.max(maxStep, n);
       document.querySelectorAll("#bk .bk-step").forEach(function (s) { s.hidden = +s.dataset.step !== n; });
       document.querySelectorAll("#bkSteps li").forEach(function (li) { var k = +li.dataset.s; li.className = k === n ? "cur" : k < n || k <= maxStep ? "done" : ""; li.querySelector("button").disabled = k > maxStep; });
-      $("bkBack").style.visibility = n === 1 ? "hidden" : "visible";
+      $("bkBack").hidden = n === 1;
+      var LBL = ["Service", "Car & place", "Date & time", "Your info"];
+      $("bkStepL").innerHTML = "Step " + n + " of 4 · <b>" + LBL[n - 1] + "</b>";
+      document.querySelectorAll("#bkSteps li").forEach(function (li) { var b = li.querySelector("button"); if (+li.dataset.s === n) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); b.setAttribute("aria-label", "Step " + li.dataset.s + ": " + LBL[+li.dataset.s - 1]); });
+      $("slotErr").hidden = true; sumSheet(false);
+      if (n === 4) review();
+      if (window.__s3mini) window.__s3mini(n);
       $("bkNext").textContent = n === 4 ? (window.__LIVE ? "Confirm booking" : "Request booking") : "Continue";
       if (n === 3) renderCal();
       if (n === 2) accessCheck();
@@ -3238,7 +3403,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     $("bkBack").addEventListener("click", function () { if (step > 1) show(step - 1); });
     $("bkSteps").addEventListener("click", function (e) { var b = e.target.closest("[data-go]"); if (!b || b.disabled) return; var to = +b.dataset.go; if (to > step) { for (var k = step; k < to; k++) if (!validate(k)) { show(k); return; } } show(to); });
     $("calGrid").addEventListener("click", function (e) { var b = e.target.closest("[data-d]"); if (!b || b.disabled) return; sel.date = b.dataset.d; sel.time = null; renderCal(); var sg = $("slots"); if (innerWidth < 860) sg.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" }); });
-    $("slots").addEventListener("click", function (e) { var b = e.target.closest("[data-t]"); if (!b) return; sel.time = +b.dataset.t; renderSlots(); });
+    $("slots").addEventListener("click", function (e) { var b = e.target.closest("[data-t]"); if (!b) return; sel.time = +b.dataset.t; $("slotErr").hidden = true; renderSlots(); });
     $("calPrev").addEventListener("click", function () { viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1); renderCal(); });
     $("calNext").addEventListener("click", function () { viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1); renderCal(); });
     $("bkPhotos").addEventListener("change", function () {
@@ -3331,9 +3496,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var target = o.step || 1;
       if (window.__acct && window.__acct.isIn() && target === 2) target = 3;
       maxStep = Math.max(maxStep, target);
-      bk.hidden = false; document.body.classList.add("acct-open"); updateQuote(); show(target);
+      bk.hidden = false; document.body.classList.add("acct-open"); if (window.__bgBlur) window.__bgBlur(true); if (window.__s3boot) window.__s3boot(); updateQuote(); show(target);
     }
-    function close() { bk.hidden = true; document.body.classList.remove("acct-open"); var f = lastFocus && document.contains(lastFocus) && lastFocus.offsetParent !== null ? lastFocus : document.querySelector(".acct-btn"); if (f && f.focus) f.focus({ preventScroll: true }); }
+    function close() { bk.hidden = true; sumSheet(false); if (window.__s3mini) window.__s3mini(0); document.body.classList.remove("acct-open"); if (window.__bgBlur) window.__bgBlur(false); var f = lastFocus && document.contains(lastFocus) && lastFocus.offsetParent !== null ? lastFocus : document.querySelector(".acct-btn"); if (f && f.focus) f.focus({ preventScroll: true }); }
     window.__bk = { open: open, close: close, reset: function () {
       ["bkYear", "bkMake", "bkModel", "bkColor", "bkAddr", "q-town", "bkName", "bkPhone", "bkEmail", "bkNotes"].forEach(function (id) { var el = $(id); if (el) { el.value = ""; el.classList.remove("err"); } });
       form.querySelectorAll('input[name="water"], input[name="power"]').forEach(function (r) { r.checked = false; });
@@ -3457,6 +3622,10 @@ const art = document.getElementById("covArt"), stage = document.getElementById("
 let started = false;
 const io = new IntersectionObserver(es => { for (const e of es) { if (e.isIntersecting && !started) { started = true; boot(); } window.__s3vis = e.isIntersecting; } }, { rootMargin: "500px 0px" });
 io.observe(art);
+// booking overlay: start the viewer if it hasn't started, and show a small copy of it in the booking panel
+let miniStep = 0, miniOn = false, place = null;
+window.__s3boot = () => { if (!started) { started = true; boot(); } };
+window.__s3mini = n => { miniStep = n; if (place) place(); };
 
 async function boot() {
   let THREE, GLTFLoader, MeshoptDecoder, RoomEnvironment;
@@ -3704,9 +3873,23 @@ async function boot() {
       c.ang += -(c.x - c.prevX) / c.R; c.prevX = c.x; for (const w of c.wheels) w.rotation.x = c.ang;
       c.root.position.x = c.x; c.root.rotation.z = pitch; if (c.carXU) c.carXU.value = c.x; }
   }
-  function resize() { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return;
+  let host = stage;
+  function resize() { const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (cam && !camAnim) goCam(true); }
-  new ResizeObserver(resize).observe(stage); resize();
+  const ro = new ResizeObserver(resize); ro.observe(stage); resize();
+  // move the one canvas between the Services section and the booking panel (no second 3D context, no second download)
+  place = () => {
+    const wide = matchMedia("(min-width: 861px)").matches;
+    const el = !miniStep || !cam ? null : wide ? document.getElementById("bk3d") : miniStep === 1 ? document.getElementById("bk3dPh") : null;
+    const target = el || stage;
+    document.querySelectorAll(".bk3d, .bk3d-ph").forEach(n => n.classList.toggle("on", n === el));
+    if (target === host) return;
+    if (host !== stage) ro.unobserve(host);
+    host = target; miniOn = target !== stage;
+    if (miniOn) { target.appendChild(renderer.domElement); ro.observe(target); } else stage.prepend(renderer.domElement);
+    resize(); goCam(true);
+  };
+  addEventListener("resize", () => { if (miniStep) place(); });
 
   new MutationObserver(() => {
     const pkg = art.dataset.show || "full", car = ORDER[+art.dataset.size || 0];
@@ -3721,7 +3904,7 @@ async function boot() {
   function tick() {
     requestAnimationFrame(tick);
     const dt = Math.min(clock.getDelta(), .1);
-    if (window.__s3vis === false || !cam || document.body.classList.contains("acct-open")) return;   // paused while scrolled away or covered by an overlay
+    if (!cam || (!miniOn && (window.__s3vis === false || document.body.classList.contains("acct-open")))) return;   // paused while scrolled away or covered by an overlay (unless shown in the booking panel)
     now += dt; animateCars(); applyZones(dt);
     if (unwind) { const k = Math.min(1, (now - unwind.t0) / unwind.d); spinAng = unwind.from + (unwind.to - unwind.from) * ease(k);
       if (k >= 1) { const r = unwind.res; unwind = null; r(); } }
@@ -3734,6 +3917,7 @@ async function boot() {
   tick();
   await showCar(S.car);
   art.classList.remove("s3wait"); const ld = stage.querySelector(".s3-load"); if (ld) { ld.style.opacity = 0; setTimeout(() => ld.remove(), 500); }
+  if (miniStep) place();
   if (!cars[S.car]) { art.classList.remove("has3d"); return; }   // model failed: fall back to the drawing
   waitArrive(S.car).then(() => { if (!busy) settled(); });
   // phones: only load a vehicle when it's picked (keeps memory low so mobile Safari doesn't reload the page)
