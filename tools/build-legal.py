@@ -37,8 +37,10 @@ footer {{ margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line)
 <h1>{title}</h1>
 <p class="meta">Apex Detailing LLC · Last updated {UPDATED}</p>
 <p class="docnav">{nav}</p>
+<main>
 {intro}
 {body}
+</main>
 <footer>Apex Detailing LLC · Mobile car detailing in Brick &amp; Ocean County, NJ · <a href="mailto:contact@apexdetailingoc.com">contact@apexdetailingoc.com</a> · <a href="tel:+17322067084">(732) 206-7084</a></footer>
 </div></body></html>
 '''

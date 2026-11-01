@@ -13,7 +13,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23000'/%3E%3Cpath d='M2 20 L10 6 L13 11 L15.5 8 L22 20 Z' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 :root {
-  --bg: #000; --card: rgba(255,255,255,.06); --card2: rgba(255,255,255,.1); --fg: #f2f2f2; --muted: #a3a3a3; --dim: #6f6f6f;
+  --bg: #000; --card: rgba(255,255,255,.06); --card2: rgba(255,255,255,.1); --fg: #f2f2f2; --muted: #b0b0b0; --dim: #8e8e8e;
   --line: rgba(255,255,255,.1); --accent: #ededed; --on-accent: #000;
   --good: #8fe3a5; --warn: #ffd27a; --bad: #ff8a80; --block: #c9a7ff;
   --font: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
@@ -134,16 +134,16 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
     <a class="brand" href="/admin/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX <small>OWNER</small></a>
     <div class="sync" id="sync"></div>
   </div>
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="today" aria-selected="true">Today</button>
-    <button role="tab" data-tab="schedule">Schedule</button>
-    <button role="tab" data-tab="jobs">Jobs</button>
-    <button role="tab" data-tab="people">People</button>
-    <button role="tab" data-tab="money">Money</button>
-    <button role="tab" data-tab="settings">Settings</button>
+  <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+    <button role="tab" data-tab="today" aria-selected="true" aria-controls="main">Today</button>
+    <button role="tab" data-tab="schedule" aria-controls="main">Schedule</button>
+    <button role="tab" data-tab="jobs" aria-controls="main">Jobs</button>
+    <button role="tab" data-tab="people" aria-controls="main">People</button>
+    <button role="tab" data-tab="money" aria-controls="main">Money</button>
+    <button role="tab" data-tab="settings" aria-controls="main">Settings</button>
   </nav>
 </header>
-<main id="main"></main>
+<main id="main" role="tabpanel" tabindex="-1"></main>
 <div id="sheetRoot"></div>
 
 <script>
@@ -182,7 +182,7 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
   // ---------- tabs ----------
   function show(tab) {
     TAB = tab;
-    [].forEach.call(document.querySelectorAll(".tabs button"), function (b) { b.setAttribute("aria-selected", String(b.dataset.tab === tab)); });
+    [].forEach.call(document.querySelectorAll(".tabs button"), function (b) { b.setAttribute("aria-selected", String(b.dataset.tab === tab)); b.tabIndex = b.dataset.tab === tab ? 0 : -1; });
     try { history.replaceState(null, "", "#" + tab); } catch (e) {}
     window.scrollTo(0, 0);
     ({ today: renderToday, schedule: renderSchedule, jobs: renderJobs, people: renderPeople, money: renderMoney, settings: renderSettings })[tab]();
@@ -296,7 +296,7 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
 
   // block-off sheet
   function openBlockSheet(day) {
-    var root = document.getElementById("sheetRoot"), d0 = day || todayNY();
+    var root = document.getElementById("sheetRoot"), d0 = day || todayNY(); sheetReturn = document.activeElement;
     root.innerHTML = '<div class="sheet-bg" data-close><div class="sheet" role="dialog" aria-modal="true" aria-label="Block off time">' +
       '<div class="row" style="margin-bottom:12px"><b style="font-size:18px">Block off time</b><button class="btn g sm" data-close>Cancel</button></div>' +
       '<p class="sub" style="margin-top:-4px">Customers won\'t be able to book over this (plus the 1-hour buffer).</p>' +
@@ -310,15 +310,19 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
       '<div class="fg2" id="bTimes"><label class="f">From<input type="time" name="start" value="09:00" step="900"></label><label class="f">To<input type="time" name="end" value="12:00" step="900"></label></div>' +
       '<p class="err" id="bErr" hidden></p>' +
       '<button class="btn" type="submit" style="width:100%;min-height:48px">Save</button></form></div></div>';
+    var first = root.querySelector('input[name="title"]'); if (first) setTimeout(function () { first.focus(); }, 30);
   }
   function saveBlock(form) {
     var rep = document.querySelector("#bRep [aria-pressed=true]").dataset.v, fd = new FormData(form);
     var body = { title: fd.get("title"), repeat: rep, day: fd.get("day"), from_day: fd.get("from_day"), until_day: fd.get("until_day"), allDay: document.getElementById("bAll").checked, start: fd.get("start"), end: fd.get("end"),
       weekdays: [].map.call(document.querySelectorAll("#bWd [aria-pressed=true]"), function (b) { return +b.dataset.wd; }) };
     var err = document.getElementById("bErr"); err.hidden = true;
-    post("/blockouts", body).then(function () { document.getElementById("sheetRoot").innerHTML = ""; toast("Blocked off"); if (TAB === "schedule" || TAB === "today") show(TAB === "today" ? "schedule" : "schedule"); })
-      .catch(function (e) { err.textContent = e.message; err.hidden = false; });
+    var sb = form.querySelector('button[type="submit"]'); if (sb.disabled) return; sb.disabled = true; sb.textContent = "Saving…";   // one tap = one block (audit IA-019)
+    post("/blockouts", body).then(function () { closeSheet(); toast("Blocked off"); if (TAB === "schedule" || TAB === "today") show(TAB === "today" ? "schedule" : "schedule"); })
+      .catch(function (e) { err.textContent = e.message; err.hidden = false; sb.disabled = false; sb.textContent = "Save"; });
   }
+  var sheetReturn = null;
+  function closeSheet() { document.getElementById("sheetRoot").innerHTML = ""; if (sheetReturn && document.contains(sheetReturn)) sheetReturn.focus(); sheetReturn = null; }
 
   // ---------- Jobs ----------
   function renderJobs() {
@@ -470,7 +474,7 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
     if ((b = t.closest("[data-sync]"))) { b.disabled = true; post("/sync").then(function (r) { toast(r.skipped ? "Calendar isn't connected" : "Synced " + r.events + " events"); show(TAB); }).catch(function (e2) { toast(e2.message); b.disabled = false; }); return; }
     if ((b = t.closest("[data-week]"))) { var n = +b.dataset.week; WEEK_FROM = n ? addD(WEEK_FROM, n) : weekStart(todayNY()); return renderSchedule(); }
     if (t.closest("[data-newblock]")) return openBlockSheet();
-    if (t.matches("[data-close]") || (t.closest("button[data-close]"))) { document.getElementById("sheetRoot").innerHTML = ""; return; }
+    if (t.matches("[data-close]") || (t.closest("button[data-close]"))) { closeSheet(); return; }
     if ((b = t.closest("#bRep button"))) { [].forEach.call(b.parentNode.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); }); var wk = b.dataset.v === "weekly"; document.getElementById("bOnce").hidden = wk; document.getElementById("bWeekly").hidden = !wk; return; }
     if ((b = t.closest("#bWd button"))) { b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); return; }
     if ((b = t.closest("[data-delblock]"))) { if (!confirm("Delete this blocked time?")) return; api("/blockouts/" + b.dataset.delblock, { method: "DELETE" }).then(function () { toast("Deleted"); renderSchedule(); }).catch(function (e2) { toast(e2.message); }); return; }
@@ -485,8 +489,23 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
   document.addEventListener("input", function (e) { if (e.target.id === "pq") { Q = e.target.value; drawPeople(); } });
   document.addEventListener("change", function (e) { if (e.target.id === "bAll") document.getElementById("bTimes").hidden = e.target.checked; });
   document.addEventListener("submit", function (e) { if (e.target.id === "bf") { e.preventDefault(); saveBlock(e.target); } });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") document.getElementById("sheetRoot").innerHTML = ""; });
+  document.addEventListener("keydown", function (e) {
+    var root = document.getElementById("sheetRoot");
+    if (e.key === "Escape" && root.innerHTML) closeSheet();
+    if (e.key === "Tab" && root.innerHTML) {   // keep focus inside the sheet
+      var f = [].slice.call(root.querySelectorAll("button, input, select, textarea")).filter(function (x) { return !x.disabled && x.offsetParent !== null; });
+      if (!f.length) return; var i = f.indexOf(document.activeElement);
+      if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+    }
+  });
 
+  // arrow keys move between tabs; the address bar's #tab switches tabs (audit IA-028d)
+  document.querySelector(".tabs").addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    var bs = [].slice.call(document.querySelectorAll(".tabs button")), i = bs.findIndex(function (b) { return b.dataset.tab === TAB; });
+    var n = bs[(i + (e.key === "ArrowRight" ? 1 : -1) + bs.length) % bs.length]; e.preventDefault(); show(n.dataset.tab); n.focus();
+  });
+  window.addEventListener("hashchange", function () { var h = (location.hash || "").slice(1); if (h !== TAB && ["today", "schedule", "jobs", "people", "money", "settings"].indexOf(h) > -1) show(h); });
   var start = (location.hash || "").slice(1);
   show(["today", "schedule", "jobs", "people", "money", "settings"].indexOf(start) > -1 ? start : "today");
   api("/home").then(function (d) { syncLine(d.sync); }).catch(function () {});

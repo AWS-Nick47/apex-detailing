@@ -119,7 +119,7 @@ export async function adminApi(req, env, url, H) {
     const pastDue = (await env.DB.prepare("SELECT COUNT(*) n FROM memberships WHERE status = 'past_due'").first()).n;
     const month = today.slice(0, 7), m0 = nyToUtc(month + "-01", 0);
     const det = await env.DB.prepare("SELECT COALESCE(SUM(final_cents),0) a, COALESCE(SUM(tip_cents),0) t, COALESCE(SUM(tax_cents),0) x, COUNT(*) n FROM bookings WHERE paid_at >= ? AND kind != 'member'").bind(m0).first();
-    const mem = await env.DB.prepare("SELECT COALESCE(SUM(amount_cents),0) a, COALESCE(SUM(tax_cents),0) x FROM membership_charges WHERE status = 'paid' AND created_at >= ?").bind(m0).first();
+    const mem = await env.DB.prepare("SELECT COALESCE(SUM(CASE WHEN kind = 'monthly' THEN amount_cents ELSE 0 END),0) a, COALESCE(SUM(tax_cents),0) x FROM membership_charges WHERE status = 'paid' AND created_at >= ?").bind(m0).first();   // monthly charges only; cancel fees are in Money (audit IA-021e)
     const tq = (await taxQuarters(env)).find(q => q.current);
     const active = (await env.DB.prepare("SELECT COUNT(*) n, COALESCE(SUM(monthly_cents),0) mrr FROM memberships WHERE status IN ('active','ending','past_due')").first());
     const sync = await env.DB.prepare("SELECT v FROM meta WHERE k = 'synced'").first();

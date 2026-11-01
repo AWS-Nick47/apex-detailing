@@ -218,7 +218,7 @@ function page(title, inner) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${h(title)} · Apex Detailing</title><meta name="robots" content="noindex">
 <style>:root{color-scheme:dark}html{background:#0a0a0a;min-height:100%}body{margin:0;background:#0a0a0a;min-height:100vh;color:#ededed;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .w{max-width:560px;margin:0 auto;padding:28px 16px 60px}.brand{font-weight:700;letter-spacing:.18em;font-size:13px;color:#bbb;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
-.brand svg{width:20px;height:20px}h1{font-size:28px;line-height:1.15;margin:22px 0 6px;letter-spacing:-.02em}.sub{color:#a3a3a3;margin:0 0 20px}
+.brand svg{width:20px;height:20px}main{display:block}h1{font-size:28px;line-height:1.15;margin:22px 0 6px;letter-spacing:-.02em}.sub{color:#a3a3a3;margin:0 0 20px}
 .card{background:rgba(255,255,255,.06);border-radius:20px;padding:6px 18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
 .r{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08)}.r:last-child{border:0}.r span{color:#a3a3a3}.r b{text-align:right;font-weight:600}
 .btn{display:inline-flex;justify-content:center;align-items:center;min-height:48px;padding:0 20px;border-radius:999px;border:0;background:#ededed;color:#0a0a0a;font-family:inherit;font-size:15px;font-weight:600;line-height:1;cursor:pointer;text-decoration:none}
@@ -226,12 +226,21 @@ function page(title, inner) {
 .acts{display:grid;gap:10px;margin-top:20px}h2{font-size:18px;margin:28px 0 10px}.days{display:grid;gap:14px}.day b{display:block;margin-bottom:8px}
 .ts{display:flex;flex-wrap:wrap;gap:8px}.ts button{min-height:42px;padding:0 14px;border-radius:12px;border:0;background:rgba(255,255,255,.08);color:#ededed;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .ts button:hover{background:rgba(255,255,255,.16)}.note{color:#a3a3a3;font-size:14px}.ok{width:56px;height:56px;border-radius:50%;background:#ededed;color:#0a0a0a;display:grid;place-items:center;font-size:28px;margin-top:24px}
-form{margin:0}.ts button[aria-pressed="true"]{background:#ededed;color:#0a0a0a}.r input[type=radio]{margin-right:8px}.btn:disabled{opacity:.5}</style></head><body><div class="w"><a class="brand" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX DETAILING</a>${inner}</div></body></html>`;
+form{margin:0}.ts button[aria-pressed="true"]{background:#ededed;color:#0a0a0a}.r input[type=radio]{margin-right:8px}.btn:disabled{opacity:.5}</style></head><body><div class="w"><a class="brand" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX DETAILING</a><main>${inner}</main></div></body></html>`;
 }
 
 function summaryCard(b) {
   return `<div class="card">${details(b).filter(r => r[1]).map(r => `<div class="r"><span>${h(r[0])}</span><b>${h(r[1])}</b></div>`).join("")}</div>`;
 }
+
+// a time button on the manage page: asks before moving (audit IA-025)
+function moveForm(b, k, t) {
+  const label = dayLabel(k, true) + " at " + tstr(t);
+  return `<form method="post" action="/b/${b.token}/move" onsubmit="return confirm(${h(JSON.stringify("Move your " + pkgName(b) + " to " + label + "?"))})"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button aria-label="${h(label)}">${tstr(t)}</button></form>`;
+}
+// after a change, send the browser back to the page (so a refresh doesn't repeat it) with a message code
+const MSGS = { moved: "Moved. We sent you a new confirmation.", cancelled: "Done.", cancelled_mem: "Done. Your Apex Membership was cancelled too. You weren't charged.", skipped: "Skipped." };
+const backTo = (b, code, extra) => new Response(null, { status: 303, headers: { Location: "/b/" + b.token + "?m=" + code + (extra || ""), "Cache-Control": "no-store" } });
 
 async function managePage(env, b, msg) {
   if (b.status === "cancelled") return b.kind === "member" ? page("Skipped", `<h1>This visit is skipped</h1><p class="sub">${msg ? h(msg) + " " : ""}It counts as this month's visit. <a href="/#account" style="color:#ededed">Your account</a> shows your membership and next visits.</p>${summaryCard(b)}`)
@@ -246,14 +255,14 @@ async function managePage(env, b, msg) {
     const from = addDays(todayKey(), 1), n = Math.max(1, Math.min(35, Math.round((nyToUtc(member.period_end || from, 0) - nyToUtc(from, 0)) / 864e5)));
     const info = await days(env, from, n, b.id), opts = [];
     for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, ["_member"], Date.now()); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
-    const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.slice(0, 8).map(t => `<form method="post" action="/b/${b.token}/move"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button>${tstr(t)}</button></form>`).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
+    const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)).slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
     return page("Your visit", head + `<h2>Pick a new time</h2>${pick}${skip}`);
   }
   if (hoursLeft < RULES.noticeHours) return page("Your booking", head + `<p class="note" style="margin-top:18px">It's less than 24 hours away, so changes go through us directly: text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
   // next open times for the same job (next 21 days), excluding this booking itself
   const adds = JSON.parse(b.adds || "[]"), start = addDays(todayKey(), 1), info = await days(env, start, 21, b.id), opts = [];
   for (const k of Object.keys(info)) { const s = slotsFor(k, info[k], b.pkg, b.size, adds, Date.now()); if (s.length) opts.push([k, s]); if (opts.length >= 8) break; }
-  const pick = opts.length ? `<div class="days">${opts.map(([k, s]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${s.slice(0, 8).map(t => `<form method="post" action="/b/${b.token}/move"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button>${tstr(t)}</button></form>`).join("")}</div></div>`).join("")}</div>`
+  const pick = opts.length ? `<div class="days">${opts.map(([k, s]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${s.filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)).slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>`
     : `<p class="note">No other open times in the next 3 weeks. Text us at (732) 206-7084 and we'll work something out.</p>`;
   const firstOf = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status IN ('pending','active') AND payments_made = 0").bind(b.id).first();
   const memWarn = firstOf ? `<p class="note" style="color:#ffd27a">This detail starts your Apex Membership (${h(planLabel(firstOf.type, firstOf.freq, firstOf.size))}). Cancelling it cancels the membership too. You won't be charged. Moving it to a new time keeps the membership and moves its first charge.</p>` : "";
@@ -528,7 +537,11 @@ async function manage(req, env, url) {
   if (!m) return html(page("Not found", "<h1>Link not found</h1>"), 404);
   const b = await env.DB.prepare("SELECT * FROM bookings WHERE token = ?").bind(m[1]).first();
   if (!b) return html(page("Not found", `<h1>We couldn't find that booking</h1><p class="sub">Text us at (732) 206-7084 and we'll sort it out.</p>`), 404);
-  if (!m[2] || req.method !== "POST") return html(await managePage(env, b));
+  if (!m[2] || req.method !== "POST") {
+    const code = url.searchParams.get("m"), cr = +url.searchParams.get("c") || 0;
+    const msg = code === "skipped" && cr ? "Skipped. A " + usd(cr) + " credit goes toward your next monthly charge." : MSGS[code] || "";
+    return html(await managePage(env, b, msg));
+  }
   if (b.status !== "confirmed") return html(await managePage(env, b));
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
   if (hoursLeft < RULES.noticeHours && !(b.kind === "member" && m[2] === "cancel")) return html(await managePage(env, b, "It's too close to change online."));
@@ -538,11 +551,11 @@ async function manage(req, env, url) {
     const credit = await creditVisit(env, b, hoursLeft >= MEM.skipNoticeHours ? MEM.skipCreditRate : 0);
     if (b.kind === "member") {
       await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailNick(env, b, "cancel").catch(() => {}), emailSkip(env, b, credit).catch(() => {})]);
-      return html(await managePage(env, b, credit ? "Skipped. A $" + (credit / 100).toFixed(credit % 100 ? 2 : 0) + " credit goes toward your next monthly charge." : "Skipped."));
+      return backTo(b, "skipped", credit ? "&c=" + credit : "");
     }
     await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailCustomer(env, b, "cancel").catch(() => {}), emailNick(env, b, "cancel").catch(() => {})]);
     const memC = await cancelWithDetail(env, b, false).catch(e => { console.log("membership cancel failed", e.message); return null; });
-    return html(await managePage(env, b, "Done." + (memC ? " Your Apex Membership was cancelled too. You weren't charged." : "")));
+    return backTo(b, memC ? "cancelled_mem" : "cancelled");
   }
   const fd = await req.formData(), day = String(fd.get("day") || ""), start = +fd.get("start");
   const adds = b.kind === "member" ? ["_member"] : JSON.parse(b.adds || "[]");
@@ -559,7 +572,7 @@ async function manage(req, env, url) {
   Object.assign(b, { start_utc, end_utc, day });
   if (b.kind !== "member") b._mem = await moveWithDetail(env, b).catch(e => { console.log("membership move failed", e.message); return null; });
   await Promise.all([calConfigured(env) ? calSave(env, b).catch(() => {}) : null, emailCustomer(env, b, "move").catch(() => {}), emailNick(env, b, "move", was).catch(() => {})]);
-  return html(await managePage(env, b, "Moved. We sent you a new confirmation."));
+  return backTo(b, "moved");
 }
 
 async function ack(req, env, url) {
