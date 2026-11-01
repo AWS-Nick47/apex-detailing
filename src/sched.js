@@ -80,7 +80,9 @@ export function sunsetMin(key) {
 export function dayInfo(key, busy, jobs) {
   const d0 = nyToUtc(key, 0), d1 = nyToUtc(addDays(key, 1), 0), span = (d1 - d0) / 60000;
   const blocks = []; let events = 0, j = 0;
-  const clip = (s, e) => [Math.max(0, Math.round((s - d0) / 60000)), Math.min(span, Math.round((e - d0) / 60000))];
+  // wall-clock minutes (what slotsFor uses), so DST days don't shift busy times by an hour (audit IA-020)
+  const wall = ms => ms <= d0 ? 0 : ms >= d1 ? 1440 : utcToNy(ms).min;
+  const clip = (s, e) => [wall(s), wall(e)];
   for (const r of busy) {
     if (r.end_utc <= d0 - RULES.gapMin * 60000 || r.start_utc >= d1 + RULES.gapMin * 60000) continue;
     if (r.all_day) { if (r.kind === "blocked" && r.start_utc < d1 && r.end_utc > d0) blocks.push([0, span]); continue; }   // all-day events in normal calendars don't block

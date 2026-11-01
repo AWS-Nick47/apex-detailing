@@ -76,6 +76,8 @@ export async function authStart(req, env) {
   const ok = json({ ok: true });
   const recent = await env.DB.prepare("SELECT COUNT(*) n FROM login_codes WHERE email = ? AND created_at > ?").bind(email, Date.now() - 3600e3).first();
   if (recent && recent.n >= 5) return json({ error: "Too many codes. Try again in an hour, or text (732) 206-7084." }, 429);
+  const day = await env.DB.prepare("SELECT COUNT(*) n FROM login_codes WHERE email = ? AND created_at > ?").bind(email, Date.now() - 864e5).first();
+  if (day && day.n >= 10) return json({ error: "Too many codes today. Try again tomorrow, or text (732) 206-7084." }, 429);
   const c = await ensureCustomer(env, email);
   if (!c) { await env.DB.prepare("INSERT INTO login_codes (email, code_hash, created_at, expires_at, used) VALUES (?, 'none', ?, ?, 1)").bind(email, Date.now(), Date.now()).run(); return ok; }
   const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
@@ -94,13 +96,14 @@ export async function authVerify(req, env) {
   if (!body || typeof body !== "object") return json({ error: "Bad request" }, 400);
   const email = normEmail(body.email), code = String(body.code || "").replace(/\D/g, "");
   const row = await env.DB.prepare("SELECT rowid, * FROM login_codes WHERE email = ? AND used = 0 ORDER BY created_at DESC LIMIT 1").bind(email).first();
-  if (!row || row.expires_at < Date.now()) return json({ error: "That code expired. Send a new one." }, 400);
-  if (row.attempts >= 5) return json({ error: "Too many tries. Send a new code." }, 429);
-  if (row.code_hash !== await sha256(email + ":" + code)) {
-    await env.DB.prepare("UPDATE login_codes SET attempts = attempts + 1 WHERE rowid = ?").bind(row.rowid).run();
-    return json({ error: "That code isn't right. Check the email and try again." }, 400);
-  }
-  await env.DB.prepare("UPDATE login_codes SET used = 1 WHERE rowid = ?").bind(row.rowid).run();
+  if (!row) return json({ error: "That code was already used or replaced. Send a new one." }, 400);
+  if (row.expires_at < Date.now()) return json({ error: "That code expired. Send a new one." }, 400);
+  // claim one of the 5 tries atomically, so parallel guesses can't get extra tries (audit IA-036)
+  const claim = await env.DB.prepare("UPDATE login_codes SET attempts = attempts + 1 WHERE rowid = ? AND used = 0 AND attempts < 5 RETURNING attempts").bind(row.rowid).first();
+  if (!claim) return json({ error: "Too many tries. Send a new code." }, 429);
+  if (row.code_hash !== await sha256(email + ":" + code)) return json({ error: "That code isn't right. Check the email and try again." }, 400);
+  const used = await env.DB.prepare("UPDATE login_codes SET used = 1 WHERE rowid = ? AND used = 0 RETURNING rowid").bind(row.rowid).first();
+  if (!used) return json({ error: "That code was already used. Send a new one." }, 400);
   const c = await customerByEmail(env, email);
   if (!c) return json({ error: "We couldn't find your account." }, 400);
   return json({ ok: true }, 200, { "Set-Cookie": await startSession(env, c.id) });
@@ -114,7 +117,7 @@ export async function authLogout(req, env) {
 
 export async function me(req, env, extra) {
   const c = await currentCustomer(env, req);
-  if (!c) return json({ signedIn: false }, 401);
+  if (!c) return json({ signedIn: false }, req.method === "POST" ? 401 : 200);
   if (req.method === "POST") {
     let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
     const cl = (v, n) => String(v == null ? "" : v).trim().slice(0, n);

@@ -36,14 +36,17 @@ const b64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") +
 const b64uJson = s => JSON.parse(new TextDecoder().decode(b64u(s)));
 
 export async function accessUser(req, env, fetchCerts) {
-  if (env.ADMIN_DEV === "1") return { email: "dev@localhost" };          // local testing only (.dev.vars)
+  const host = new URL(req.url).hostname;
+  if (env.ADMIN_DEV === "1" && (host === "localhost" || host === "127.0.0.1")) return { email: "dev@localhost" };   // local testing only (.dev.vars)
   if (!env.ACCESS_TEAM || !env.ACCESS_AUD) return null;
   const tok = req.headers.get("Cf-Access-Jwt-Assertion");
   if (!tok) return null;
   const parts = tok.split("."); if (parts.length !== 3) return null;
   let head, body; try { head = b64uJson(parts[0]); body = b64uJson(parts[1]); } catch (e) { return null; }
   if (head.alg !== "RS256") return null;
-  if (!certCache.keys.length || Date.now() - certCache.at > 3600e3 || !certCache.keys.find(k => k.kid === head.kid)) {
+  const known = certCache.keys.find(k => k.kid === head.kid);
+  if (!known && certCache.keys.length && Date.now() - certCache.at < 60e3) return null;   // unknown key id: refetch at most once a minute
+  if (!certCache.keys.length || Date.now() - certCache.at > 3600e3 || !known) {
     const r = await (fetchCerts || fetch)("https://" + env.ACCESS_TEAM + "/cdn-cgi/access/certs");
     const j = await r.json(); certCache = { at: Date.now(), keys: j.keys || [] };
   }
@@ -55,7 +58,7 @@ export async function accessUser(req, env, fetchCerts) {
   if (!body.exp || body.exp < now || (body.nbf && body.nbf > now + 60)) return null;
   const auds = String(env.ACCESS_AUD).split(",").map(s => s.trim()).filter(Boolean), tokAud = [].concat(body.aud || []);
   if (!tokAud.some(a => auds.includes(a))) return null;
-  if (body.iss && body.iss !== "https://" + env.ACCESS_TEAM) return null;
+  if (body.iss !== "https://" + env.ACCESS_TEAM) return null;
   const email = String(body.email || "").toLowerCase();
   if (env.ADMIN_EMAILS) { const allow = String(env.ADMIN_EMAILS).toLowerCase().split(",").map(s => s.trim()); if (!allow.includes(email)) return null; }
   return { email };
@@ -135,7 +138,7 @@ export async function adminApi(req, env, url, H) {
     for (let i = 0; i < n; i++) {
       const k = addDays(from, i), s0 = nyToUtc(k, 0), s1 = nyToUtc(addDays(k, 1), 0);
       const info = dayInfo(k, busy.concat(blocks), jobs);
-      const span = (s1 - s0) / 60000, clip = (a, b) => [Math.max(0, Math.round((a - s0) / 60000)), Math.min(span, Math.round((b - s0) / 60000))];
+      const wall = ms => ms <= s0 ? 0 : ms >= s1 ? 1440 : utcToNy(ms).min, clip = (a, b) => [wall(a), wall(b)];   // wall-clock minutes (DST-safe)
       const items = [];
       for (const r of busy) { if (r.end_utc <= s0 || r.start_utc >= s1) continue; const [a, b] = clip(r.start_utc, r.end_utc); items.push({ type: r.kind === "job" ? "caljob" : r.kind === "blocked" ? "calblock" : "event", start: r.all_day ? null : a, end: r.all_day ? null : b, allDay: !!r.all_day }); }
       for (const r of blocks) { if (r.end_utc <= s0 || r.start_utc >= s1) continue; const [a, b] = clip(r.start_utc, r.end_utc); items.push({ type: "block", id: r.id, title: r.title, repeat: r.repeat, start: r.all_day ? null : a, end: r.all_day ? null : b, allDay: !!r.all_day }); }
@@ -228,6 +231,10 @@ export async function adminApi(req, env, url, H) {
     const sync = await env.DB.prepare("SELECT v FROM meta WHERE k = 'synced'").first();
     return json({ rules: RULES, pricing: PRICING, tax: TAX, membership: { plans: MEM.plans, freqDiscount: MEM.freqDiscount, minPayments: MEM.minPayments, cancelFeeRate: MEM.cancelFeeRate, skipCreditRate: MEM.skipCreditRate, skipNoticeHours: MEM.skipNoticeHours, signupDays: MEM.signupDays },
       sync: sync ? JSON.parse(sync.v) : null, square: env.SQUARE_ENV || "sandbox", calendar: !!(env.ICLOUD_USER && env.ICLOUD_APP_PASSWORD), email: !!env.RESEND_API_KEY, texts: false });
+  }
+  if (p === "/status" && M === "GET") {
+    const sync = await env.DB.prepare("SELECT v FROM meta WHERE k = 'synced'").first();
+    return json({ calendarConnected: !!(env.ICLOUD_USER && env.ICLOUD_APP_PASSWORD), emailConnected: !!env.RESEND_API_KEY, lastSync: sync ? JSON.parse(sync.v) : null });
   }
   if (p === "/sync" && M === "POST") { const r = await H.syncBusy(env); return json(Object.assign({ ok: true }, r)); }
 

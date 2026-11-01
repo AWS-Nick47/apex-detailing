@@ -876,6 +876,7 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .bk-review .rv:first-of-type { border-top: 0; }
 .bk-review .rv span { color: var(--muted); } .bk-review .rv b { text-align: right; font-weight: 600; }
 .bk-review .rv.tot b { font-size: 17px; }
+.bk-ts { margin-top: 12px; min-height: 0; } .bk-ts:empty { display: none; }
 .bk-pnote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); background: rgba(255,210,122,.08); box-shadow: inset 0 0 0 1px rgba(255,210,122,.35); }
 .bk-pnote b { color: var(--fg); } .bk-pnote p { margin: 6px 0 0; }
 .bk-code { display: grid; gap: 12px; justify-items: start; margin-top: 14px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
@@ -2033,6 +2034,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
             <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
           </div>
+          <div class="bk-ts" id="bkTs" hidden></div>
           <div class="bk-pnote" id="bkPriceNote" role="status" hidden></div>
           <div class="bk-code" id="bkCode" hidden>
             <div class="bk-code-h"><svg aria-hidden="true"><use href="#i-lock"/></svg><b>Confirm it's you</b></div>
@@ -2111,6 +2113,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <p class="acct-lede" id="acctLede">No passwords. We'll send a 6-digit code to your phone or email.</p>
       <form class="acct-form" id="acctSignin">
         <label class="acct-field"><span>Phone or email</span><input type="text" id="acctId" placeholder="(732) 555-0123 or you@email.com" autocomplete="username" required></label>
+        <div class="bk-ts" id="acctTs" hidden></div>
         <button class="btn" type="submit">Send my code</button>
       </form>
       <p class="acct-fine">New to Apex? Your account is created automatically after your first detail. <a href="#services" data-acct="close">See packages</a></p>
@@ -2357,6 +2360,34 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var idf = document.getElementById("acctId"); if (idf) { idf.type = "email"; idf.placeholder = "you@email.com"; idf.autocomplete = "email"; idf.previousElementSibling.textContent = "Email"; }
     var rs = document.getElementById("acctResend"); if (rs && rs.parentNode.firstChild.nodeType === 3) rs.parentNode.firstChild.textContent = "Didn't get it? Check your junk folder. ";
   });
+  /* ---------- Cloudflare Turnstile ("are you human" check). Dormant until Nick adds the keys; then booking and sign-in codes need it (audit IA-033) ---------- */
+  window.__ts = (function () {
+    var ready = null, widgets = {};
+    function load() {
+      if (ready) return ready;
+      ready = fetch("/api/config").then(function (r) { return r.json(); }).then(function (j) {
+        var k = j && j.turnstile; if (!k) return null;
+        return new Promise(function (ok, bad) { if (window.turnstile) return ok(); var sc = document.createElement("script"); sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); }).then(function () { return k; });
+      }).catch(function () { return null; });
+      return ready;
+    }
+    // a fresh single-use token from the widget in #host (rendered the first time it's needed)
+    function token(host) {
+      if (!window.__LIVE) return Promise.resolve(null);
+      return load().then(function (k) {
+        var el = k && document.getElementById(host); if (!el) return null;
+        el.hidden = false;
+        return new Promise(function (ok) {
+          var w = widgets[host];
+          if (!w) { w = widgets[host] = { id: null, tok: null, wait: [] };
+            w.id = window.turnstile.render(el, { sitekey: k, callback: function (t) { w.tok = t; var f = w.wait.shift(); if (f) f(); }, "expired-callback": function () { w.tok = null; }, "error-callback": function () { w.tok = null; } }); }
+          function take() { var t = w.tok; w.tok = null; ok(t); try { window.turnstile.reset(w.id); } catch (e) {} }
+          if (w.tok) take(); else w.wait.push(take);
+        });
+      });
+    }
+    return { token: token };
+  })();
   /* ---------- Prices ---------- */
   /* ================= PRICING — change numbers here and every price on the site follows ================= */
   var PRICING = {
@@ -2884,7 +2915,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !el.hidden) close(); });
     function busy(form, on, label) { var b = form.querySelector('button[type="submit"]'); if (!b) return; if (on) { b.dataset.t = b.textContent; b.textContent = label; b.disabled = true; } else { b.textContent = b.dataset.t || b.textContent; b.disabled = false; } }
     function sendCode(v) {
-      return fetch("/api/auth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: v }) }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+      return window.__ts.token("acctTs").then(function (ts) { return fetch("/api/auth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: v, ts: ts }) }); }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
     }
     document.getElementById("acctSignin").addEventListener("submit", function (e) {
       e.preventDefault(); var v = document.getElementById("acctId").value.trim(); if (!v) return;
@@ -3511,7 +3542,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function codeMsg(t, bad) { var m = $("bkCodeMsg"); m.textContent = t || ""; m.classList.toggle("bad", !!bad); }
     function codeSend() {
       codeMsg("Sending your code…");
-      return fetch("/api/auth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: codeFor }) })
+      return window.__ts.token("bkTs").then(function (ts) { return fetch("/api/auth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: codeFor, ts: ts }) }); })
         .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "We couldn't send the code. Try again."); codeMsg("Code sent. Check your email (and junk folder). It works for 10 minutes."); }); })
         .catch(function (e) { codeMsg(e.message || "We couldn't send the code. Check your connection and try again.", true); });
     }
@@ -3553,8 +3584,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var needCard = radio("pay") === "card" && !useSaved;
       (needCard ? sqMount().then(function (c) { if (!c) throw new Error("Choose Pay in person, or refresh to load the card form."); return c.tokenize(); })
         .then(function (t) { if (!t || t.status !== "OK") throw new Error((t && t.errors && t.errors[0] && t.errors[0].message) || "Check your card details."); return t; }) : Promise.resolve(null))
-        .then(function (t) {
-          var pl = bookingPayload(); if (t) { pl.cardToken = t.token; pl.postal = t.details && t.details.billing && t.details.billing.postalCode; }
+        .then(function (t) { return window.__ts.token("bkTs").then(function (ts) { return { t: t, ts: ts }; }); })
+        .then(function (o) {
+          var t = o.t, pl = bookingPayload(); pl.ts = o.ts; if (t) { pl.cardToken = t.token; pl.postal = t.details && t.details.billing && t.details.billing.postalCode; }
           // 20 s timeout: the same key makes a retry safe (the server returns the booking it already made). Audit IA-011/012.
           var ac = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ac) ac.abort(); }, 20000);
           return fetch("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pl), signal: ac ? ac.signal : undefined }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; });

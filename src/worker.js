@@ -87,7 +87,28 @@ async function slotOpen(env, key, startMin, pkg, size, adds, exceptId) {
 }
 
 // ---------- validation ----------
-function clean(v, max) { return String(v == null ? "" : v).trim().slice(0, max || 200); }
+function clean(v, max) { return String(v == null ? "" : v).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim().slice(0, max || 200); }
+
+// ---------- abuse limits (audit IA-033) ----------
+// Counts requests per key in D1. Off in local dev (RATE_LIMITS=off in .dev.vars) unless a test asks for them.
+const ipOf = req => req.headers.get("CF-Connecting-IP") || "unknown";
+const limitsOn = (env, req) => env.RATE_LIMITS !== "off" || req.headers.get("X-Apex-Ratetest") === "1";
+async function overLimit(env, req, k, max, windowMs) {
+  if (!limitsOn(env, req)) return false;
+  const n = (await env.DB.prepare("SELECT COUNT(*) n FROM ratelog WHERE k = ? AND at > ?").bind(k, Date.now() - windowMs).first()).n;
+  if (n >= max) return true;
+  await env.DB.prepare("INSERT INTO ratelog (k, at) VALUES (?, ?)").bind(k, Date.now()).run();
+  return false;
+}
+// Cloudflare Turnstile ("are you human"), only when Nick has added TURNSTILE_SITEKEY (var) and TURNSTILE_SECRET (secret)
+async function humanOk(env, token, ip) {
+  if (!env.TURNSTILE_SECRET || !env.TURNSTILE_SITEKEY) return true;
+  if (!token) return false;
+  const fd = new FormData(); fd.append("secret", env.TURNSTILE_SECRET); fd.append("response", String(token)); if (ip) fd.append("remoteip", ip);
+  try { const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: fd }); const j = await r.json(); return !!j.success; }
+  catch (e) { console.log("turnstile check failed", e.message); return false; }
+}
+const HUMAN_MSG = "Please finish the quick \"are you human\" check, then try again.";
 function readBooking(body) {
   const f = {
     pkg: clean(body.pkg, 20), size: +body.size, adds: Array.isArray(body.adds) ? body.adds.map(x => clean(x, 20)) : [],
@@ -177,6 +198,14 @@ async function emailNick(env, b, kind, extra) {
   return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body + (photos ? `<p style="margin:14px 0 0;color:#444">${photos.length} photo${photos.length > 1 ? "s" : ""} of the areas of concern attached.</p>` : ""), label, site + "/email-logo.png"), attachments: photos || undefined });
 }
 
+// Two bookings saved at nearly the same moment for overlapping times: the later one steps back (audit IA-038).
+async function lostRace(env, b) {
+  const gap = RULES.gapMin * 60000;
+  const other = await env.DB.prepare("SELECT id FROM bookings WHERE status = 'confirmed' AND id != ? AND start_utc < ? AND end_utc > ? AND (created_at < ? OR (created_at = ? AND id < ?)) LIMIT 1")
+    .bind(b.id, b.end_utc + gap, b.start_utc - gap, b.created_at, b.created_at, b.id).first();
+  return !!other;
+}
+
 // what /api/book answers once a booking exists (also for a repeated request with the same key)
 async function bookedReply(env, b) {
   const t = withTax((b.quote || 0) * 100), m = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status != 'cancelled'").bind(b.id).first();
@@ -247,12 +276,19 @@ async function api(req, env, url) {
     let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
     if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Bad request" }, 400);
     if (body.website) return json({ ok: true, id: "OK" });   // spam trap
+    if (await overLimit(env, req, "book:" + ipOf(req), 10, 3600e3)) return json({ error: "Too many booking tries from your connection. Try again in an hour, or text us at (732) 206-7084." }, 429);
     const { f, err } = readBooking(body);
     // the same booking sent again (lost response, timeout, double tap): answer with the one already made. Audit IA-011.
     if (f.key) { const ex = await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first(); if (ex) return json(await bookedReply(env, ex)); }
     if (err.includes("location")) return json({ error: "We couldn't find that address. Pick it from the address suggestions, or pick your town from the list. Or text us at (732) 206-7084.", field: "q-town" }, 400);
     if (err.includes("distance")) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084 and we'll see what we can do.", field: "q-town" }, 400);
     if (err.length) return json({ error: "Please check: " + err.join(", "), fields: err }, 400);
+    if (!(await humanOk(env, body.ts, ipOf(req)))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
+    if (limitsOn(env, req)) {   // at most 3 upcoming details per email and per phone number
+      const digits = f.phone.replace(/\D/g, "").slice(-10);
+      const up = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND end_utc > ? AND (email = ? OR substr(replace(replace(replace(replace(replace(phone,'(',''),')',''),' ',''),'-',''),'+',''), -10) = ?)").bind(Date.now(), normEmail(f.email), digits).first();
+      if (up.n >= 3) return json({ error: "You already have 3 upcoming details booked. Text us at (732) 206-7084 to add another." }, 429);
+    }
     if (nyToUtc(f.day, f.start) < Date.now() + RULES.noticeHours * 3600e3) return json({ error: "That time is less than " + RULES.noticeHours + " hours away or has passed. Please pick another time.", taken: true }, 409);
     // An email that already has an account: adding Apex Membership or a card on file needs that account's sign-in code,
     // so nobody can start a membership on someone else's saved card or replace it (audit IA-001 / IA-002).
@@ -306,6 +342,10 @@ async function api(req, env, url) {
       if (ex) return json(await bookedReply(env, ex));
       throw e;
     }
+    if (await lostRace(env, b)) {
+      await env.DB.prepare("DELETE FROM bookings WHERE id = ?").bind(b.id).run();
+      return json({ error: "Sorry, that time was just taken. Please pick another.", taken: true }, 409);
+    }
     b._photos = f.photos;
     if (f.sms) await env.DB.prepare("UPDATE customers SET sms_ok = 1, sms_ok_at = ? WHERE id = ?").bind(Date.now(), customerId).run();
     if (f.plan && f.memAuth) {
@@ -322,12 +362,21 @@ async function api(req, env, url) {
       subtotal: q.subtotal, tax: q.tax, total: q.total, priceChanged: shownQuote !== q.subtotal, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
   }
 
-  if (p === "/api/auth/start" && req.method === "POST") return authStart(req, env);
-  if (p === "/api/auth/verify" && req.method === "POST") return authVerify(req, env);
+  if (p === "/api/auth/start" && req.method === "POST") {
+    if (await overLimit(env, req, "auth:" + ipOf(req), 10, 600e3)) return json({ error: "Too many code requests from your connection. Try again in 10 minutes." }, 429);
+    const pre = await req.clone().json().catch(() => null);
+    if (!(await humanOk(env, pre && pre.ts, ipOf(req)))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
+    return authStart(req, env);
+  }
+  if (p === "/api/auth/verify" && req.method === "POST") {
+    if (await overLimit(env, req, "verify:" + ipOf(req), 30, 600e3)) return json({ error: "Too many tries from your connection. Try again in 10 minutes." }, 429);
+    return authVerify(req, env);
+  }
   if (p === "/api/auth/logout" && req.method === "POST") return authLogout(req, env);
   if (p === "/api/me" && req.method === "GET") {
     const r = await me(req, env); if (r.status !== 200) return r;
-    const j = await r.json(), c = await currentCustomer(env, req), m = await activeFor(env, c.id);
+    const j = await r.json(); if (!j.signedIn) return json(j);   // signed out: a normal answer, not an error (audit IA-059)
+    const c = await currentCustomer(env, req), m = await activeFor(env, c.id);
     j.member = await memSummary(env, m, c);
     // can they start a membership from the account? (within 14 days after a qualifying detail)
     if (!m) {
@@ -340,7 +389,7 @@ async function api(req, env, url) {
   }
   if (p === "/api/me") return me(req, env);
   if (p.startsWith("/api/member/")) return memberApi(req, env, url);
-  if (p === "/api/config") return json({ square: publicConfig(env) });
+  if (p === "/api/config") return json({ square: publicConfig(env), turnstile: env.TURNSTILE_SECRET && env.TURNSTILE_SITEKEY ? env.TURNSTILE_SITEKEY : null });
   if (p === "/api/me/card") {
     const c = await currentCustomer(env, req); if (!c) return json({ error: "Sign in first." }, 401);
     if (req.method === "DELETE") {
@@ -355,14 +404,9 @@ async function api(req, env, url) {
   }
   if (p.startsWith("/api/pay/") && req.method === "POST") return payApi(req, env, url);
 
-  if (p === "/api/status" && req.method === "GET") {
-    const s = await lastSync(env);
-    let cals = null;
-    if (url.searchParams.get("cal") === "1" && calConfigured(env)) { try { cals = (await calendars(env, true)).map(c => c.name); } catch (e) { cals = "error: " + e.message; } }
-    return json({ calendarConnected: calConfigured(env), emailConnected: !!env.RESEND_API_KEY, lastSync: s, calendars: cals });
-  }
+  // (the old public /api/status moved to /api/admin/status, behind Cloudflare Access: audit IA-035)
 
-  if (["/api/days", "/api/book", "/api/auth/start", "/api/auth/verify", "/api/auth/logout", "/api/status", "/api/config"].includes(p)) return json({ error: "Method not allowed" }, 405);
+  if (["/api/days", "/api/book", "/api/auth/start", "/api/auth/verify", "/api/auth/logout", "/api/config"].includes(p)) return json({ error: "Method not allowed" }, 405);
   return json({ error: "Not found" }, 404);
 }
 
@@ -398,6 +442,7 @@ async function memberApi(req, env, url) {
     await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, quote, travel_fee, name, phone, email, address, town, car, color, water, power, notes, remind, customer_id, kind, membership_id, visit_value_cents, terms_version, terms_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.quote, b.travel_fee,
       b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.notes, b.remind, b.customer_id, b.kind, b.membership_id, b.visit_value_cents, m.terms_version, Date.now()).run();
+    if (await lostRace(env, b)) { await env.DB.prepare("DELETE FROM bookings WHERE id = ?").bind(b.id).run(); return json({ error: "That time was just taken. Pick another." }, 409); }
     const tasks = [];
     if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));
     tasks.push(emailCustomer(env, b, "new").catch(() => {}), emailNick(env, b, "new").catch(() => {}));
@@ -453,9 +498,20 @@ async function reminders(env) {
   const tmr = addDays(now.key, 1);
   const r = await env.DB.prepare("SELECT * FROM bookings WHERE status = 'confirmed' AND day = ? AND remind = 1 AND reminded_at IS NULL").bind(tmr).all();
   for (const b of r.results || []) {
-    await emailCustomer(env, b, "remind");
+    const res = await emailCustomer(env, b, "remind").catch(e => ({ error: e.message }));
+    if (res && res.error) { console.log("reminder failed, will retry", b.id, String(res.error).slice(0, 200)); continue; }   // try again on the next run
     await env.DB.prepare("UPDATE bookings SET reminded_at = ? WHERE id = ?").bind(Date.now(), b.id).run();
   }
+}
+
+// old sign-in codes, sessions and rate-limit rows (audit IA-038)
+async function cleanup(env) {
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(now),
+    env.DB.prepare("DELETE FROM login_codes WHERE created_at < ?").bind(now - 2 * 864e5),
+    env.DB.prepare("DELETE FROM ratelog WHERE at < ?").bind(now - 864e5)
+  ]);
 }
 
 async function calSave(env, b) {
@@ -516,9 +572,23 @@ async function ack(req, env, url) {
   return html(page("New booking", `<h1>${h(pkgName(b))} · ${h(b.name)}</h1><p class="sub">${h(whenText(b))}</p>${summaryCard(b)}<form method="post" class="acts"><button class="btn" style="width:100%">Got it</button></form><p class="note">"Got it" just marks it seen for you. The customer is already confirmed.</p>`));
 }
 
+// IA-058: security headers (static files get the same from public/_headers)
+const SEC_HEADERS = { "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin", "X-Frame-Options": "DENY",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), usb=()", "Content-Security-Policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+  "Strict-Transport-Security": "max-age=31536000" };
+function secure(res) { const out = new Response(res.body, res); for (const [k, v] of Object.entries(SEC_HEADERS)) if (!out.headers.has(k)) out.headers.set(k, v); return out; }
+
 export default {
-  async fetch(req, env) {
+  async fetch(req, env) { return secure(await handle(req, env)); },
+  async scheduled(event, env, ctx) { return scheduledRun(event, env, ctx); }
+};
+
+async function handle(req, env) {
     const url = new URL(req.url);
+    // owner actions (dashboard writes, job page, Got it) must come from this site's own pages (audit IA-037)
+    const ownerWrite = req.method !== "GET" && req.method !== "HEAD" && (url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/job/") || url.pathname.startsWith("/ack/"));
+    if (ownerWrite) { const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);
+      if (url.pathname.startsWith("/api/admin/") && !/application\/json/.test(req.headers.get("Content-Type") || "")) return json({ error: "Send JSON" }, 415); }
     try {
       if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/admin/")) {
         const who = await accessUser(req, env).catch(e => { console.log("admin auth error", e.message); return null; });
@@ -542,12 +612,15 @@ export default {
       return url.pathname.startsWith("/api/") ? json({ error: "Something went wrong on our side. Please text (732) 206-7084." }, 500) : html(page("Error", "<h1>Something went wrong</h1><p class='sub'>Please text (732) 206-7084.</p>"), 500);
     }
     return env.ASSETS.fetch(req);
-  },
-  async scheduled(event, env, ctx) {
+}
+
+async function scheduledRun(event, env, ctx) {
+  {
     ctx.waitUntil(syncBusy(env).then(r => console.log("sync", JSON.stringify(r))).catch(e => console.log("sync failed", e.message)));
     ctx.waitUntil(reminders(env).catch(e => console.log("reminders failed", e.message)));
     ctx.waitUntil(runBilling(env).then(l => l.length && console.log("billing", JSON.stringify(l))).catch(e => console.log("billing failed", e.message)));
+    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 10) ctx.waitUntil(cleanup(env).catch(e => console.log("cleanup failed", e.message)));   // once an hour
   }
-};
+}
 
 export { emailCustomer, emailNick };

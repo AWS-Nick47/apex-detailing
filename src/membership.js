@@ -187,8 +187,10 @@ async function billOne(env, m, today) {
     catch (e) { return failed(env, m, billDay, amount, credit, e.message); }
   }
   const periodEnd = addMonths(m.start_day, monthsBetween(m.start_day, billDay) + 1);
-  await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, credit_used_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, ?, 'paid', ?, ?, ?, ?)")
-    .bind(rid(), m.id, amount, tax, credit, p ? p.id : null, p ? p.receipt : null, billDay, Date.now()).run();
+  try {
+    await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, credit_used_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, ?, 'paid', ?, ?, ?, ?)")
+      .bind(rid(), m.id, amount, tax, credit, p ? p.id : null, p ? p.receipt : null, billDay, Date.now()).run();
+  } catch (e) { if (/UNIQUE/i.test(e.message)) return "already billed (another run got there first)"; throw e; }   // cron and "Retry payment" at once (audit IA-038)
   const made = m.payments_made + 1;
   const fields = { status: m.status === "past_due" ? "active" : m.status, payments_made: made, credit_cents: m.credit_cents - credit, fail_count: 0, retry_day: null, owed_cents: 0,
     period_start: billDay, period_end: periodEnd, period_visit_cents: Math.round(full / m.freq), period_type: cover, next_bill: periodEnd };
