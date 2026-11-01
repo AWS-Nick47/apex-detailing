@@ -2816,7 +2816,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function $$(s, r) { return Array.prototype.slice.call((r || el).querySelectorAll(s)); }
     function priceOf(h) { return REG[h.pkg][h.size] + h.adds.reduce(function (t, id) { var a = ADDONS.filter(function (x) { return x.id === id; })[0]; return t + (a ? (mode === "member" ? Math.round(a.p * (1 - PRICING.memberAddonDiscount)) : a.p) : 0); }, 0); }
     function addNames(h) { return h.adds.map(function (id) { var a = ADDONS.filter(function (x) { return x.id === id; })[0]; return a ? (a.short || a.name) : id; }); }
-    function toast(m) { toastEl.textContent = m; toastEl.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove("show"); }, 2200); }
+    function toast(m) { toastEl.textContent = m; toastEl.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove("show"); }, Math.max(2200, String(m).length * 70)); }
     function view(v) {
       $$(".acct-view").forEach(function (x) { x.hidden = x.dataset.view !== v; });
       el.classList.toggle("wide", v === "dash");
@@ -2978,11 +2978,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           '<button type="button" class="dact" id="mlChange"><b>Change plan</b><span>Switch how often or what\'s included</span></button>' +
           '</div><div id="mlPanel"></div>';
         if (M.status !== "ending") html += '<button type="button" class="link-btn danger" id="mlCancel">Cancel Apex Membership</button>';
+        else if (M.cancelMode === "finish" && M.minLeft > 0) html += '<button type="button" class="link-btn danger" data-cancel="now">Cancel now instead · $' + M.cancelFee + ' fee + tax</button>';
         html += '<p class="dc-fine" style="text-align:center"><a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a></p>';
       } else if (CANSTART) {
         var C = CANSTART, t0 = C.plans[C.plans.length - 1];
         html += '<div class="dcard"><div class="dc-k"><span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span></div><div class="dc-t">Start your membership</div>' +
-          '<div class="dc-sub">Your ' + esc(NAMES[C.pkg]) + ' on ' + esc(dnice(C.day)) + ' qualifies. Sign up by ' + esc(dnice(C.deadline)) + '.</div>' +
+          '<div class="dc-sub">' + (C.upcoming ? 'Add it to your ' + esc(NAMES[C.pkg]) + ' on ' + esc(dnice(C.day)) + '. Your first monthly charge is one month after that detail, on ' + esc(dnice(C.firstBill)) + '.' : 'Your ' + esc(NAMES[C.pkg]) + ' on ' + esc(dnice(C.day)) + ' qualifies. Sign up by ' + esc(dnice(C.deadline)) + '.') + '</div>' +
           '<div class="dc-k" style="margin-top:10px">Each visit</div><div class="ml-seg" id="msType">' + C.plans.map(function (t) { return '<button type="button" data-v="' + t + '" aria-pressed="' + (t === t0) + '">' + PLAN_NAMES[t] + '</button>'; }).join("") + '</div>' +
           '<div class="dc-k" style="margin-top:10px">How often</div><div class="ml-seg" id="msFreq">' + [1, 2, 4].map(function (f) { return '<button type="button" data-v="' + f + '" aria-pressed="' + (f === 1) + '">' + FREQ_NAMES[f] + '</button>'; }).join("") + '</div>' +
           '<div class="dc-big" id="msPrice" style="margin-top:12px"></div><div class="dc-sub" id="msSub"></div>' +
@@ -2996,12 +2997,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     }
     function msUpdate() {
       var t = $("#msType [aria-pressed=true]"), f = $("#msFreq [aria-pressed=true]"); if (!t || !f) return;
-      var P = window.__planPrice(t.dataset.v, CANSTART.size, +f.dataset.v), first = (function () { var p = CANSTART.day.split("-"); var d = new Date(Date.UTC(+p[0], +p[1], +p[2], 12)); return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); })();
+      var P = window.__planPrice(t.dataset.v, CANSTART.size, +f.dataset.v), first = CANSTART.firstBill ? dnice(CANSTART.firstBill) : (function () { var p = CANSTART.day.split("-"); var d = new Date(Date.UTC(+p[0], +p[1], +p[2], 12)); return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); })();
       $("#msPrice").textContent = "$" + P.monthly + "/mo + tax"; $("#msSub").textContent = (+f.dataset.v === 1 ? "1 visit" : f.dataset.v + " visits") + " a month at $" + P.perVisit + " each, instead of $" + P.oneoffVisit;
       $("#msAuthTxt").innerHTML = "I authorize Apex Detailing LLC to charge my card <b>" + usd(withTax(P.monthly)) + "/mo</b> ($" + P.monthly + " + " + usd(taxOf(P.monthly)) + " " + TAX.name + ") starting " + first + " and on that date every month until I cancel, with a 3-month minimum, as described in the <a href=\"membership-terms.html\" target=\"_blank\" rel=\"noopener\">Membership Terms</a>.";
     }
     function mlTimes(i) { var d = window.__mlDays[i]; $("#mlTimes").innerHTML = d.slots.map(function (m) { return '<button type="button" data-mv="' + d.day + '|' + m + '">' + window.__tstr(m) + '</button>'; }).join(""); }
-    function memPanel(h) { var p = document.getElementById("mlPanel") || document.getElementById("mlSlots"); p.innerHTML = h; p.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+    function memPanel(h) { var p = document.getElementById("mlPanel") || document.getElementById("mlSlots"); if (!p) { var box = document.getElementById("memLive"); if (!box) return; p = document.createElement("div"); p.id = "mlPanel"; box.insertBefore(p, box.firstChild); } p.innerHTML = h; p.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
     el.addEventListener("click", function (e) {
       if (!LIVE) return;
       var t = e.target;
@@ -3060,10 +3061,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var acCard = null;
     function cardUI() {
       var sec = document.getElementById("acctCardSec"); if (!LIVE) return; sec.hidden = false;
-      var has = DEMO.card && !/No card/.test(DEMO.card);
-      document.getElementById("acctCardTxt").textContent = has ? DEMO.card + " is saved for card-on-file bookings." : "No card saved. Add one to pay automatically after each detail.";
+      var has = DEMO.card && !/No card/.test(DEMO.card), mem = !!(MEMBER && MEMBER.status !== "cancelled");
+      document.getElementById("acctCardTxt").textContent = has ? DEMO.card + (mem ? " pays your Apex Membership and card-on-file bookings. You can replace it anytime." : " is saved for card-on-file bookings.") : "No card saved. Add one to pay automatically after each detail.";
       document.getElementById("acctCardAdd").textContent = has ? "Replace card" : "Add a card";
-      document.getElementById("acctCardRemove").hidden = !has;
+      document.getElementById("acctCardRemove").hidden = !has || mem;
     }
     document.getElementById("acctCardAdd").addEventListener("click", function () {
       var btn = this; btn.disabled = true;
@@ -3083,12 +3084,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         return fetch("/api/me/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t.token, postal: t.details && t.details.billing && t.details.billing.postalCode }) });
       }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Couldn't save the card."); return j; }); })
         .then(function (j) { toast("Card saved"); DEMO.card = j.card.brand + " ending " + j.card.last4; acCard.destroy && acCard.destroy(); acCard = null;
-          document.getElementById("acctCardForm").hidden = true; btn.hidden = true; btn.disabled = false; btn.textContent = "Save card"; var a = document.getElementById("acctCardAdd"); a.hidden = false; a.disabled = false; cardUI(); loadMe(); })
+          document.getElementById("acctCardForm").hidden = true; btn.hidden = true; btn.disabled = false; btn.textContent = "Save card"; var a = document.getElementById("acctCardAdd"); a.hidden = false; a.disabled = false; cardUI(); loadMe().then(function () { fill(); }); })
         .catch(function (e) { btn.disabled = false; btn.textContent = "Save card"; toast(e.message); });
     });
     document.getElementById("acctCardRemove").addEventListener("click", function () {
       if (!confirm("Remove your saved card?")) return;
-      fetch("/api/me/card", { method: "DELETE" }).then(function (r) { if (r.ok) { DEMO.card = "No card saved"; cardUI(); toast("Card removed"); loadMe(); } });
+      fetch("/api/me/card", { method: "DELETE" }).then(function (r) { return r.json().then(function (j) { if (r.ok) { DEMO.card = "No card saved"; cardUI(); toast("Card removed"); loadMe().then(function () { fill(); }); } else toast(j.error || "Couldn't remove the card."); }); });
     });
     window.__acct = { isIn: function () { return signedIn; }, data: DEMO, mode: function () { return mode; } };
     if (LIVE) loadMe();

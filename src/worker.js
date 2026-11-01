@@ -7,7 +7,7 @@ import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, cu
 import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
 import { adminApi, accessUser, blockoutBusy } from "./admin.js";
-import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths } from "./membership.js";
+import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const TERMS_VERSION = "2026-11-01";   // bump when terms.html / membership-terms.html / privacy.html change
@@ -192,13 +192,14 @@ function summaryCard(b) {
 }
 
 async function managePage(env, b, msg) {
-  if (b.status === "cancelled") return page("Cancelled", `<h1>This booking is cancelled</h1><p class="sub">${msg ? h(msg) + " " : ""}Want a new time? <a href="/" style="color:#ededed">Book again</a>.</p>${summaryCard(b)}`);
+  if (b.status === "cancelled") return b.kind === "member" ? page("Skipped", `<h1>This visit is skipped</h1><p class="sub">${msg ? h(msg) + " " : ""}It counts as this month's visit. <a href="/#account" style="color:#ededed">Your account</a> shows your membership and next visits.</p>${summaryCard(b)}`)
+    : page("Cancelled", `<h1>This booking is cancelled</h1><p class="sub">${msg ? h(msg) + " " : ""}Want a new time? <a href="/#book" style="color:#ededed">Book again</a>.</p>${summaryCard(b)}`);
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
   const head = `<h1>Your ${h(pkgName(b))}</h1><p class="sub">${h(whenText(b))}</p>${msg ? `<p class="note" style="color:#c8f7c5">${h(msg)}</p>` : ""}${summaryCard(b)}`;
   const member = b.kind === "member" ? await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first() : null;
   if (member) {
     const credit = hoursLeft >= MEM.skipNoticeHours ? Math.round((b.visit_value_cents || 0) * MEM.skipCreditRate) : 0;
-    const skip = `<h2>Skip this visit</h2><form method="post" action="/b/${b.token}/cancel" onsubmit="return confirm('Skip this visit?')"><button class="btn d" style="width:100%">Skip this visit</button></form><p class="note">${credit ? "With 48+ hours' notice you get a $" + (credit / 100).toFixed(credit % 100 ? 2 : 0) + " credit (50%) on your next monthly charge." : "Less than 48 hours' notice, so no credit for this visit."}</p>`;
+    const skip = `<h2>Can't make it?</h2><form method="post" action="/b/${b.token}/cancel" onsubmit="return confirm('Skip this visit? It still counts as this month\\'s visit.')"><button class="btn d" style="width:100%">Skip this visit</button></form><p class="note">A skipped visit still counts as this month's visit. ${credit ? "With 48+ hours' notice you get a $" + (credit / 100).toFixed(credit % 100 ? 2 : 0) + " credit (50%) on your next monthly charge." : "Less than 48 hours' notice, so no credit for this visit."}</p>`;
     if (hoursLeft < RULES.noticeHours) return page("Your visit", head + skip + `<p class="note">To move it instead, text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
     const from = addDays(todayKey(), 1), n = Math.max(1, Math.min(35, Math.round((nyToUtc(member.period_end || from, 0) - nyToUtc(from, 0)) / 864e5)));
     const info = await days(env, from, n, b.id), opts = [];
@@ -212,7 +213,9 @@ async function managePage(env, b, msg) {
   for (const k of Object.keys(info)) { const s = slotsFor(k, info[k], b.pkg, b.size, adds, Date.now()); if (s.length) opts.push([k, s]); if (opts.length >= 8) break; }
   const pick = opts.length ? `<div class="days">${opts.map(([k, s]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${s.slice(0, 8).map(t => `<form method="post" action="/b/${b.token}/move"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button>${tstr(t)}</button></form>`).join("")}</div></div>`).join("")}</div>`
     : `<p class="note">No other open times in the next 3 weeks. Text us at (732) 206-7084 and we'll work something out.</p>`;
-  return page("Your booking", head + `<h2>Pick a new time</h2>${pick}<h2>Cancel</h2><form method="post" action="/b/${b.token}/cancel" onsubmit="return confirm('Cancel this detail?')"><button class="btn d" style="width:100%">Cancel my detail</button></form><p class="note">Free to change or cancel up to 24 hours before.</p>`);
+  const firstOf = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status IN ('pending','active') AND payments_made = 0").bind(b.id).first();
+  const memWarn = firstOf ? `<p class="note" style="color:#ffd27a">This detail starts your Apex Membership (${h(planLabel(firstOf.type, firstOf.freq, firstOf.size))}). Cancelling it cancels the membership too. You won't be charged. Moving it to a new time keeps the membership and moves its first charge.</p>` : "";
+  return page("Your booking", head + `<h2>Pick a new time</h2>${pick}<h2>Cancel</h2>${memWarn}<form method="post" action="/b/${b.token}/cancel" onsubmit="return confirm('${firstOf ? "Cancel this detail and your Apex Membership?" : "Cancel this detail?"}')"><button class="btn d" style="width:100%">Cancel my detail</button></form><p class="note">Free to change or cancel up to 24 hours before.</p>`);
 }
 
 // ---------- routes ----------
@@ -300,10 +303,10 @@ async function api(req, env, url) {
     j.member = await memSummary(env, m, c);
     // can they start a membership from the account? (within 14 days after a qualifying detail)
     if (!m) {
-      const since = addDays(todayKey(), -MEM.signupDays);
-      const q = await env.DB.prepare("SELECT id, pkg, size, day, car FROM bookings WHERE customer_id = ? AND kind != 'member' AND status = 'confirmed' AND day >= ? AND day <= ? ORDER BY day DESC LIMIT 1").bind(c.id, since, todayKey()).first();
+      const q = await qualifyingFor(env, c.id, todayKey());   // last 14 days, or an upcoming detail (audit IA-050)
       if (q) j.canStart = { booking: q.id, pkg: q.pkg, size: q.size, day: q.day, car: q.car, deadline: addDays(q.day, MEM.signupDays),
-        plans: Object.keys(MEM.plans).filter(t => MEM.prereq[t].includes(q.pkg)) };
+        plans: Object.keys(MEM.plans).filter(t => MEM.prereq[t].includes(q.pkg)), upcoming: q.day > todayKey(), firstBill: addMonths(q.day, 1) };
+      if (j.canStart && !j.canStart.plans.length) delete j.canStart;
     }
     return json(j);
   }
@@ -312,7 +315,11 @@ async function api(req, env, url) {
   if (p === "/api/config") return json({ square: publicConfig(env) });
   if (p === "/api/me/card") {
     const c = await currentCustomer(env, req); if (!c) return json({ error: "Sign in first." }, 401);
-    if (req.method === "DELETE") { await removeCard(env, c); return json({ ok: true }); }
+    if (req.method === "DELETE") {
+      const mm = await activeFor(env, c.id);
+      if (mm) return json({ error: "Your Apex Membership is billed to this card, so it can't be removed. You can replace it with another card." }, 409);
+      await removeCard(env, c); return json({ ok: true });
+    }
     if (req.method !== "POST" || !squareOn(env)) return json({ error: "Not available" }, 400);
     let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
     try { const card = await saveCard(env, c, String(body.token || ""), String(body.postal || "").slice(0, 10)); return json({ ok: true, card: { brand: card.brand, last4: card.last4 } }); }
@@ -338,9 +345,8 @@ async function memberApi(req, env, url) {
   if (action === "start" && req.method === "POST") {
     if (body.auth !== true) return json({ error: "Please check the box to authorize the monthly charge." }, 400);
     if (!c.card) return json({ error: "Add a card first (My details → Payment card)." }, 400);
-    const since = addDays(todayKey(), -MEM.signupDays);
-    const q = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? AND kind != 'member' AND status = 'confirmed' AND day >= ? AND day <= ? ORDER BY day DESC LIMIT 1").bind(c.id, since, todayKey()).first();
-    if (!q) return json({ error: "Memberships start within 14 days after a qualifying detail." }, 400);
+    const q = await qualifyingFor(env, c.id, todayKey());
+    if (!q) return json({ error: "Memberships start with a detail: book one, or sign up within 14 days after it." }, 400);
     try { const r = await createMembership(env, { customerId: c.id, booking: q, type: String(body.type), freq: +body.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: req.headers.get("CF-Connecting-IP") || "" } });
       return json({ ok: true, message: "You're in! " + r.label + " at $" + r.monthly + "/mo + " + TAX.name + ". Your first charge (" + usd(withTax(r.monthly * 100).total) + ") is " + dayLabel(r.firstBill) + "." }); }
     catch (e) { return json({ error: e.message }, 400); }
@@ -382,6 +388,14 @@ async function memberApi(req, env, url) {
   return json({ error: "Not found" }, 404);
 }
 
+// the member's own copy of a skip (Nick gets his "Cancelled" email)
+async function emailSkip(env, b, credit) {
+  const first = (b.name || "").split(" ")[0] || "there", subject = "Skipped: your " + pkgName(b) + " on " + dayLabel(b.day);
+  const body = `<h1 style="font-size:22px;margin:0 0 8px">Visit skipped</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, we've skipped your ${h(pkgName(b))} on ${h(whenText(b))}. A skipped visit still counts as this month's visit. ` +
+    (credit ? `You'll get a ${usd(credit)} credit (before tax) on your next monthly charge.` : `It was less than 48 hours' notice, so there's no credit for this one.`) + `</p><p style="margin:18px 0 0">${button(env.SITE_URL + "/#account", "My membership")}</p>`;
+  return send(env, { to: b.email, subject, html: layout(subject, body, subject, env.SITE_URL + "/email-logo.png") });
+}
+
 // credit for a skipped member visit (customer: 50% with 48+ hours' notice; us/weather: 100%)
 async function creditVisit(env, b, rate) {
   if (b.kind !== "member" || !b.membership_id || !rate) return 0;
@@ -395,6 +409,7 @@ export async function cancelByUs(env, b) {
   await env.DB.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?").bind(Date.now(), b.id).run();
   b.status = "cancelled";
   const credit = await creditVisit(env, b, 1);
+  if (b.kind !== "member") await cancelWithDetail(env, b, true).catch(e => console.log("membership cancel failed", e.message));
   await deleteJob(env, b.cal_href).catch(() => {});
   const first = b.name.split(" ")[0], subject = "We had to cancel your " + pkgName(b) + " on " + dayLabel(b.day);
   const body = `<h1 style="font-size:22px;margin:0 0 8px">Sorry, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">We had to cancel your ${h(pkgName(b))} on ${h(whenText(b))} (weather or something on our end). ` +
@@ -437,11 +452,12 @@ async function manage(req, env, url) {
     b.status = "cancelled";
     const credit = await creditVisit(env, b, hoursLeft >= MEM.skipNoticeHours ? MEM.skipCreditRate : 0);
     if (b.kind === "member") {
-      await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailNick(env, b, "cancel").catch(() => {})]);
+      await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailNick(env, b, "cancel").catch(() => {}), emailSkip(env, b, credit).catch(() => {})]);
       return html(await managePage(env, b, credit ? "Skipped. A $" + (credit / 100).toFixed(credit % 100 ? 2 : 0) + " credit goes toward your next monthly charge." : "Skipped."));
     }
     await Promise.all([deleteJob(env, b.cal_href).catch(() => {}), emailCustomer(env, b, "cancel").catch(() => {}), emailNick(env, b, "cancel").catch(() => {})]);
-    return html(await managePage(env, b, "Done."));
+    const memC = await cancelWithDetail(env, b, false).catch(e => { console.log("membership cancel failed", e.message); return null; });
+    return html(await managePage(env, b, "Done." + (memC ? " Your Apex Membership was cancelled too. You weren't charged." : "")));
   }
   const fd = await req.formData(), day = String(fd.get("day") || ""), start = +fd.get("start");
   const adds = b.kind === "member" ? ["_member"] : JSON.parse(b.adds || "[]");
@@ -456,6 +472,7 @@ async function manage(req, env, url) {
   const hist = JSON.parse(b.history || "[]"); hist.push({ at: Date.now(), from: b.start_utc });
   await env.DB.prepare("UPDATE bookings SET start_utc = ?, end_utc = ?, day = ?, pkg = ?, history = ? WHERE id = ?").bind(start_utc, end_utc, day, b.pkg, JSON.stringify(hist), b.id).run();
   Object.assign(b, { start_utc, end_utc, day });
+  if (b.kind !== "member") b._mem = await moveWithDetail(env, b).catch(e => { console.log("membership move failed", e.message); return null; });
   await Promise.all([calConfigured(env) ? calSave(env, b).catch(() => {}) : null, emailCustomer(env, b, "move").catch(() => {}), emailNick(env, b, "move", was).catch(() => {})]);
   return html(await managePage(env, b, "Moved. We sent you a new confirmation."));
 }

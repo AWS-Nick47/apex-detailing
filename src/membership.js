@@ -62,6 +62,38 @@ export async function createMembership(env, { customerId, booking, type, freq, a
   return { id, monthly: p.monthly, firstBill: addMonths(booking.day, 1), label: planLabel(type, +freq, booking.size) };
 }
 
+// The detail a customer can start a membership from: the latest one in the last 14 days, else their next upcoming one.
+export async function qualifyingFor(env, customerId, today) {
+  const since = addDays(today, -MEM.signupDays);
+  const r = (await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? AND kind != 'member' AND status = 'confirmed' AND day >= ? ORDER BY day").bind(customerId, since).all()).results || [];
+  const past = r.filter(b => b.day <= today);
+  return past.length ? past[past.length - 1] : r[0] || null;
+}
+
+// The first detail moved: the membership's dates move with it (only before the first monthly charge). Audit IA-007.
+export async function moveWithDetail(env, booking) {
+  const m = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status IN ('pending','active') AND payments_made = 0").bind(booking.id).first();
+  if (!m) return null;
+  const today = todayNY().key, first = addMonths(booking.day, 1);
+  await upd(env, m.id, { start_day: booking.day, next_bill: first, status: booking.day <= today ? "active" : "pending", card_reminders: 0 });
+  return { id: m.id, monthly: m.monthly_cents / 100, firstBill: first, label: planLabel(m.type, m.freq, m.size) };
+}
+
+// The first detail was cancelled: the membership can't start, so it's cancelled too (no charge yet) and both sides get an email. Audit IA-010.
+export async function cancelWithDetail(env, booking, byUs) {
+  const m = await env.DB.prepare("SELECT m.*, c.email, c.name FROM memberships m JOIN customers c ON c.id = m.customer_id WHERE m.qualifying_booking = ? AND m.status IN ('pending','active') AND m.payments_made = 0").bind(booking.id).first();
+  if (!m) return null;
+  await upd(env, m.id, { status: "cancelled", ends_on: todayNY().key, cancel_mode: "detail_cancelled", cancel_requested_at: Date.now() });
+  await mail(env, m, "detail_cancelled", { byUs });
+  await notifyNick(env, "Membership cancelled with its first detail: " + (m.name || m.email), [["Member", (m.name || "") + " · " + m.email], ["Plan", planLabel(m.type, m.freq, m.size)], ["Why", byUs ? "You cancelled the first detail (weather/our side)" : "The customer cancelled the first detail"], ["Charged", "Nothing (no monthly charge yet)"]]);
+  return m;
+}
+
+export async function notifyNick(env, subject, list) {
+  if (!env.NICK_EMAIL) return;
+  return send(env, { to: env.NICK_EMAIL, subject, html: layout(subject, `<h1 style="font-size:20px;margin:0 0 8px">${h(subject)}</h1>` + rows(list), subject, env.SITE_URL + "/email-logo.png") }).catch(() => {});
+}
+
 // ---------- summary for the account page ----------
 export async function summary(env, m, customer) {
   if (!m) return null;
@@ -108,7 +140,7 @@ export async function runBilling(env) {
   // pending -> active once the qualifying detail day arrives (or cancelled if that detail was cancelled)
   const pend = await env.DB.prepare("SELECT m.*, b.status bstatus FROM memberships m LEFT JOIN bookings b ON b.id = m.qualifying_booking WHERE m.status = 'pending'").all();
   for (const m of pend.results || []) {
-    if (m.bstatus === "cancelled") { await upd(env, m.id, { status: "cancelled", ends_on: today, cancel_mode: "detail_cancelled" }); log.push(m.id + " cancelled (detail cancelled)"); }
+    if (m.bstatus === "cancelled") { await cancelWithDetail(env, { id: m.qualifying_booking }, false); log.push(m.id + " cancelled (detail cancelled)"); }
     else if (m.start_day <= today) { await upd(env, m.id, { status: "active" }); log.push(m.id + " active"); }
   }
   // card required within 14 days of the qualifying detail
@@ -190,17 +222,21 @@ export async function cancelMembership(env, m, mode, customer) {
   if (m.status === "cancelled") throw new Error("Already cancelled.");
   if (m.status === "pending" || m.payments_made === 0) {   // before the first monthly charge: free (no member benefits used yet)
     await upd(env, m.id, { status: "cancelled", ends_on: today, cancel_mode: "before_start", cancel_requested_at: Date.now() });
-    return { message: "Your membership is cancelled. You won't be charged." };
+    await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "cancelled_free");
+    await notifyNick(env, "Membership cancelled (before the first charge): " + (customer.name || customer.email), [["Member", (customer.name || "") + " · " + customer.email], ["Plan", planLabel(m.type, m.freq, m.size)], ["Charged", "Nothing"]]);
+    return { message: "Your membership is cancelled. You won't be charged. We emailed you a confirmation." };
   }
   if (m.payments_made >= MEM.minPayments) {
     const ends = m.period_end ? addDays(m.period_end, -1) : today;
     await upd(env, m.id, { status: "ending", cancel_mode: "after_min", ends_on: ends, cancel_requested_at: Date.now() });
-    await mail(env, m, "cancelled", { ends });
+    await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "cancelled", { ends });
+    await notifyNick(env, "Membership cancelled: " + (customer.name || customer.email), [["Member", (customer.name || "") + " · " + customer.email], ["Plan", planLabel(m.type, m.freq, m.size)], ["Active through", niceDay(ends)], ["Fee", "None (minimum done)"]]);
     return { message: "Cancelled. No more charges. Your membership stays active through " + niceDay(ends) + "." };
   }
   if (mode === "finish") {
     await upd(env, m.id, { status: "ending", cancel_mode: "finish", cancel_requested_at: Date.now() });
-    await mail(env, m, "finishing", { left: MEM.minPayments - m.payments_made });
+    await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "finishing", { left: MEM.minPayments - m.payments_made });
+    await notifyNick(env, "Membership ending after the 3-month minimum: " + (customer.name || customer.email), [["Member", (customer.name || "") + " · " + customer.email], ["Plan", planLabel(m.type, m.freq, m.size)], ["Payments left", String(MEM.minPayments - m.payments_made)]]);
     return { message: "Got it. You'll keep your visits. Your last " + (MEM.minPayments - m.payments_made === 1 ? "monthly payment goes" : (MEM.minPayments - m.payments_made) + " monthly payments go") + " through as usual, and then your membership ends automatically." };
   }
   if (mode === "now") {
@@ -212,6 +248,7 @@ export async function cancelMembership(env, m, mode, customer) {
     const ends = m.period_end && m.period_end > today ? addDays(m.period_end, -1) : today;
     await upd(env, m.id, { status: ends > today ? "ending" : "cancelled", cancel_mode: "now", ends_on: ends, cancel_requested_at: Date.now() });
     await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "cancel_fee", { fee, tax, ends, card });
+    await notifyNick(env, "Membership cancelled now (fee charged): " + (customer.name || customer.email), [["Member", (customer.name || "") + " · " + customer.email], ["Plan", planLabel(m.type, m.freq, m.size)], ["Fee", money(fee) + " + " + money(tax) + " tax = " + money(total)], ["Visits paid through", ends > today ? niceDay(ends) : "today"]]);
     return { message: "Cancelled. We charged the " + money(fee) + " cancellation fee plus " + money(tax) + " " + TAX.name + " (" + money(total) + ") to your " + card.brand + " ending " + card.last4 + ". No more monthly charges." + (ends > today ? " You can still use visits you've already paid for through " + niceDay(ends) + "." : "") };
   }
   throw new Error("Pick how you'd like to cancel.");
@@ -240,6 +277,8 @@ async function mail(env, m, kind, o) {
     nocard_cancel: () => ["Your Apex Membership didn't start", `<h1 style="font-size:22px;margin:0 0 8px">Your membership didn't start</h1><p style="margin:0;color:#444;line-height:1.55">We didn't get a card within 14 days of your detail, so your Apex Membership wasn't started and you won't be charged. You can start one after your next qualifying detail.</p>`],
     cancelled: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">No more monthly charges. Your membership stays active through ${niceDay(o.ends)}, so keep using any visits you've booked. We'd love to have you back anytime.</p>`],
     finishing: () => ["Your Apex Membership will end after your 3rd month", `<h1 style="font-size:22px;margin:0 0 8px">Got it, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">You'll keep your visits and the remaining ${o.left} monthly payment(s) in your first 3 months will go through as usual. Your membership ends automatically after that. No fee.</p>`],
+    cancelled_free: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">Your ${h(label)} membership is cancelled. You haven't been charged for it and you won't be. Your detail booking itself isn't affected.</p>`],
+    detail_cancelled: () => ["Your Apex Membership was cancelled with your detail", `<h1 style="font-size:22px;margin:0 0 8px">Your membership was cancelled too</h1><p style="margin:0;color:#444;line-height:1.55">Your ${h(label)} membership starts after your first detail, and that detail was cancelled${o.byUs ? " on our side" : ""}, so the membership was cancelled too. You weren't charged. ${o.byUs ? "When you book your new time, you can add the membership again from your account." : "You can add it again when you book your next detail."}</p><p style="margin:18px 0 0">${button(acct, "Go to my account")}</p>`],
     cancel_fee: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">We charged the ${money(o.fee)} early cancellation fee plus ${money(o.tax || 0)} ${h(TAX.name)} (${money(o.fee + (o.tax || 0))} total) to your ${h((o.card || {}).brand || "card")} ending ${h((o.card || {}).last4 || "")}. No more monthly charges.${o.ends > todayNY().key ? " You can still use visits you've already paid for through " + niceDay(o.ends) + "." : ""}</p>`]
   }[kind];
   if (!T) return;
