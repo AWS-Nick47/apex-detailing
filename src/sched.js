@@ -129,6 +129,13 @@ export function townCoords(town) {
   return hit ? TOWNS[hit] : null;
 }
 
+// straight-line miles between two [lat, lon] points
+export function milesBetween(a, b) {
+  const R = 3958.8, rad = Math.PI / 180, dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 export function milesFromHome(lat, lon) {
   const R = 3958.8, rad = Math.PI / 180, h = RULES.home, dLat = (lat - h[0]) * rad, dLon = (lon - h[1]) * rad;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(h[0] * rad) * Math.cos(lat * rad) * Math.sin(dLon / 2) ** 2;

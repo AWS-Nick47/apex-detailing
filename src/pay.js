@@ -55,6 +55,28 @@ async function emailPayLink(env, b, cents, tax) {
   return send(env, { to: b.email, subject, html: layout(subject, body, money(total) + " due", site + "/email-logo.png") });
 }
 
+// ---------- one payment at a time per bill ----------
+// A payment claims the booking (paying_at) before charging the card; a second payment for the same bill is refused
+// until the first one finishes. A claim older than 2 minutes counts as abandoned. Square's own idempotency keys can't
+// do this because the amounts (and so the keys) differ between a pay link, a tip and Nick's "Charge card".
+// Needs migration 0010 (bookings.paying_at). Until that column exists, payments work as before (no claim).
+const CLAIM_MS = 120000;
+let claimCol = { ok: false, at: 0 };
+async function claimsOn(env) {
+  if (claimCol.ok || Date.now() - claimCol.at < 60000) return claimCol.ok;
+  try { await env.DB.prepare("SELECT paying_at FROM bookings LIMIT 0").all(); claimCol = { ok: true, at: Date.now() }; }
+  catch (e) { claimCol = { ok: false, at: Date.now() }; console.log("payment claims are off until migration 0010 (bookings.paying_at) is applied"); }
+  return claimCol.ok;
+}
+async function claimBill(env, id, tip) {
+  if (!(await claimsOn(env))) return true;
+  const now = Date.now(), cond = tip ? "paid_at IS NOT NULL AND COALESCE(tip_cents, 0) = 0" : "paid_at IS NULL";
+  return !!(await env.DB.prepare("UPDATE bookings SET paying_at = ? WHERE id = ? AND " + cond + " AND (paying_at IS NULL OR paying_at < ?) RETURNING id").bind(now, id, now - CLAIM_MS).first());
+}
+const releaseBill = async (env, id) => { if (await claimsOn(env)) await env.DB.prepare("UPDATE bookings SET paying_at = NULL WHERE id = ?").bind(id).run().catch(() => {}); };
+const clearClaim = async env => (await claimsOn(env)) ? ", paying_at = NULL" : "";   // added to the UPDATE that records a payment
+const BUSY_MSG = "A payment for this job is going through right now. Refresh this page in a minute.";
+
 // ---------- Nick's job page: /job/<ack_token> ----------
 export async function jobRoute(req, env, url, H) {
   const m = url.pathname.match(/^\/job\/([a-f0-9]{36})(?:\/(charge|link|inperson|done|weather|undo))?$/);
@@ -78,14 +100,19 @@ export async function jobRoute(req, env, url, H) {
   } else if (req.method === "POST" && m[2] && m[2] !== "undo" && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
     const fd = await req.formData(), raw = String(fd.get("amount") || "").trim(), dollars = /^\$?\d+(\.\d{1,2})?$/.test(raw.replace(/,/g, "")) ? parseFloat(raw.replace(/[$,]/g, "")) : NaN, cents = Math.round(dollars * 100);
     const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)", est = (b.quote || 0) * 100;
-    if (!(cents >= 100 && cents <= 200000)) msg = "Enter the price before tax as a number, like 179.";
+    if (cents > 200000) msg = "That's over the $2,000 limit for one job. Check the amount (price before tax).";
+    else if (!(cents >= 100)) msg = "Enter the price before tax as a number, like 179.";
     else if (est && cents > 2 * est && fd.get("big") !== "1") msg = "That's more than double the " + money(est) + " estimate. Check the amount and confirm it when asked.";
     else if (m[2] === "inperson") {
       const how = String(fd.get("how") || "cash").slice(0, 20);
-      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).run();
+      const free = (await claimsOn(env)) ? " AND (paying_at IS NULL OR paying_at < " + (Date.now() - CLAIM_MS) + ")" : "";
+      const done = await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
+        .bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).first();
+      if (!done) msg = BUSY_MSG; else {
       Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
       // in-person customers get a receipt too (audit IA-051)
       await emailReceipt(env, b, { amount: cents, tax, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
+      }
     } else if (m[2] === "link") {
       await ensurePayToken(env, b);
       await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ? WHERE id = ?").bind(Date.now(), cents, tax, b.id).run();
@@ -93,15 +120,17 @@ export async function jobRoute(req, env, url, H) {
       await emailPayLink(env, b, cents, tax); ok = true; msg = "Sent " + b.email + " a link to pay " + money(total) + split + ".";
     } else if (m[2] === "charge") {
       if (!card || !squareOn(env)) msg = "No saved card for this customer. Send a pay link instead.";
+      else if (!(await claimBill(env, b.id, false))) msg = BUSY_MSG;
       else {
+        let jobCharged = false;
         try {
           await ensurePayToken(env, b);
-          const p = await charge(env, { source: card.id, amount: total, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(cents) + " + " + money(tax) + " " + TAX.name, email: b.email, idem: "job-" + b.id + "-" + total });
-          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ? WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), p.id, p.receipt, b.id).run();
+          const p = await charge(env, { source: card.id, amount: total, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(cents) + " + " + money(tax) + " " + TAX.name, email: b.email, idem: "job-" + b.id + "-" + total }); jobCharged = true;
+          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ?" + (await clearClaim(env)) + " WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), p.id, p.receipt, b.id).run();
           Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "card_on_file" }); ok = true;
           msg = "Charged " + money(total) + split + " to " + card.brand + " ending " + card.last4 + ". Receipt sent.";
-          await emailReceipt(env, b, { amount: cents, tax, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true });
-        } catch (e) { msg = "Charge failed: " + e.message + " You can send them a pay link instead."; }
+          await emailReceipt(env, b, { amount: cents, tax, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true }).catch(() => {});
+        } catch (e) { if (!jobCharged) await releaseBill(env, b.id); msg = jobCharged ? "The card was charged, but saving it here failed. Check Square before charging again." : "Charge failed: " + e.message + " You can send them a pay link instead."; }
       }
     }
   }
@@ -216,26 +245,28 @@ export async function payApi(req, env, url) {
   if (tip > cap) return json({ error: "For a tip over " + money(cap) + ", text us at (732) 206-7084. Thank you!" }, 400);
   if (tipMode && (b.tip_cents || !tip)) return json({ error: b.tip_cents ? "Tip already received. Thank you!" : "Pick a tip amount." }, 400);
   const c = await customerFor(env, b), saved = c && c.card ? JSON.parse(c.card) : null;
-  let source;
+  if (!(body.saved && saved) && !body.token) return json({ error: "Enter your card." }, 400);
+  if (!(await claimBill(env, b.id, tipMode))) return json({ error: tipMode ? "Your tip is already going through. Thank you!" : "A payment for this job is already going through or done. Refresh this page in a minute." }, 409);
+  let source, charged = false;   // once a card is charged, keep the claim even if saving the result fails (no second charge)
   try {
     if (body.saved && saved) source = saved.id;
     else if (body.token && c && body.save === true) source = (await saveCard(env, c, String(body.token))).id;   // only when they ticked "Save this card" (audit IA-006)
     else if (body.token) source = String(body.token);                                                            // otherwise charge it once, don't keep it
-    else return json({ error: "Enter your card." }, 400);
+    else throw new Error("Enter your card.");
     const cardNow = c && c.card ? JSON.parse(c.card) : null, sqCust = c ? await ensureSquareCustomer(env, c) : null;
     if (tipMode) {
-      const p = await charge(env, { source, amount: tip, customerId: sqCust, reference: b.id, note: "Tip · " + b.id, email: b.email, idem: "tip-" + b.id + "-" + tip });
-      await env.DB.prepare("UPDATE bookings SET tip_cents = ?, tip_payment_id = ? WHERE id = ?").bind(tip, p.id, b.id).run();
+      const p = await charge(env, { source, amount: tip, customerId: sqCust, reference: b.id, note: "Tip · " + b.id, email: b.email, idem: "tip-" + b.id + "-" + tip }); charged = true;
+      await env.DB.prepare("UPDATE bookings SET tip_cents = ?, tip_payment_id = ?" + (await clearClaim(env)) + " WHERE id = ?").bind(tip, p.id, b.id).run();
       await emailReceipt(env, b, { tipOnly: true, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt }).catch(() => {});
       return json({ ok: true, message: "We got your " + money(tip) + " tip. It really means a lot." });
     }
     const B = bill(b), due = B.total;
-    const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) });
-    await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tax_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?) WHERE id = ?")
+    const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) }); charged = true;
+    await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tax_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?)" + (await clearClaim(env)) + " WHERE id = ?")
       .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, Date.now(), b.id).run();
     await emailReceipt(env, Object.assign(b, { tip_cents: tip }), { amount: B.sub, tax: B.tax, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt, offerTip: false }).catch(() => {});
     return json({ ok: true, message: "We emailed your receipt to " + b.email + "." });
-  } catch (e) { return json({ error: e.message }, 402); }
+  } catch (e) { if (!charged) await releaseBill(env, b.id); return json({ error: charged ? "Your payment went through, but we couldn't save it. Please text us at (732) 206-7084 so we can send your receipt." : e.message }, charged ? 500 : 402); }
 }
 
 // ---------- saving a card from the booking form or the account page ----------

@@ -18,7 +18,8 @@ function quarterInfo(k) {
   return { key: k, label: ["Jan–Mar", "Apr–Jun", "Jul–Sep", "Oct–Dec"][q - 1] + " " + y, due: q === 4 ? (y + 1) + "-01-20" : y + "-" + String(q * 3 + 1).padStart(2, "0") + "-20" };
 }
 async function taxQuarters(env) {
-  const det = (await env.DB.prepare("SELECT paid_at t, final_cents a, tax_cents x FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' AND final_cents IS NOT NULL").all()).results || [];
+  // a detail that was paid and then cancelled is refunded in Square, so it isn't a taxable sale (review after the audit)
+  const det = (await env.DB.prepare("SELECT paid_at t, final_cents a, tax_cents x FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' AND final_cents IS NOT NULL AND status != 'cancelled'").all()).results || [];
   const mem = (await env.DB.prepare("SELECT created_at t, amount_cents a, tax_cents x FROM membership_charges WHERE status = 'paid' AND amount_cents > 0").all()).results || [];
   const filedRow = await env.DB.prepare("SELECT v FROM meta WHERE k = 'tax_filed'").first(), filed = filedRow ? JSON.parse(filedRow.v) : {};
   const cur = quarterOf(todayKey()), Q = {};
@@ -118,7 +119,7 @@ export async function adminApi(req, env, url, H) {
     const unpaid = (await env.DB.prepare("SELECT id, ack_token, pkg, kind, name, day, quote FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND paid_at IS NULL AND end_utc < ? ORDER BY start_utc DESC LIMIT 10").bind(now).all()).results || [];
     const pastDue = (await env.DB.prepare("SELECT COUNT(*) n FROM memberships WHERE status = 'past_due'").first()).n;
     const month = today.slice(0, 7), m0 = nyToUtc(month + "-01", 0);
-    const det = await env.DB.prepare("SELECT COALESCE(SUM(final_cents),0) a, COALESCE(SUM(tip_cents),0) t, COALESCE(SUM(tax_cents),0) x, COUNT(*) n FROM bookings WHERE paid_at >= ? AND kind != 'member'").bind(m0).first();
+    const det = await env.DB.prepare("SELECT COALESCE(SUM(final_cents),0) a, COALESCE(SUM(tip_cents),0) t, COALESCE(SUM(tax_cents),0) x, COUNT(*) n FROM bookings WHERE paid_at >= ? AND kind != 'member' AND status != 'cancelled'").bind(m0).first();
     const mem = await env.DB.prepare("SELECT COALESCE(SUM(CASE WHEN kind = 'monthly' THEN amount_cents ELSE 0 END),0) a, COALESCE(SUM(tax_cents),0) x FROM membership_charges WHERE status = 'paid' AND created_at >= ?").bind(m0).first();   // monthly charges only; cancel fees are in Money (audit IA-021e)
     const tq = (await taxQuarters(env)).find(q => q.current);
     const active = (await env.DB.prepare("SELECT COUNT(*) n, COALESCE(SUM(monthly_cents),0) mrr FROM memberships WHERE status IN ('active','ending','past_due')").first());
@@ -205,8 +206,8 @@ export async function adminApi(req, env, url, H) {
   }
 
   if (p === "/money" && M === "GET") {
-    const det = (await env.DB.prepare("SELECT paid_at, COALESCE(final_cents,0) a, COALESCE(tip_cents,0) t, COALESCE(tax_cents,0) x FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member'").all()).results || [];
-    const methods = (await env.DB.prepare("SELECT paid_method m, COUNT(*) n, COALESCE(SUM(final_cents + COALESCE(tax_cents,0) + COALESCE(tip_cents,0)),0) a FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' GROUP BY paid_method").all()).results || [];
+    const det = (await env.DB.prepare("SELECT paid_at, COALESCE(final_cents,0) a, COALESCE(tip_cents,0) t, COALESCE(tax_cents,0) x FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' AND status != 'cancelled'").all()).results || [];
+    const methods = (await env.DB.prepare("SELECT paid_method m, COUNT(*) n, COALESCE(SUM(final_cents + COALESCE(tax_cents,0) + COALESCE(tip_cents,0)),0) a FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' AND status != 'cancelled' GROUP BY paid_method").all()).results || [];
     const mem = (await env.DB.prepare("SELECT for_day, kind, amount_cents a, tax_cents x, created_at FROM membership_charges WHERE status = 'paid'").all()).results || [];
     const byMonth = {};
     const row = mo => byMonth[mo] || (byMonth[mo] = { month: mo, details: 0, tips: 0, jobs: 0, members: 0, fees: 0, tax: 0 });

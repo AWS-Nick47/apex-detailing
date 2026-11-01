@@ -59,7 +59,20 @@ export async function createMembership(env, { customerId, booking, type, freq, a
   await env.DB.prepare(`INSERT INTO memberships (id, customer_id, status, type, freq, size, car, monthly_cents, qualifying_booking, start_day, next_bill, terms_version, auth_at, auth_ip, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, customerId, booking.day <= todayNY().key ? "active" : "pending", type, +freq, booking.size, booking.car || null, p.monthly * 100,
     booking.id, booking.day, addMonths(booking.day, 1), auth.version, auth.at, auth.ip, now, now).run();
-  return { id, monthly: p.monthly, firstBill: addMonths(booking.day, 1), label: planLabel(type, +freq, booking.size) };
+  const fc = firstCharge(type, booking.size, +freq, booking.day);
+  return { id, monthly: p.monthly, firstBill: fc.day, firstAmount: fc.amount, firstSkipped: fc.skipped, firstWinter: fc.winterPrice, label: planLabel(type, +freq, booking.size) };
+}
+
+// The first charge exactly as billOne() will make it: one month after the qualifying detail, skipping winter months for
+// Wash plans, and at the Interior price for Wash + interior in winter. Amount is before tax, in dollars.
+export function firstCharge(type, size, freq, startDay) {
+  const monthly = planPrice(type, size, freq).monthly;
+  for (let n = 1; n <= 12; n++) {
+    const day = addMonths(startDay, n), cover = coverOn(type, day);
+    if (cover === null) continue;
+    return { day, amount: cover === type ? monthly : planPrice(cover, size, freq).monthly, skipped: n - 1, winterPrice: cover !== type };
+  }
+  return { day: addMonths(startDay, 1), amount: monthly, skipped: 0, winterPrice: false };
 }
 
 // The detail a customer can start a membership from: the latest one in the last 14 days, else their next upcoming one.
@@ -166,7 +179,8 @@ export async function runBilling(env) {
   return log;
 }
 
-async function billOne(env, m, today) {
+// manual: the member tapped "Retry payment". A failed manual try doesn't use up the automatic retries (review after the audit).
+async function billOne(env, m, today, manual) {
   const billDay = m.status === "past_due" ? m.next_bill : m.next_bill;
   // a membership that's ending doesn't renew
   if (m.status === "ending" && m.cancel_mode !== "finish") { await upd(env, m.id, { status: "cancelled", ends_on: addDays(billDay, -1) }); return "ended at renewal"; }
@@ -182,9 +196,15 @@ async function billOne(env, m, today) {
   const card = m.card ? JSON.parse(m.card) : null;
   let p = null;
   if (amount > 0) {
-    if (!card) return failed(env, m, billDay, amount, credit, "No card on file");
-    try { p = await charge(env, { source: card.id, amount: total, customerId: m.square_customer_id, reference: "MEM-" + m.id.slice(0, 8), note: "Apex Membership · " + planLabel(m.type, m.freq, m.size) + " · " + billDay + " · " + money(amount) + " + " + money(tax) + " " + TAX.name, email: m.email, idem: "mem-" + m.id + "-" + billDay + "-" + (m.fail_count || 0) }); }
-    catch (e) { return failed(env, m, billDay, amount, credit, e.message); }
+    if (!card) return manual ? "failed (No card on file)" : failed(env, m, billDay, amount, credit, "No card on file");
+    // the key includes the card, so a retry with the same card is the same payment (no double charge if the cron and a
+    // tap overlap) and a new card is a fresh try
+    try { p = await charge(env, { source: card.id, amount: total, customerId: m.square_customer_id, reference: "MEM-" + m.id.slice(0, 8), note: "Apex Membership · " + planLabel(m.type, m.freq, m.size) + " · " + billDay + " · " + money(amount) + " + " + money(tax) + " " + TAX.name, email: m.email, idem: "mem-" + m.id + "-" + billDay + "-" + (m.fail_count || 0) + "-" + String(card.id).slice(-8) }); }
+    catch (e) {
+      if (!manual) return failed(env, m, billDay, amount, credit, e.message);
+      await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, credit_used_cents, status, error, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, ?, 'failed', ?, ?, ?)").bind(rid(), m.id, amount, tax, credit, "Retry: " + String(e.message).slice(0, 290), billDay, Date.now()).run();
+      return "failed (" + e.message + ")";
+    }
   }
   const periodEnd = addMonths(m.start_day, monthsBetween(m.start_day, billDay) + 1);
   try {
@@ -215,7 +235,7 @@ async function failed(env, m, billDay, amount, credit, why) {
 // Try a past-due charge again right away (after the member updates their card)
 export async function retryNow(env, m) {
   const c = await env.DB.prepare("SELECT email, name, card, square_customer_id FROM customers WHERE id = ?").bind(m.customer_id).first();
-  return billOne(env, Object.assign({}, m, c), todayNY().key);
+  return billOne(env, Object.assign({}, m, c), todayNY().key, true);
 }
 
 // ---------- cancel / pause ----------

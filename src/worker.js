@@ -1,5 +1,5 @@
 // Apex Detailing — website + booking backend (Cloudflare Worker)
-import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, parseDay, townCoords } from "./sched.js";
+import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, milesBetween, parseDay, townCoords } from "./sched.js";
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
 import { send, layout, rows, button, h } from "./email.js";
 import { quote as priceQuote, travelFee, TAX, withTax, PRICING } from "./pricing.js";
@@ -7,7 +7,7 @@ import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, cu
 import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
 import { adminApi, accessUser, blockoutBusy } from "./admin.js";
-import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel } from "./membership.js";
+import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const TERMS_VERSION = "2026-11-01";   // bump when terms.html / membership-terms.html / privacy.html change
@@ -18,8 +18,10 @@ const ADDON_NAMES = { pet: "Heavy pet hair", stain: "Heavy stain or odor", light
 
 const usd = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);   // cents -> "$244.17" / "$229"
 const taxLabel = TAX.name + " (" + TAX.pct + ")";
-// the membership line in booking emails: "Wash + interior, monthly (Sedan) · $95/mo + tax ($101.29), first charge Dec 1"
-const memLine = m => m.label + " · $" + m.monthly + "/mo + tax (" + usd(withTax(m.monthly * 100).total) + "), first charge " + dayLabel(m.firstBill);
+// the membership line in booking emails: "Wash + interior, monthly (Sedan) · $95/mo + tax ($101.29). First charge Dec 1: $101.29"
+// The first charge is shown the way billing will really make it (winter can skip Wash months or bill the Interior price).
+const memLine = m => m.label + " · $" + m.monthly + "/mo + tax (" + usd(withTax(m.monthly * 100).total) + "). First charge " + dayLabel(m.firstBill) + ": " +
+  usd(withTax(Math.round((m.firstAmount != null ? m.firstAmount : m.monthly) * 100)).total) + (m.firstSkipped ? " (no charges during the winter pause before that)" : m.firstWinter ? " (winter months are billed at the Interior price)" : "");
 // estimate rows for a detail: price before tax, the tax, and the estimated total
 function priceRows(b) {
   if (b.kind === "member") return [["Price", "Included in your Apex Membership"]];
@@ -141,9 +143,14 @@ function readBooking(body) {
   if (f.plan && !f.memAuth) err.push("membership charge authorization");
   // distance comes from the address pin (or the town's center), never from the browser's number (audit IA-009)
   const pinOk = f.lat != null && f.lon != null && isFinite(f.lat) && isFinite(f.lon) && f.lat > 38 && f.lat < 42.5 && f.lon > -77 && f.lon < -72;
-  const pin = pinOk ? [f.lat, f.lon] : townCoords(f.town);
+  const tc = townCoords(f.town), pin = pinOk ? [f.lat, f.lon] : tc;
   if (!pinOk) { f.lat = pin ? pin[0] : null; f.lon = pin ? pin[1] : null; }
   if (pin) f.miles = Math.round(milesFromHome(pin[0], pin[1]) * 10) / 10; else err.push("location");
+  // the pin should be in the town they picked; if it isn't, charge travel by whichever is farther and tell Nick (review after the audit)
+  if (pinOk && tc) {
+    const gap = milesBetween(pin, tc);
+    if (gap > 8) { f.miles = Math.max(f.miles, Math.round(milesFromHome(tc[0], tc[1]) * 10) / 10); f.locFlag = "The address pin is " + Math.round(gap) + " mi from " + f.town + ". Check the address and the travel fee."; }
+  } else if (pinOk && !tc) f.locFlag = "\"" + (f.town || "No town") + "\" isn't on our town list. Check the address and the travel fee.";
   if (f.miles != null && f.miles > RULES.maxMiles) err.push("distance");
   return { f, err };
 }
@@ -185,7 +192,7 @@ async function emailNick(env, b, kind, extra) {
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
   const plan = b.plan ? JSON.parse(b.plan) : null;
   const list = [["When", whenText(b)], ["Customer", h(b.name) + `<br><a href="tel:${h(tel)}" style="color:#111">${h(b.phone)}</a> · <a href="sms:${h(tel)}" style="color:#111">Text</a><br><a href="mailto:${h(b.email)}" style="color:#111">${h(b.email)}</a>`, true],
-    ["Address", `${h(where)}<br><a href="${h(maps)}" style="color:#111">Directions</a>` + (b.miles != null ? ` · ${h(b.miles)} mi` : ""), true],
+    ["Address", `${h(where)}<br><a href="${h(maps)}" style="color:#111">Directions</a>` + (b.miles != null ? ` · ${h(b.miles)} mi` : "") + (b._locFlag ? `<br><b style="color:#b3261e">${h(b._locFlag)}</b>` : ""), true],
     ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ["Water / power", (b.pkg === "interior" ? "" : "Spigot: " + (b.water || "?") + " · ") + "Outlet: " + (b.power || "?")],
     ["Estimate", b.quote ? (e => usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
@@ -207,10 +214,14 @@ async function lostRace(env, b) {
 }
 
 // what /api/book answers once a booking exists (also for a repeated request with the same key)
-async function bookedReply(env, b) {
+// The answer for a booking that already exists (same key sent again). If the new request asked for something different
+// (another time after a timeout, say), say so: the site shows the booking that really went through. Review after the audit.
+async function bookedReply(env, b, f) {
   const t = withTax((b.quote || 0) * 100), m = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status != 'cancelled'").bind(b.id).first();
-  return { ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token, subtotal: b.quote, tax: t.tax / 100, total: t.total / 100, priceChanged: false, repeat: true,
-    membership: m ? { id: m.id, monthly: m.monthly_cents / 100, firstBill: m.next_bill, label: planLabel(m.type, m.freq, m.size) } : null, membershipError: null };
+  const changed = !!f && (f.day !== b.day || f.start !== utcToNy(b.start_utc).min || f.pkg !== b.pkg || normEmail(f.email) !== normEmail(b.email));
+  const fc = m ? firstCharge(m.type, m.size, m.freq, m.start_day) : null;
+  return { ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, day: b.day, pkg: b.pkg, manage: env.SITE_URL + "/b/" + b.token, subtotal: b.quote, tax: t.tax / 100, total: t.total / 100, priceChanged: false, repeat: true, changed,
+    membership: m ? { id: m.id, monthly: m.monthly_cents / 100, firstBill: fc.day, firstAmount: fc.amount, firstSkipped: fc.skipped, firstWinter: fc.winterPrice, label: planLabel(m.type, m.freq, m.size) } : null, membershipError: null };
 }
 
 // ---------- pages (manage booking / got it) ----------
@@ -288,7 +299,7 @@ async function api(req, env, url) {
     if (await overLimit(env, req, "book:" + ipOf(req), 10, 3600e3)) return json({ error: "Too many booking tries from your connection. Try again in an hour, or text us at (732) 206-7084." }, 429);
     const { f, err } = readBooking(body);
     // the same booking sent again (lost response, timeout, double tap): answer with the one already made. Audit IA-011.
-    if (f.key) { const ex = await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first(); if (ex) return json(await bookedReply(env, ex)); }
+    if (f.key) { const ex = await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first(); if (ex) return json(await bookedReply(env, ex, f)); }
     if (err.includes("location")) return json({ error: "We couldn't find that address. Pick it from the address suggestions, or pick your town from the list. Or text us at (732) 206-7084.", field: "q-town" }, 400);
     if (err.includes("distance")) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084 and we'll see what we can do.", field: "q-town" }, 400);
     if (err.length) return json({ error: "Please check: " + err.join(", "), fields: err }, 400);
@@ -348,15 +359,16 @@ async function api(req, env, url) {
         b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at, b.client_key).run();
     } catch (e) {   // two copies of the same request at once: the other one won, answer with it
       const ex = f.key && await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first();
-      if (ex) return json(await bookedReply(env, ex));
+      if (ex) return json(await bookedReply(env, ex, f));
       throw e;
     }
     if (await lostRace(env, b)) {
       await env.DB.prepare("DELETE FROM bookings WHERE id = ?").bind(b.id).run();
       return json({ error: "Sorry, that time was just taken. Please pick another.", taken: true }, 409);
     }
-    b._photos = f.photos;
-    if (f.sms) await env.DB.prepare("UPDATE customers SET sms_ok = 1, sms_ok_at = ? WHERE id = ?").bind(Date.now(), customerId).run();
+    b._photos = f.photos; b._locFlag = f.locFlag || null;
+    // texting consent goes on the account only for a new account or when signed in as its owner (the booking keeps its own sms_ok)
+    if (f.sms && (!owner || (session && session.id === owner.id))) await env.DB.prepare("UPDATE customers SET sms_ok = 1, sms_ok_at = ? WHERE id = ?").bind(Date.now(), customerId).run();
     if (f.plan && f.memAuth) {
       try { b._mem = await createMembership(env, { customerId, booking: b, type: f.plan.type, freq: f.plan.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: b.terms_ip } }); }
       catch (e) { b._memErr = e.message; }
@@ -367,7 +379,7 @@ async function api(req, env, url) {
     tasks.push(emailCustomer(env, b, "new").catch(e => console.log("customer email failed", e.message)));
     tasks.push(emailNick(env, b, "new").catch(e => console.log("nick email failed", e.message)));
     await Promise.all(tasks);
-    return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token,
+    return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, day: b.day, pkg: b.pkg, manage: env.SITE_URL + "/b/" + b.token,
       subtotal: q.subtotal, tax: q.tax, total: q.total, priceChanged: shownQuote !== q.subtotal, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
   }
 
@@ -407,6 +419,9 @@ async function api(req, env, url) {
       await removeCard(env, c); return json({ ok: true });
     }
     if (req.method !== "POST" || !squareOn(env)) return json({ error: "Not available" }, 400);
+    // card checks cost money and attract card testers: a few per customer per day, a few per connection per hour (review after the audit)
+    if (await overLimit(env, req, "card:" + c.id, 3, 86400e3) || await overLimit(env, req, "cardip:" + ipOf(req), 5, 3600e3))
+      return json({ error: "Too many card changes for now. Try again tomorrow, or text us at (732) 206-7084." }, 429);
     let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
     try { const card = await saveCard(env, c, String(body.token || ""), String(body.postal || "").slice(0, 10)); return json({ ok: true, card: { brand: card.brand, last4: card.last4 } }); }
     catch (e) { return json({ error: e.message }, 402); }

@@ -511,6 +511,8 @@ section.block { padding-block: clamp(72px, 10vw, 120px); }
 .acct[hidden] { display: none; }
 .nojs { margin: 16px 0 0; display: inline-block; padding: 10px 14px; border-radius: 12px; background: rgba(0,0,0,.55); font-size: 15px; color: var(--fg); }
 .nojs a { color: inherit; font-weight: 700; }
+.sq-repl { margin: 10px 2px 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.sq-repl b { color: var(--fg); font-weight: 600; }
 .acct-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fadeIn .25s ease; }
 .acct-sheet { position: relative; width: min(100%, 460px); max-height: calc(100svh - 32px); overflow: auto; overscroll-behavior: contain; border-radius: 28px; padding: 18px 26px 26px;
   background: rgba(16,16,16,.86); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
@@ -2057,6 +2059,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <div class="sq-card" id="sqCard" hidden>
               <div class="sq-saved" id="sqSaved" hidden><svg aria-hidden="true"><use href="#i-lock"/></svg><span>We'll use your <b id="sqSavedTxt"></b> on file. <button type="button" class="link-btn" id="sqUseNew">Use a different card</button></span></div>
               <div class="sq-form" id="sqForm"><div id="sq-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site. Nothing is charged until after your detail.</small><small class="sq-note" id="sqTest" hidden>Test mode: card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</small></div>
+              <p class="sq-repl" id="sqReplace" hidden>This card replaces your saved <b id="sqReplTxt"></b> for everything billed to your card, including <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span>.</p>
             </div>
             <div class="card-ph" id="cardPh" hidden><svg aria-hidden="true"><use href="#i-lock"/></svg><div><b>Secure card entry goes here</b><small>Handled by the payment processor once it's connected. Card numbers never touch this site.</small></div></div>
           </div>
@@ -2123,6 +2126,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <div class="done-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
       <h3>Booking requested</h3>
       <p class="bk-lede">We'll text <b id="dnPhone"></b> to confirm, usually within a few hours.</p>
+      <p class="bk-lede dn-changed" id="dnChanged" hidden><b>Heads up:</b> your first try went through before the connection dropped, so this is the booking you have. To change it, use Manage booking below.</p>
       <div class="done-card">
         <div class="dn-row"><span>Request</span><b id="dnRef"></b></div>
         <div class="dn-row"><span>When</span><b id="dnWhen"></b></div>
@@ -3380,11 +3384,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!window.__LIVE) { $("cardPh").hidden = !card; memText(); return; }
       $("cardPh").hidden = true; $("sqCard").hidden = !card;
       var D = window.__acct && window.__acct.isIn() && window.__acct.data, saved = D && D.card && !/No card/.test(D.card) ? D.card : null;
-      useSaved = !!(card && saved); $("sqSaved").hidden = !useSaved; $("sqForm").hidden = useSaved; if (saved) $("sqSavedTxt").textContent = saved;
+      useSaved = !!(card && saved); $("sqSaved").hidden = !useSaved; $("sqForm").hidden = useSaved; if (saved) $("sqSavedTxt").textContent = saved; $("sqReplace").hidden = true;
       if (card && !useSaved) sqMount();
       memText();
     }
-    $("sqUseNew").addEventListener("click", function () { useSaved = false; $("sqSaved").hidden = true; $("sqForm").hidden = false; sqMount(); });
+    $("sqUseNew").addEventListener("click", function () { useSaved = false; $("sqSaved").hidden = true; $("sqForm").hidden = false; $("sqReplTxt").textContent = $("sqSavedTxt").textContent; $("sqReplace").hidden = false; sqMount(); });
     form.addEventListener("change", function (e) { if (e.target.name === "pay") payUI(); if (e.target.name === "water" || e.target.name === "power") accessCheck(); });
     function fmtPhone(v) { var d = v.replace(/\D/g, "").replace(/^1/, "").slice(0, 10); if (d.length < 4) return d; if (d.length < 7) return "(" + d.slice(0, 3) + ") " + d.slice(3); return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); }
     $("bkPhone").addEventListener("input", function () { var el = this, end = el.selectionEnd === el.value.length; el.value = fmtPhone(el.value); if (end) el.selectionStart = el.selectionEnd = el.value.length; });
@@ -3614,9 +3618,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         .then(function (x) {
           if (x.status === 409 && x.j && x.j.priceChanged) { sending = false; btn.disabled = false; btn.innerHTML = was; priceNote(x.j); return; }
           if (x.status === 403 && x.j && x.j.needCode) { sending = false; btn.disabled = false; btn.innerHTML = was; codeGate($("bkEmail").value.trim()); return; }
-          if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; bookKey = null; loadAvail(true); showDone(x.j.id);
+          if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; bookKey = null; loadAvail(true); showDone(x.j.id); serverDone(x.j);
             if (codeOk && window.__acctLoad) window.__acctLoad();
-            if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo + tax, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
+            if (x.j.membership) { $("dnMemRow").hidden = false; var M1 = x.j.membership, fb2 = M1.firstBill.split("-"), fa = M1.firstAmount != null ? M1.firstAmount : M1.monthly;
+              $("dnMem").textContent = M1.label + " · $" + M1.monthly + "/mo + tax. First charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }) + ": " + usd(withTax(fa)) +
+                (M1.firstSkipped ? " (no charges during the winter pause before that)" : M1.firstWinter ? " (winter months are billed at the Interior price)" : ""); }
             else if (x.j.membershipError) { $("dnMemRow").hidden = false; $("dnMem").textContent = "Not added: " + x.j.membershipError; }
             $("dnTotal").textContent = usd(x.j.total) + " with tax · pay after the job";
             if (window.__acctReload) window.__acctReload(); return; }
@@ -3628,6 +3634,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         .catch(function (e) { if (e === "handled") return;
           fail(e && e.name === "AbortError" ? "<b>Still working…</b> We didn't hear back in time. Check your email for a confirmation before trying again. If nothing arrives in a minute, tap Confirm booking again. You won't be booked twice."
             : "We couldn't reach our booking system. Check your connection and try again. You won't be booked twice. Or text us at (732) 206-7084."); });
+    }
+    // the done screen shows what the server booked (after a timeout and a retry it can differ from what's on screen)
+    function serverDone(j) {
+      if (!j || !j.start || !j.end) return;
+      var o = { timeZone: "America/New_York" }, a = new Date(j.start), z = new Date(j.end), t = function (d) { return d.toLocaleTimeString("en-US", Object.assign({ hour: "numeric", minute: "2-digit" }, o)); };
+      $("dnWhen").textContent = a.toLocaleDateString("en-US", Object.assign({ weekday: "short", month: "short", day: "numeric" }, o)) + " · " + t(a) + "–" + t(z);
+      if (j.pkg && NAMES[j.pkg]) $("dnWhat").textContent = NAMES[j.pkg] + " · " + $("bkCar").textContent;
+      var cn = $("dnChanged"); if (cn) cn.hidden = !j.changed;
     }
     function showDone(ref) {
       var q = current();

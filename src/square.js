@@ -52,6 +52,9 @@ export async function saveCard(env, c, token, postal) {
   const card = { id: j.card.id, brand: brandName(j.card.card_brand), last4: j.card.last_4, exp: j.card.exp_month + "/" + String(j.card.exp_year).slice(-2) };
   const old = c.card ? JSON.parse(c.card) : null;
   await env.DB.prepare("UPDATE customers SET card = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(card), Date.now(), c.id).run();
+  // upcoming card-on-file details move to the new card, since the old one is switched off in Square next (review after the audit)
+  await env.DB.prepare("UPDATE bookings SET card = ? WHERE customer_id = ? AND status = 'confirmed' AND paid_at IS NULL AND card IS NOT NULL")
+    .bind(JSON.stringify({ id: card.id, brand: card.brand, last4: card.last4 }), c.id).run();
   if (old && old.id && old.id !== card.id) await sq(env, "POST", "/v2/cards/" + old.id + "/disable").catch(() => {});
   c.card = JSON.stringify(card);
   return card;
@@ -61,6 +64,8 @@ export async function removeCard(env, c) {
   const old = c.card ? JSON.parse(c.card) : null;
   if (old && old.id) await sq(env, "POST", "/v2/cards/" + old.id + "/disable").catch(() => {});
   await env.DB.prepare("UPDATE customers SET card = NULL, updated_at = ? WHERE id = ?").bind(Date.now(), c.id).run();
+  // their upcoming details go back to pay-after-the-job (Nick sends a pay link) instead of pointing at a switched-off card
+  await env.DB.prepare("UPDATE bookings SET card = NULL, card_on_file = 0 WHERE customer_id = ? AND status = 'confirmed' AND paid_at IS NULL AND card IS NOT NULL").bind(c.id).run();
 }
 
 // Charge: source is a saved card id or a one-time token. amount in cents.
