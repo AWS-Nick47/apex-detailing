@@ -9,8 +9,9 @@ def page(slug, title, intro, body):
     nav = ' · '.join(f'<a href="/{s}"{" aria-current=\"page\"" if s == slug else ""}>{t}</a>' for s, t in [("terms", "Terms of Service"), ("membership-terms", "Membership Terms"), ("privacy", "Privacy Policy")])
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} · Apex Detailing</title><meta name="description" content="{title} for Apex Detailing LLC, mobile car detailing in Brick and Ocean County, NJ.">
+<title>{title} · Apex Detailing</title><link rel="canonical" href="https://apexdetailingoc.com/{slug}"><meta name="description" content="{title} for Apex Detailing LLC, mobile car detailing in Brick and Ocean County, NJ.">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cg transform='translate(4 4)'%3E%3Cpath d='M2 20 L10 6 L13 11 L15.5 8 L22 20 Z' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z' fill='%23fff'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
 :root {{ color-scheme: dark; --bg:#0a0a0a; --fg:#ededed; --muted:#a3a3a3; --line:rgba(255,255,255,.1); }}
 html {{ background: var(--bg); }}

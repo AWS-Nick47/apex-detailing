@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /admin
+Disallow: /api/
+Disallow: /b/
+Disallow: /job/
+Disallow: /pay/
+Disallow: /ack/
+
+Sitemap: https://apexdetailingoc.com/sitemap.xml
