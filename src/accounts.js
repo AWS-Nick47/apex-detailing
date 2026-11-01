@@ -69,6 +69,7 @@ const json = (data, status, headers) => new Response(JSON.stringify(data), { sta
 
 export async function authStart(req, env) {
   let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
+  if (!body || typeof body !== "object") return json({ error: "Bad request" }, 400);
   const email = normEmail(body.email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Enter the email you booked with." }, 400);
   // Same answer whether or not we know the email, so nobody can check who our customers are
@@ -90,6 +91,7 @@ export async function authStart(req, env) {
 
 export async function authVerify(req, env) {
   let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
+  if (!body || typeof body !== "object") return json({ error: "Bad request" }, 400);
   const email = normEmail(body.email), code = String(body.code || "").replace(/\D/g, "");
   const row = await env.DB.prepare("SELECT rowid, * FROM login_codes WHERE email = ? AND used = 0 ORDER BY created_at DESC LIMIT 1").bind(email).first();
   if (!row || row.expires_at < Date.now()) return json({ error: "That code expired. Send a new one." }, 400);
@@ -121,9 +123,9 @@ export async function me(req, env, extra) {
       .bind(cl(body.name, 80) || c.name, cl(body.phone, 30) || c.phone, cl(body.address, 160) || c.address, cl(body.town, 60) || c.town, cl(body.notes, 500), JSON.stringify(cars), body.remind === false ? 0 : 1, Date.now(), c.id).run();
     return json({ ok: true });
   }
-  const r = await env.DB.prepare("SELECT id, token, status, start_utc, end_utc, day, pkg, size, adds, quote, car, color, address, town, kind, paid_at, final_cents, tax_cents, tip_cents FROM bookings WHERE customer_id = ? OR email = ? ORDER BY start_utc DESC LIMIT 50").bind(c.id, c.email).all();
+  const r = await env.DB.prepare("SELECT id, token, status, start_utc, end_utc, day, pkg, size, adds, quote, car, color, address, town, water, power, kind, paid_at, final_cents, tax_cents, tip_cents FROM bookings WHERE customer_id = ? OR email = ? ORDER BY start_utc DESC LIMIT 50").bind(c.id, c.email).all();
   const now = Date.now(), list = (r.results || []).map(b => ({ id: b.id, status: b.status === "cancelled" ? "cancelled" : b.end_utc < now ? "done" : "upcoming", start: b.start_utc, end: b.end_utc, day: b.day,
-    pkg: b.pkg, size: b.size, adds: JSON.parse(b.adds || "[]"), quote: b.quote, paid: b.paid_at && b.kind !== "member" && b.final_cents != null ? (b.final_cents + (b.tax_cents || 0) + (b.tip_cents || 0)) / 100 : null, car: b.car, color: b.color, address: b.address, town: b.town, manage: b.end_utc > now && b.status === "confirmed" ? env.SITE_URL + "/b/" + b.token : null }));
+    pkg: b.pkg, size: b.size, adds: JSON.parse(b.adds || "[]"), quote: b.quote, water: b.water, power: b.power, paid: b.paid_at && b.kind !== "member" && b.final_cents != null ? (b.final_cents + (b.tax_cents || 0) + (b.tip_cents || 0)) / 100 : null, car: b.car, color: b.color, address: b.address, town: b.town, manage: b.end_utc > now && b.status === "confirmed" ? env.SITE_URL + "/b/" + b.token : null }));
   const card = c.card ? JSON.parse(c.card) : null;
   return json({ signedIn: true, customer: { email: c.email, name: c.name, phone: c.phone, address: c.address, town: c.town, notes: c.notes, cars: JSON.parse(c.cars || "[]"), remind: !!c.remind,
     card: card ? { brand: card.brand, last4: card.last4 } : null }, bookings: list, member: null });

@@ -38,6 +38,7 @@ function code(n) { const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789", b = crypto.getRa
 function secret() { return Array.from(crypto.getRandomValues(new Uint8Array(18)), x => x.toString(16).padStart(2, "0")).join(""); }
 
 function todayKey() { return utcToNy(Date.now()).key; }
+function realDay(k) { if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return false; const { y, m, d } = parseDay(k), t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d; }
 function tstr(min) { let hh = Math.floor(min / 60); const mm = min % 60, ap = hh >= 12 ? "PM" : "AM"; hh = hh % 12 || 12; return hh + ":" + String(mm).padStart(2, "0") + " " + ap; }
 function dayLabel(key, long) { const { y, m, d } = parseDay(key); return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", { timeZone: "UTC", weekday: long ? "long" : "short", month: long ? "long" : "short", day: "numeric" }); }
 function whenText(b) { const s = utcToNy(b.start_utc), e = utcToNy(b.end_utc); return dayLabel(s.key, true) + ", " + tstr(s.min) + " – " + tstr(e.min); }
@@ -96,18 +97,22 @@ function readBooking(body) {
     water: clean(body.water, 5), power: clean(body.power, 5), notes: clean(body.notes, 1500), heard: clean(body.heard, 60),
     quote: Math.round(+body.quote || 0), travel_fee: 0, miles: null,   // the server works out distance and travel itself
     lat: body.lat == null ? null : +body.lat, lon: body.lon == null ? null : +body.lon,
-    plan: body.plan && typeof body.plan === "object" && MEM.plans[body.plan.type] ? { type: clean(body.plan.type, 10), freq: [1, 2, 4].includes(+body.plan.freq) ? +body.plan.freq : 1 } : null,
+    plan: body.plan && typeof body.plan === "object" && Object.hasOwn(MEM.plans, body.plan.type) ? { type: clean(body.plan.type, 10), freq: [1, 2, 4].includes(+body.plan.freq) ? +body.plan.freq : 1 } : null,
     card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10),
-    agree: body.agree === true, sms: body.sms === true, memAuth: body.memAuth === true
+    agree: body.agree === true, sms: body.sms === true, memAuth: body.memAuth === true,
+    key: /^[a-f0-9]{16,40}$/.test(String(body.key || "")) ? String(body.key) : null,
+    // concern photos (already shrunk by the site): up to 4 JPEGs, emailed to Nick, not stored. Audit IA-016.
+    photos: Array.isArray(body.photos) ? body.photos.slice(0, 4).map((x, i) => ({ filename: "concern-" + (i + 1) + ".jpg", data: String((x && x.data) || "") }))
+      .filter(x => /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x.data) && x.data.length < 1500000).map(x => ({ filename: x.filename, content: x.data.slice(x.data.indexOf(",") + 1) })) : []
   };
   const err = [];
-  if (!NAMES[f.pkg]) err.push("package");
+  if (!Object.hasOwn(NAMES, f.pkg)) err.push("package");
   if (![0, 1, 2].includes(f.size)) err.push("vehicle size");
-  f.adds = [...new Set(f.adds)].filter(a => RULES.addonPkgs[a] && RULES.addonPkgs[a].includes(f.pkg));
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.day) || !(f.start >= 0 && f.start < 1440)) err.push("time");
+  f.adds = [...new Set(f.adds)].filter(a => Object.hasOwn(RULES.addonPkgs, a) && RULES.addonPkgs[a].includes(f.pkg));
+  if (!realDay(f.day) || !(f.start >= 0 && f.start < 1440)) err.push("time");
   if (f.name.length < 2) err.push("name");
   if (f.phone.replace(/\D/g, "").length < 10) err.push("phone");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) err.push("email");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email)) err.push("email");
   if (f.address.length < 4) err.push("address");
   if (f.pkg !== "interior" && f.water === "no") err.push("water spigot");
   if (f.power === "no") err.push("outlet");
@@ -168,7 +173,15 @@ async function emailNick(env, b, kind, extra) {
   if (extra) list.unshift(["Was", extra]);
   const body = `<h1 style="font-size:22px;margin:0 0 6px">${h(label)}</h1><p style="margin:0;color:#444">${h(whenText(b))}</p>` + rows(list) +
     (kind === "new" ? `<p style="margin:0 0 10px">${button(site + "/ack/" + b.ack_token, "Got it")} &nbsp; ${button(site + "/job/" + b.ack_token, "Job done — get paid", false)}</p><p style="margin:0;color:#777;font-size:13px">The customer is already confirmed. "Got it" just marks it seen for you. After the job, open "Job done — get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.</p>` : "");
-  return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body, label, site + "/email-logo.png") });
+  const photos = kind === "new" && b._photos && b._photos.length ? b._photos : null;
+  return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body + (photos ? `<p style="margin:14px 0 0;color:#444">${photos.length} photo${photos.length > 1 ? "s" : ""} of the areas of concern attached.</p>` : ""), label, site + "/email-logo.png"), attachments: photos || undefined });
+}
+
+// what /api/book answers once a booking exists (also for a repeated request with the same key)
+async function bookedReply(env, b) {
+  const t = withTax((b.quote || 0) * 100), m = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status != 'cancelled'").bind(b.id).first();
+  return { ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token, subtotal: b.quote, tax: t.tax / 100, total: t.total / 100, priceChanged: false, repeat: true,
+    membership: m ? { id: m.id, monthly: m.monthly_cents / 100, firstBill: m.next_bill, label: planLabel(m.type, m.freq, m.size) } : null, membershipError: null };
 }
 
 // ---------- pages (manage booking / got it) ----------
@@ -223,7 +236,7 @@ async function api(req, env, url) {
   const p = url.pathname;
 
   if (p === "/api/days" && req.method === "GET") {
-    const from = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("from") || "") ? url.searchParams.get("from") : todayKey();
+    const fq = url.searchParams.get("from") || "", from = realDay(fq) && fq >= addDays(todayKey(), -1) ? fq : todayKey();
     const n = Math.min(70, Math.max(1, +url.searchParams.get("n") || 45));
     const s = await lastSync(env);
     return json({ now: Date.now(), rules: { startMin: RULES.startMin, gapMin: RULES.gapMin, noticeHours: RULES.noticeHours, stepMin: RULES.stepMin, maxJobs: RULES.maxJobs, maxJobsDayOff: RULES.maxJobsDayOff, horizonDays: RULES.horizonDays },
@@ -232,11 +245,15 @@ async function api(req, env, url) {
 
   if (p === "/api/book" && req.method === "POST") {
     let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Bad request" }, 400);
     if (body.website) return json({ ok: true, id: "OK" });   // spam trap
     const { f, err } = readBooking(body);
+    // the same booking sent again (lost response, timeout, double tap): answer with the one already made. Audit IA-011.
+    if (f.key) { const ex = await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first(); if (ex) return json(await bookedReply(env, ex)); }
     if (err.includes("location")) return json({ error: "We couldn't find that address. Pick it from the address suggestions, or pick your town from the list. Or text us at (732) 206-7084.", field: "q-town" }, 400);
     if (err.includes("distance")) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084 and we'll see what we can do.", field: "q-town" }, 400);
     if (err.length) return json({ error: "Please check: " + err.join(", "), fields: err }, 400);
+    if (nyToUtc(f.day, f.start) < Date.now() + RULES.noticeHours * 3600e3) return json({ error: "That time is less than " + RULES.noticeHours + " hours away or has passed. Please pick another time.", taken: true }, 409);
     // An email that already has an account: adding Apex Membership or a card on file needs that account's sign-in code,
     // so nobody can start a membership on someone else's saved card or replace it (audit IA-001 / IA-002).
     // The website asks for the code right in the booking form, then sends the booking again signed in.
@@ -264,7 +281,11 @@ async function api(req, env, url) {
     if (f.card && f.cardToken && squareOn(env)) {
       const cust = await env.DB.prepare("SELECT * FROM customers WHERE id = ?").bind(customerId).first();
       try { const cd = await saveCard(env, cust, f.cardToken, f.postal); bookingCard = { id: cd.id, brand: cd.brand, last4: cd.last4 }; }
-      catch (e) { return json({ error: e.message + " Or choose Pay in person.", card: true }, 402); }
+      catch (e) {
+        // a declined card shouldn't leave a brand-new account with no booking behind (audit IA-021i)
+        if (!owner) await env.DB.prepare("DELETE FROM customers WHERE id = ? AND NOT EXISTS (SELECT 1 FROM bookings WHERE customer_id = ?)").bind(customerId, customerId).run().catch(() => {});
+        return json({ error: e.message + " Or choose Pay in person.", card: true }, 402);
+      }
     } else if (f.card && squareOn(env)) {
       // "use my saved card" only works when you're signed in as the owner of that card
       const cust = session && session.id === customerId ? await env.DB.prepare("SELECT card FROM customers WHERE id = ?").bind(customerId).first() : null;
@@ -275,10 +296,17 @@ async function api(req, env, url) {
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day: f.day, pkg: f.pkg, size: f.size, adds: JSON.stringify(f.adds),
       plan: f.plan ? JSON.stringify(f.plan) : null, quote: f.quote, travel_fee: f.travel_fee, miles: f.miles, name: f.name, phone: f.phone, email: f.email, address: f.address, town: f.town,
       car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId, card: bookingCard ? JSON.stringify(bookingCard) : null,
-      terms_version: TERMS_VERSION, terms_at: Date.now(), terms_ip: req.headers.get("CF-Connecting-IP") || "", sms_ok: f.sms ? 1 : 0, mem_auth_at: f.plan && f.memAuth ? Date.now() : null };
-    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card, terms_version, terms_at, terms_ip, sms_ok, mem_auth_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
-      b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at).run();
+      terms_version: TERMS_VERSION, terms_at: Date.now(), terms_ip: req.headers.get("CF-Connecting-IP") || "", sms_ok: f.sms ? 1 : 0, mem_auth_at: f.plan && f.memAuth ? Date.now() : null, client_key: f.key };
+    try {
+      await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card, terms_version, terms_at, terms_ip, sms_ok, mem_auth_at, client_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
+        b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at, b.client_key).run();
+    } catch (e) {   // two copies of the same request at once: the other one won, answer with it
+      const ex = f.key && await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first();
+      if (ex) return json(await bookedReply(env, ex));
+      throw e;
+    }
+    b._photos = f.photos;
     if (f.sms) await env.DB.prepare("UPDATE customers SET sms_ok = 1, sms_ok_at = ? WHERE id = ?").bind(Date.now(), customerId).run();
     if (f.plan && f.memAuth) {
       try { b._mem = await createMembership(env, { customerId, booking: b, type: f.plan.type, freq: f.plan.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: b.terms_ip } }); }
@@ -334,6 +362,7 @@ async function api(req, env, url) {
     return json({ calendarConnected: calConfigured(env), emailConnected: !!env.RESEND_API_KEY, lastSync: s, calendars: cals });
   }
 
+  if (["/api/days", "/api/book", "/api/auth/start", "/api/auth/verify", "/api/auth/logout", "/api/status", "/api/config"].includes(p)) return json({ error: "Method not allowed" }, 405);
   return json({ error: "Not found" }, 404);
 }
 

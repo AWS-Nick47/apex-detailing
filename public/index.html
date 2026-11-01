@@ -2083,6 +2083,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       </div>
       <div class="done-acts">
         <button type="button" class="btn btn-ghost" id="dnCal">Add to calendar</button>
+        <a class="btn btn-ghost" id="dnManage" hidden>Manage booking</a>
         <button type="button" class="btn" data-bk="close">Done</button>
       </div>
       <div class="done-fallback">
@@ -2464,9 +2465,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     sizeBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.size === String(i))); });
     document.querySelectorAll(".price[data-p]").forEach(function (el) { rollPrice(el, el.dataset.p.split(",")[i]); });
     var art = document.getElementById("covArt"); if (art) art.dataset.size = i;
+    var r = !fromQuote && document.getElementById("q-size-" + i); if (r) r.checked = true;   // first, so the availability chip reads the new size
     if (typeof pkPrice !== "undefined" && pkPrice) refreshBigPrice();
     var cl = document.getElementById("carLabel"); if (cl) cl.textContent = SIZES[i];
-    if (!fromQuote) { var r = document.getElementById("q-size-" + i); if (r) { r.checked = true; updateQuote(); } }
+    if (r) updateQuote();
   }
   sizeBtns.forEach(function (b) { b.addEventListener("click", function () { setSize(+b.dataset.size); }); });
 
@@ -2790,7 +2792,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var fmt = function (ms, o) { return new Date(ms).toLocaleDateString("en-US", Object.assign({ timeZone: "America/New_York" }, o)); };
       var tm = function (ms) { return new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }); };
       var hist = j.bookings.filter(function (b) { return b.status !== "cancelled"; }).map(function (b) {
-        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, img: null, price: b.quote, paid: b.paid, manage: b.manage, start: b.start,
+        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, img: null, price: b.quote, paid: b.paid, water: b.water, power: b.power, manage: b.manage, start: b.start,
           when: fmt(b.start, { weekday: "long", month: "short", day: "numeric" }), time: tm(b.start) + "–" + tm(b.end) };
       });
       upcoming = hist.filter(function (h) { return h.status === "upcoming"; }).sort(function (a, b) { return a.start - b.start; });
@@ -3120,10 +3122,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!window.__LIVE) return Promise.resolve(null);
       if (!force && AV && Date.now() - avAt < 120000) return Promise.resolve(AV);
       if (avLoading) return avLoading;
-      avLoading = fetch("/api/days?from=" + key(first) + "&n=60", { cache: "no-store" }).then(function (r) { return r.json(); })
-        .then(function (j) { AV = j; avAt = Date.now(); avLoading = null; first = new Date(today); first.setDate(first.getDate() + 1); last = new Date(today); last.setDate(last.getDate() + 59);
+      avLoading = fetch("/api/days?from=" + key(first) + "&n=60", { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("days " + r.status); return r.json(); })
+        .then(function (j) { if (!j || !j.days || !j.rules) throw new Error("bad days"); AV = j; avAt = Date.now(); avLoading = null; first = new Date(today); first.setDate(first.getDate() + 1); last = new Date(today); last.setDate(last.getDate() + 59);
           if (!bk.hidden && step === 3) renderCal(); if (window.__openChip) window.__openChip(); return AV; })
-        .catch(function () { avLoading = null; return null; });
+        .catch(function () { avLoading = null; if (!bk.hidden && step === 3) renderCal(); if (window.__openChip) window.__openChip(); return null; });
       return avLoading;
     }
     window.__loadAvail = loadAvail;
@@ -3245,6 +3247,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         '<div class="rv"><span>When</span><b>' + esc(window.__bkWhenText || "—") + ' <button type="button" class="lnk" data-rv="3">Edit</button></b></div>' +
         '<div class="rv"><span>Car</span><b>' + esc((car || SIZES[q.size]) + ($("bkColor").value ? " · " + $("bkColor").value : "")) + '</b></div>' +
         '<div class="rv"><span>Where</span><b>' + esc(where || "—") + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
+        '<div class="rv"><span>' + (needs().water ? "Water · outlet" : "Outlet") + '</span><b>' + esc([needs().water ? ({ yes: "Spigot yes", no: "No spigot" }[radio("water")] || "Spigot not answered") : null, { yes: "Outlet yes", no: "No outlet" }[radio("power")] || "Outlet not answered"].filter(Boolean).join(" · ")) + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
         '<div class="rv"><span>Price</span><b>' + usd(q.total) + '</b></div>' +
         '<div class="rv"><span>' + TAX.name + ' (' + TAX.pct + ')</span><b>' + usd(q.tax) + '</b></div>' +
         '<div class="rv tot"><span>Estimate</span><b>' + usd(q.grand) + '</b></div>';
@@ -3257,6 +3260,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     window.__nextSlots = nextSlots; window.__tstr = tstr;
     window.__openChip = function () {
       var q = current(), L = $("pkOpenL"), S = $("pkOpenS"); if (!L) return;
+      var chip = $("pkOpen"); if (chip) chip.hidden = !!(window.__LIVE && !AV); if (window.__LIVE && !AV) return;   // no data yet (or it failed): show nothing rather than guess
       if (winterNow() && q.pkg !== "interior") { L.textContent = S.textContent = "Back in spring"; return; }
       var n = nextSlots(q.pkg, q.size, q.adds.map(function (a) { return a.id; }), 1)[0];
       var wk = new Date(first); wk.setDate(wk.getDate() + 6);
@@ -3389,7 +3393,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     $("bkAddr").addEventListener("blur", function () { setTimeout(closeAc, 150); });
     form.addEventListener("input", function (e) { if (e.target.classList && e.target.id) clearErr(e.target); else if (e.target.classList) e.target.classList.remove("err"); if (/^bk(Year|Make|Model|Color)$/.test(e.target.id)) sumRefresh(); });
     var ERRS = { bkYear: "Enter the year", bkMake: "Enter the make", bkModel: "Enter the model", bkAddr: "Enter your street address", "q-town": "Enter your town",
-      bkName: "Enter your name", bkPhone: "Enter a 10-digit phone number", bkEmail: "Enter a valid email" };
+      bkName: "Enter your full name", bkPhone: "Enter a 10-digit phone number", bkEmail: "Enter a valid email, like you@example.com" };
     function clearErr(el) { el.classList.remove("err"); el.removeAttribute("aria-invalid"); var m = document.getElementById(el.id + "-err"); if (m) m.remove(); }
     function setErr(ids) { var firstEl = null; ids.forEach(function (id) { var el = $(id); if (!el) return; el.classList.add("err"); el.setAttribute("aria-invalid", "true");
         if (!document.getElementById(id + "-err")) { var m = document.createElement("small"); m.className = "bk-ferr"; m.id = id + "-err"; m.textContent = ERRS[id] || "Required"; el.setAttribute("aria-describedby", m.id);
@@ -3410,9 +3414,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (n === 3) { if (sel.time == null) { var se = $("slotErr"); se.textContent = sel.date ? "Pick a start time below to continue." : "Pick a day, then a start time."; se.hidden = false; if (sel.date) $("slots").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); else bk.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" }); $("slots").classList.add("shake"); setTimeout(function () { $("slots").classList.remove("shake"); }, 500); if (!sel.date) { var fb = $("calGrid").querySelector("button:not([disabled])") || $("calNext"); if (fb && !fb.disabled) fb.focus(); } return false; } return true; }
       if (n === 4) {
         var m2 = [];
-        if (!$("bkName").value.trim()) m2.push("bkName");
+        if ($("bkName").value.trim().length < 2) m2.push("bkName");   // same checks as the server (audit IA-021h)
         if ($("bkPhone").value.replace(/\D/g, "").length < 10) m2.push("bkPhone");
-        if (!/^\S+@\S+\.\S+$/.test($("bkEmail").value.trim())) m2.push("bkEmail");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test($("bkEmail").value.trim())) m2.push("bkEmail");
         if (!setErr(m2)) return false;
         var needs2 = [["bkAgree", "bkAgreeRow"]]; if (window.__plan) needs2.unshift(["bkMemAuth", "bkMemAuthRow"]);
         var miss2 = needs2.filter(function (x) { var row = $(x[1]); row.classList.toggle("need", !$(x[0]).checked); return !$(x[0]).checked; });
@@ -3450,12 +3454,30 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     $("slots").addEventListener("click", function (e) { var b = e.target.closest("[data-t]"); if (!b) return; sel.time = +b.dataset.t; $("slotErr").hidden = true; renderSlots(); });
     $("calPrev").addEventListener("click", function () { viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1); renderCal(); });
     $("calNext").addEventListener("click", function () { viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1); renderCal(); });
+    var photos = [];   // concern photos: shrunk to 1600 px JPEGs and emailed to Nick with the booking (audit IA-016)
+    function shrink(file) {
+      return new Promise(function (ok) {
+        var img = new Image(), u = URL.createObjectURL(file);
+        img.onload = function () { var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement("canvas");
+          c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(u); ok(c.toDataURL("image/jpeg", 0.8)); };
+        img.onerror = function () { URL.revokeObjectURL(u); ok(null); };
+        img.src = u;
+      });
+    }
     $("bkPhotos").addEventListener("change", function () {
       var th = $("bkThumbs");
-      Array.prototype.forEach.call(this.files, function (f) { var u = URL.createObjectURL(f), d = document.createElement("div"); d.className = "bk-th"; d.innerHTML = '<img alt="" src="' + u + '"><button type="button" aria-label="Remove photo">×</button>'; d.querySelector("button").addEventListener("click", function () { URL.revokeObjectURL(u); d.remove(); }); th.appendChild(d); });
+      Array.prototype.forEach.call(this.files, function (f) {
+        if (photos.length >= 4 || !/^image\//.test(f.type)) return;
+        var u = URL.createObjectURL(f), d = document.createElement("div"), item = { file: f, data: null };
+        photos.push(item); shrink(f).then(function (x) { item.data = x; });
+        d.className = "bk-th"; d.innerHTML = '<img alt="" src="' + u + '"><button type="button" aria-label="Remove photo">×</button>';
+        d.querySelector("button").addEventListener("click", function () { URL.revokeObjectURL(u); d.remove(); photos.splice(photos.indexOf(item), 1); });
+        th.appendChild(d); });
       this.value = "";
     });
-    var sending = false, priceAccept = null, pnLock = false;
+    var sending = false, priceAccept = null, pnLock = false, bookKey = null;
+    function newKey() { return Array.from(crypto.getRandomValues(new Uint8Array(12)), function (x) { return x.toString(16).padStart(2, "0"); }).join(""); }
     window.__pnReset = function () { if (pnLock) return; priceAccept = null; var n = $("bkPriceNote"); if (n) n.hidden = true; };
     // the server's price differs from the one on screen (returning guest, member discount, travel for this address):
     // show it and book at that price on the next tap (audit IA-003)
@@ -3479,7 +3501,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         name: $("bkName").value.trim(), phone: $("bkPhone").value.trim(), email: $("bkEmail").value.trim(),
         address: $("bkAddr").value.trim(), town: $("q-town").value.trim(), car: [$("bkYear").value, $("bkMake").value, $("bkModel").value].join(" ").trim(), color: $("bkColor").value.trim(),
         water: radio("water"), power: radio("power"), notes: $("bkNotes").value.trim(), heard: $("bkHeard").value,
-        quote: q.total, travel_fee: q.travel || 0, lat: T.lat, lon: T.lon, acceptPrice: priceAccept,
+        quote: q.total, travel_fee: q.travel || 0, lat: T.lat, lon: T.lon, acceptPrice: priceAccept, key: bookKey,
+        photos: photos.filter(function (x) { return x.data && x.data.length < 1400000; }).map(function (x, i) { return { name: "concern-" + (i + 1) + ".jpg", data: x.data }; }),
         plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type, freq: (window.__planInfo || {}).freq || 1 } : null,
         card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "" };
     }
@@ -3524,7 +3547,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function finish() {
       if (!window.__LIVE) return showDone("APX-" + (10000 + Math.floor(Math.random() * 89999)));
       if (codeFor && !$("bkCode").hidden) return codeVerify();
-      if (sending) return; sending = true;
+      if (sending) return; sending = true; bookKey = bookKey || newKey();
       var btn = $("bkNext"), was = btn.innerHTML; btn.disabled = true; btn.innerHTML = "Booking…";
       var fail = function (msg) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) { w.innerHTML = msg; w.hidden = false; } };
       var needCard = radio("pay") === "card" && !useSaved;
@@ -3532,22 +3555,28 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         .then(function (t) { if (!t || t.status !== "OK") throw new Error((t && t.errors && t.errors[0] && t.errors[0].message) || "Check your card details."); return t; }) : Promise.resolve(null))
         .then(function (t) {
           var pl = bookingPayload(); if (t) { pl.cardToken = t.token; pl.postal = t.details && t.details.billing && t.details.billing.postalCode; }
-          return fetch("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pl) });
+          // 20 s timeout: the same key makes a retry safe (the server returns the booking it already made). Audit IA-011/012.
+          var ac = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ac) ac.abort(); }, 20000);
+          return fetch("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pl), signal: ac ? ac.signal : undefined }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; });
         }, function (e) { fail(e.message); throw "handled"; })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
           if (x.status === 409 && x.j && x.j.priceChanged) { sending = false; btn.disabled = false; btn.innerHTML = was; priceNote(x.j); return; }
           if (x.status === 403 && x.j && x.j.needCode) { sending = false; btn.disabled = false; btn.innerHTML = was; codeGate($("bkEmail").value.trim()); return; }
-          if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
+          if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; bookKey = null; loadAvail(true); showDone(x.j.id);
             if (codeOk && window.__acctLoad) window.__acctLoad();
             if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo + tax, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
             else if (x.j.membershipError) { $("dnMemRow").hidden = false; $("dnMem").textContent = "Not added: " + x.j.membershipError; }
             $("dnTotal").textContent = usd(x.j.total) + " with tax · pay after the job";
             if (window.__acctReload) window.__acctReload(); return; }
-          if (x.status === 409) { fail(x.j.error); sel.time = null; loadAvail(true).then(function () { show(3); renderCal(); }); return; }
+          if (x.status === 409) { fail(x.j.error); sel.time = null; bookKey = null; loadAvail(true).then(function () { show(3); renderCal(); var se = $("slotErr"); if (se) { se.textContent = x.j.error; se.hidden = false; } }); return; }
+          var FIELD = { name: "bkName", phone: "bkPhone", email: "bkEmail" }, fx = ((x.j && x.j.fields) || []).map(function (f) { return FIELD[f]; }).filter(Boolean);
+          if (fx.length) { sending = false; btn.disabled = false; btn.innerHTML = was; setErr(fx); return; }
           fail((x.j && x.j.error) || "Something went wrong. Please text us at (732) 206-7084.");
         })
-        .catch(function (e) { if (e === "handled") return; fail("We couldn't reach our booking system. Check your connection and try again, or text us at (732) 206-7084."); });
+        .catch(function (e) { if (e === "handled") return;
+          fail(e && e.name === "AbortError" ? "<b>Still working…</b> We didn't hear back in time. Check your email for a confirmation before trying again. If nothing arrives in a minute, tap Confirm booking again. You won't be booked twice."
+            : "We couldn't reach our booking system. Check your connection and try again. You won't be booked twice. Or text us at (732) 206-7084."); });
     }
     function showDone(ref) {
       var q = current();
@@ -3563,6 +3592,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         var fb = done.querySelector(".done-fallback"); if (fb) fb.hidden = true;
         var rl = done.querySelector(".dn-row span"); if (rl) rl.textContent = "Booking code";
       }
+      $("bkStepL").innerHTML = "<b>Booked</b>";
+      var mg = $("dnManage"); if (mg) { mg.hidden = !(window.__LIVE && window.__lastBooking && window.__lastBooking.manage); if (!mg.hidden) mg.href = window.__lastBooking.manage; }
       form.hidden = true; document.querySelector("#bk .bk-steps").hidden = true; done.hidden = false; bk.scrollTop = 0;
       document.getElementById("copied").textContent = "";
       done.querySelector("h3").setAttribute("tabindex", "-1"); done.querySelector("h3").focus({ preventScroll: true });
@@ -3571,7 +3602,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     $("dnCal").addEventListener("click", function () {
       if (!sel.date || sel.time == null) return;
       var p = sel.date.split("-"), pad = function (n) { return String(n).padStart(2, "0"); };
-      var st = new Date(+p[0], +p[1] - 1, +p[2], 0, sel.time), en = new Date(st.getTime() + dur() * 60000);
+      var LB = window.__lastBooking, st = new Date(LB && LB.start ? LB.start : nyToUtc(sel.date, sel.time)), en = new Date(LB && LB.end ? LB.end : st.getTime() + dur() * 60000);   // New York time, wherever the visitor is
       var f = function (d) { return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + "T" + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + "00Z"; };
       var ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Apex Detailing//EN", "BEGIN:VEVENT", "UID:" + Date.now() + "@apexdetailingoc.com", "DTSTAMP:" + f(new Date()), "DTSTART:" + f(st), "DTEND:" + f(en),
         "SUMMARY:Apex Detailing · " + NAMES[current().pkg], "LOCATION:" + $("dnWhere").textContent.replace(/,/g, "\\,"), "DESCRIPTION:" + (window.__LIVE ? "Booking " + $("dnRef").textContent + ". Change or cancel with the link in your confirmation email." : "Requested booking " + $("dnRef").textContent + " (pending confirmation)"), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
@@ -3581,15 +3612,17 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!window.__acct || !window.__acct.isIn()) return;
       var D = window.__acct.data, car = (D.cars[0] || {}).name || "", parts = car.split(" ");
       var setIf = function (id, v) { var el = $(id); if (el && !el.value) el.value = v || ""; };
-      setIf("bkYear", parts[0]); setIf("bkMake", parts[1]); setIf("bkModel", parts.slice(2).join(" ")); setIf("bkColor", D.color || "Red");
+      setIf("bkYear", parts[0]); setIf("bkMake", parts[1]); setIf("bkModel", parts.slice(2).join(" ")); setIf("bkColor", (D.cars[0] || {}).color || D.color || "");
       setIf("bkAddr", D.address); setIf("q-town", D.town); setIf("bkName", D.name); setIf("bkPhone", D.phone); setIf("bkEmail", D.email); setIf("bkNotes", D.notes);
-      form.querySelectorAll('input[name="water"][value="yes"], input[name="power"][value="yes"]').forEach(function (r) { if (!radio(r.name)) r.checked = true; });
+      var lb = (D.history || []).filter(function (h) { return h.water || h.power; })[0];   // copy water/power from their last booking, never guess
+      if (lb) ["water", "power"].forEach(function (n) { var v = lb[n], r = v && form.querySelector('input[name="' + n + '"][value="' + v + '"]'); if (r && !radio(n)) r.checked = true; });
     }
     function open(o) {
       o = o || {}; lastFocus = document.activeElement;
       loadAvail(); var be = $("bkErr"); if (be) be.hidden = true;
       var nav = document.querySelector(".nav"); if (nav && nav.classList.contains("open")) $("menuBtn").click();
-      if (!done.hidden) { done.hidden = true; form.hidden = false; document.querySelector("#bk .bk-steps").hidden = false; sel = { date: null, time: null }; maxStep = 1; syncWhen(); }
+      if (!done.hidden) { done.hidden = true; form.hidden = false; document.querySelector("#bk .bk-steps").hidden = false; sel = { date: null, time: null }; maxStep = 1; syncWhen();
+        ["bkAgree", "bkSms", "bkMemAuth"].forEach(function (id) { var c = $(id); if (c) c.checked = false; }); photos.length = 0; $("bkThumbs").innerHTML = ""; $("bkPriceNote").hidden = true; }
       if (winterNow() && current().pkg !== "interior") { selectPkg("interior"); o.note = o.note || "We only do Interior details from Dec 15 to Mar 1, so we switched you to Interior. Exterior and Full Details are back in spring."; }
       if (o.slot) { sel = { date: o.slot.date, time: o.slot.time }; var sp = o.slot.date.split("-"); viewMonth = new Date(+sp[0], +sp[1] - 1, 1); syncWhen(); }
       lastFocus = o.focusBack || lastFocus;
