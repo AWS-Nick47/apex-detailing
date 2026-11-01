@@ -1,8 +1,8 @@
 // Apex Detailing — website + booking backend (Cloudflare Worker)
-import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, parseDay } from "./sched.js";
+import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, parseDay, townCoords } from "./sched.js";
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
 import { send, layout, rows, button, h } from "./email.js";
-import { quote as priceQuote, travelFee, TAX, withTax } from "./pricing.js";
+import { quote as priceQuote, travelFee, TAX, withTax, PRICING } from "./pricing.js";
 import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer } from "./accounts.js";
 import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
@@ -94,7 +94,7 @@ function readBooking(body) {
     name: clean(body.name, 80), phone: clean(body.phone, 30), email: clean(body.email, 120).toLowerCase(),
     address: clean(body.address, 160), town: clean(body.town, 60), car: clean(body.car, 80), color: clean(body.color, 30),
     water: clean(body.water, 5), power: clean(body.power, 5), notes: clean(body.notes, 1500), heard: clean(body.heard, 60),
-    quote: Math.round(+body.quote || 0), travel_fee: Math.round(+body.travel_fee || 0), miles: body.miles == null ? null : +body.miles,
+    quote: Math.round(+body.quote || 0), travel_fee: 0, miles: null,   // the server works out distance and travel itself
     lat: body.lat == null ? null : +body.lat, lon: body.lon == null ? null : +body.lon,
     plan: body.plan && typeof body.plan === "object" && MEM.plans[body.plan.type] ? { type: clean(body.plan.type, 10), freq: [1, 2, 4].includes(+body.plan.freq) ? +body.plan.freq : 1 } : null,
     card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10),
@@ -113,7 +113,11 @@ function readBooking(body) {
   if (f.power === "no") err.push("outlet");
   if (!f.agree) err.push("agreement to the Terms of Service");
   if (f.plan && !f.memAuth) err.push("membership charge authorization");
-  if (f.lat != null && f.lon != null && isFinite(f.lat) && isFinite(f.lon)) f.miles = Math.round(milesFromHome(f.lat, f.lon) * 10) / 10;
+  // distance comes from the address pin (or the town's center), never from the browser's number (audit IA-009)
+  const pinOk = f.lat != null && f.lon != null && isFinite(f.lat) && isFinite(f.lon) && f.lat > 38 && f.lat < 42.5 && f.lon > -77 && f.lon < -72;
+  const pin = pinOk ? [f.lat, f.lon] : townCoords(f.town);
+  if (!pinOk) { f.lat = pin ? pin[0] : null; f.lon = pin ? pin[1] : null; }
+  if (pin) f.miles = Math.round(milesFromHome(pin[0], pin[1]) * 10) / 10; else err.push("location");
   if (f.miles != null && f.miles > RULES.maxMiles) err.push("distance");
   return { f, err };
 }
@@ -227,7 +231,9 @@ async function api(req, env, url) {
     let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
     if (body.website) return json({ ok: true, id: "OK" });   // spam trap
     const { f, err } = readBooking(body);
-    if (err.length) return json({ error: "Please check: " + err.join(", ") }, 400);
+    if (err.includes("location")) return json({ error: "We couldn't find that address. Pick it from the address suggestions, or pick your town from the list. Or text us at (732) 206-7084.", field: "q-town" }, 400);
+    if (err.includes("distance")) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084 and we'll see what we can do.", field: "q-town" }, 400);
+    if (err.length) return json({ error: "Please check: " + err.join(", "), fields: err }, 400);
     // An email that already has an account: adding Apex Membership or a card on file needs that account's sign-in code,
     // so nobody can start a membership on someone else's saved card or replace it (audit IA-001 / IA-002).
     // The website asks for the code right in the booking form, then sends the booking again signed in.
@@ -241,7 +247,14 @@ async function api(req, env, url) {
     // the server sets the price: launch price is for a customer's first detail only
     if (travelFee(f.miles) === null) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084." }, 400);
     const prior = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE email = ? AND status != 'cancelled'").bind(normEmail(f.email)).first();
-    const q = priceQuote({ pkg: f.pkg, size: f.size, adds: f.adds, miles: f.miles, returning: prior.n > 0, member: false });
+    // members (signed in as this email) get their add-on discount (audit IA-004)
+    const membership = session && owner && session.id === owner.id ? await activeFor(env, owner.id) : null;
+    const q = priceQuote({ pkg: f.pkg, size: f.size, adds: f.adds, miles: f.miles, returning: prior.n > 0, member: !!membership });
+    // the price on the customer's screen must match before we book (audit IA-003): if it doesn't, send back the real
+    // price; the site shows it and books on the next tap with acceptPrice set to that price
+    if (f.quote !== q.subtotal && Math.round(+body.acceptPrice || -1) !== q.subtotal)
+      return json({ error: "Your price changed.", priceChanged: true, subtotal: q.subtotal, tax: q.tax, total: q.total, base: q.base, addTotal: q.addTotal, travel: q.travel, miles: f.miles,
+        returning: prior.n > 0 && PRICING.launchSale, member: !!membership }, 409);
     const shownQuote = f.quote; f.quote = q.subtotal; f.travel_fee = q.travel;   // quote = price before tax (tax is added on the bill)
     const customerId = await upsertFromBooking(env, f, session && session.id);
     let bookingCard = null;

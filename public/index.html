@@ -876,6 +876,8 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .bk-review .rv:first-of-type { border-top: 0; }
 .bk-review .rv span { color: var(--muted); } .bk-review .rv b { text-align: right; font-weight: 600; }
 .bk-review .rv.tot b { font-size: 17px; }
+.bk-pnote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); background: rgba(255,210,122,.08); box-shadow: inset 0 0 0 1px rgba(255,210,122,.35); }
+.bk-pnote b { color: var(--fg); } .bk-pnote p { margin: 6px 0 0; }
 .bk-code { display: grid; gap: 12px; justify-items: start; margin-top: 14px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
 .bk-code-h { display: flex; align-items: center; gap: 8px; font-size: 16px; } .bk-code-h svg { width: 18px; height: 18px; }
 .bk-code p { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--muted); } .bk-code p b { color: var(--fg); word-break: break-all; }
@@ -2031,6 +2033,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
             <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
           </div>
+          <div class="bk-pnote" id="bkPriceNote" role="status" hidden></div>
           <div class="bk-code" id="bkCode" hidden>
             <div class="bk-code-h"><svg aria-hidden="true"><use href="#i-lock"/></svg><b>Confirm it's you</b></div>
             <p>This email already has an Apex account. To <span id="bkCodeWhy">add Apex Membership</span>, enter the 6-digit code we just emailed to <b id="bkCodeTo"></b>.</p>
@@ -2419,7 +2422,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   window.__travel = { fee: 0, miles: null, blocked: false, known: false };
   var PRICES = PRICING.launchSale ? PRICING.launch : PRICING.regular;   // price a first-time customer pays
   var round5 = function (x) { return Math.round(x / 5) * 5; };
-  function isReturning() { return !!(window.__acct && window.__acct.isIn()); }
+  function isReturning() { return !!(window.__acct && window.__acct.isIn()) || !!window.__returningGuest; }
   function isMember() { return !!(window.__acct && window.__acct.isIn() && window.__acct.mode() === "member"); }
   function pkgPrice(pkg, size) { return isReturning() ? REG[pkg][size] : PRICES[pkg][size]; }
   function addPrice(a) { return isMember() ? Math.round(a.p * (1 - PRICING.memberAddonDiscount)) : a.p; }
@@ -2493,6 +2496,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
   function updateQuote() {
     var q = current();
+    ADDONS.forEach(function (a) { var em = document.querySelector('label[for="q-add-' + a.id + '"] em'); if (em) em.textContent = "+$" + addPrice(a); });
+    if (window.__pnReset) window.__pnReset();   // a price note from the server is out of date once the booking changes
     document.getElementById("qTotal").innerHTML = usdBig(q.grand);
     var html = "<div><span>" + NAMES[q.pkg] + " · " + SIZES[q.size] + "</span><span>$" + q.base + "</span></div>";
     q.adds.forEach(function (a) { html += "<div><span>" + a.name + "</span><span>+$" + addPrice(a) + "</span></div>"; });
@@ -3394,6 +3399,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (n === 2) {
         var miss = ["bkYear", "bkMake", "bkModel", "bkAddr", "q-town"].filter(function (id) { return !$(id).value.trim(); });
         if (!setErr(miss)) return false;
+        if (!window.__travel.known) { townCheck(); }
+        if (!window.__travel.known) { var am = $("areaMsg"); am.hidden = false; am.className = "area-msg bk-wide bad"; am.innerHTML = "<b>We couldn't find “" + $("q-town").value.trim().replace(/[<>&]/g, "") + "”.</b> Pick your street address from the suggestions, or choose your town from the list. Outside the list? Text us at (732) 206-7084."; $("q-town").focus(); return false; }
         if (window.__travel.blocked) { $("areaMsg").classList.add("shake"); setTimeout(function () { $("areaMsg").classList.remove("shake"); }, 500); $("q-town").focus(); return false; }
         var nd = needs();
         if ((nd.water && !radio("water")) || !radio("power")) { $("bkWarn").innerHTML = "<b>Let us know about water and power</b> so we show up ready."; $("bkWarn").hidden = false; return false; }
@@ -3447,14 +3454,31 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       Array.prototype.forEach.call(this.files, function (f) { var u = URL.createObjectURL(f), d = document.createElement("div"); d.className = "bk-th"; d.innerHTML = '<img alt="" src="' + u + '"><button type="button" aria-label="Remove photo">×</button>'; d.querySelector("button").addEventListener("click", function () { URL.revokeObjectURL(u); d.remove(); }); th.appendChild(d); });
       this.value = "";
     });
-    var sending = false;
+    var sending = false, priceAccept = null, pnLock = false;
+    window.__pnReset = function () { if (pnLock) return; priceAccept = null; var n = $("bkPriceNote"); if (n) n.hidden = true; };
+    // the server's price differs from the one on screen (returning guest, member discount, travel for this address):
+    // show it and book at that price on the next tap (audit IA-003)
+    function priceNote(j) {
+      var was = !!window.__returningGuest;
+      window.__returningGuest = !!j.returning;
+      pnLock = true; if (was !== window.__returningGuest && window.__repriceAll) window.__repriceAll(); else updateQuote(); review(); pnLock = false;
+      priceAccept = j.subtotal;
+      var why = [];
+      if (j.returning) why.push("Launch pricing is for a first detail. This email has booked with us before, so it's the regular price.");
+      if (j.member) why.push("Your member add-on discount is included.");
+      if (j.travel !== (current().travel || 0)) why.push(j.travel ? "This address is about " + Math.round(j.miles) + " miles away, so a $" + j.travel + " travel fee applies." : "No travel fee for this address.");
+      var n = $("bkPriceNote"); n.hidden = false;
+      n.innerHTML = "<b>Your estimate is " + usd(j.total) + " with tax</b> ($" + j.subtotal + " + " + usd(j.tax) + " NJ sales tax)." + (why.length ? "<p>" + why.join(" ") + "</p>" : "") + "<p>Tap <b>Confirm booking</b> to book at this price.</p>";
+      $("bkTot").textContent = usd(j.total);
+      n.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     function bookingPayload() {
       var q = current(), T = window.__travel;
       return { pkg: q.pkg, size: q.size, adds: q.adds.map(function (a) { return a.id; }), day: sel.date, start: sel.time,
         name: $("bkName").value.trim(), phone: $("bkPhone").value.trim(), email: $("bkEmail").value.trim(),
         address: $("bkAddr").value.trim(), town: $("q-town").value.trim(), car: [$("bkYear").value, $("bkMake").value, $("bkModel").value].join(" ").trim(), color: $("bkColor").value.trim(),
         water: radio("water"), power: radio("power"), notes: $("bkNotes").value.trim(), heard: $("bkHeard").value,
-        quote: q.total, travel_fee: q.travel || 0, miles: T.miles, lat: T.lat, lon: T.lon,
+        quote: q.total, travel_fee: q.travel || 0, lat: T.lat, lon: T.lon, acceptPrice: priceAccept,
         plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type, freq: (window.__planInfo || {}).freq || 1 } : null,
         card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "" };
     }
@@ -3511,12 +3535,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         }, function (e) { fail(e.message); throw "handled"; })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
+          if (x.status === 409 && x.j && x.j.priceChanged) { sending = false; btn.disabled = false; btn.innerHTML = was; priceNote(x.j); return; }
           if (x.status === 403 && x.j && x.j.needCode) { sending = false; btn.disabled = false; btn.innerHTML = was; codeGate($("bkEmail").value.trim()); return; }
           if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
             if (codeOk && window.__acctLoad) window.__acctLoad();
             if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo + tax, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
             else if (x.j.membershipError) { $("dnMemRow").hidden = false; $("dnMem").textContent = "Not added: " + x.j.membershipError; }
-            if (x.j.priceChanged) $("dnTotal").textContent = usd(x.j.total) + " with tax · pay after the job" + (x.j.regularPricing ? " (regular price: launch pricing is for a first detail)" : "");
+            $("dnTotal").textContent = usd(x.j.total) + " with tax · pay after the job";
             if (window.__acctReload) window.__acctReload(); return; }
           if (x.status === 409) { fail(x.j.error); sel.time = null; loadAvail(true).then(function () { show(3); renderCal(); }); return; }
           fail((x.j && x.j.error) || "Something went wrong. Please text us at (732) 206-7084.");

@@ -118,6 +118,15 @@ export function slotsFor(key, info, pkg, size, adds, nowMs) {
   return out;
 }
 
+// Service-area towns (approximate centers), same list as the website (TOWNS in public/index.html).
+// Used to place a booking when the customer didn't pick an exact address. Audit IA-009.
+export const TOWNS = { "Brick": [40.060, -74.137], "Point Pleasant": [40.083, -74.068], "Point Pleasant Beach": [40.091, -74.048], "Bay Head": [40.071, -74.046], "Mantoloking": [40.040, -74.051], "Lavallette": [39.970, -74.069], "Seaside Heights": [39.944, -74.073], "Seaside Park": [39.926, -74.077], "Toms River": [39.954, -74.198], "Beachwood": [39.939, -74.193], "Pine Beach": [39.936, -74.172], "Ocean Gate": [39.926, -74.134], "Island Heights": [39.942, -74.150], "Bayville": [39.909, -74.155], "Berkeley Township": [39.897, -74.183], "Lakewood": [40.098, -74.218], "Jackson": [40.098, -74.357], "Howell": [40.181, -74.193], "Wall": [40.168, -74.091], "Manasquan": [40.126, -74.049], "Brielle": [40.108, -74.057], "Sea Girt": [40.132, -74.035], "Spring Lake": [40.153, -74.028], "Belmar": [40.178, -74.022], "Farmingdale": [40.197, -74.169], "Lakehurst": [40.015, -74.311], "Manchester": [39.996, -74.355], "Forked River": [39.840, -74.190], "Lacey": [39.860, -74.226], "Waretown": [39.791, -74.195], "Barnegat": [39.753, -74.223], "Manahawkin": [39.695, -74.259], "Stafford": [39.705, -74.264], "Ship Bottom": [39.643, -74.180], "Neptune": [40.200, -74.028], "Asbury Park": [40.220, -74.012], "Ocean Township": [40.250, -74.030], "Long Branch": [40.304, -73.992], "Freehold": [40.260, -74.274], "Red Bank": [40.347, -74.064], "Middletown": [40.395, -74.092], "Holmdel": [40.345, -74.184], "Marlboro": [40.315, -74.246], "Tuckerton": [39.603, -74.340], "New Egypt": [40.067, -74.531], "Princeton": [40.357, -74.667], "New Brunswick": [40.486, -74.452], "Trenton": [40.221, -74.756], "Atlantic City": [39.364, -74.423], "Edison": [40.519, -74.412] };
+export function townCoords(town) {
+  const v = String(town || "").trim().toLowerCase().replace(/,?\s*(nj|new jersey)$/, "").replace(/ (twp|township|boro|borough)$/, "");
+  const hit = Object.keys(TOWNS).find(k => k.toLowerCase() === v);
+  return hit ? TOWNS[hit] : null;
+}
+
 export function milesFromHome(lat, lon) {
   const R = 3958.8, rad = Math.PI / 180, h = RULES.home, dLat = (lat - h[0]) * rad, dLon = (lon - h[1]) * rad;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(h[0] * rad) * Math.cos(lat * rad) * Math.sin(dLon / 2) ** 2;
