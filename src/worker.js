@@ -2,7 +2,7 @@
 import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, parseDay } from "./sched.js";
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
 import { send, layout, rows, button, h } from "./email.js";
-import { quote as priceQuote, travelFee } from "./pricing.js";
+import { quote as priceQuote, travelFee, TAX, withTax } from "./pricing.js";
 import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer } from "./accounts.js";
 import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
@@ -10,12 +10,27 @@ import { adminApi, accessUser, blockoutBusy } from "./admin.js";
 import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
-const TERMS_VERSION = "2026-10-31";   // bump when terms.html / membership-terms.html / privacy.html change
+const TERMS_VERSION = "2026-11-01";   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
 const VISIT_NAMES = { exterior: "Wash visit", interior: "Interior visit", full: "Wash + interior visit" };
 const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : NAMES[b.pkg];
 const ADDON_NAMES = { pet: "Heavy pet hair", stain: "Heavy stain or odor", lights: "Headlight restoration", engine: "Engine bay" };
 
+const usd = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);   // cents -> "$244.17" / "$229"
+const taxLabel = TAX.name + " (" + TAX.pct + ")";
+// the membership line in booking emails: "Wash + interior, monthly (Sedan) · $95/mo + tax ($101.29), first charge Dec 1"
+const memLine = m => m.label + " · $" + m.monthly + "/mo + tax (" + usd(withTax(m.monthly * 100).total) + "), first charge " + dayLabel(m.firstBill);
+// estimate rows for a detail: price before tax, the tax, and the estimated total
+function priceRows(b) {
+  if (b.kind === "member") return [["Price", "Included in your Apex Membership"]];
+  if (b.final_cents != null && (b.paid_at || b.completed_at)) {   // after the job: what was billed / paid
+    const tax = b.tax_cents || 0, tip = b.paid_at ? (b.tip_cents || 0) : 0;
+    return [["Price", usd(b.final_cents)], b.tax_cents != null ? [taxLabel, usd(tax)] : null, tip ? ["Tip", usd(tip)] : null, [b.paid_at ? "Paid" : "Amount due", usd(b.final_cents + tax + tip)]].filter(Boolean);
+  }
+  if (!b.quote) return [];
+  const e = withTax(b.quote * 100);
+  return [["Estimate", usd(e.sub) + (b.travel_fee ? " (includes $" + b.travel_fee + " travel)" : "")], [taxLabel, usd(e.tax)], ["Estimated total", usd(e.total) + " · pay after the job"]];
+}
 const json = (data, status) => new Response(JSON.stringify(data), { status: status || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const html = (body, status) => new Response(body, { status: status || 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 
@@ -107,8 +122,8 @@ function readBooking(body) {
 function details(b) {
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
   return [["When", whenText(b)], ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
-    ["Where", [b.address, b.town].filter(Boolean).join(", ")], b.kind === "member" ? ["Price", "Included in your Apex Membership"] : ["Estimate", b.quote ? "$" + b.quote + (b.travel_fee ? " (includes $" + b.travel_fee + " travel)" : "") + " · pay after the job" : ""],
-    b._mem ? ["Apex Membership", b._mem.label + " · $" + b._mem.monthly + "/mo, first charge " + dayLabel(b._mem.firstBill)] : null, ["Booking code", b.id]].filter(Boolean);
+    ["Where", [b.address, b.town].filter(Boolean).join(", ")], ...priceRows(b),
+    b._mem ? ["Apex Membership", memLine(b._mem)] : null, ["Booking code", b.id]].filter(Boolean);
 }
 function needsText(pkg) { return pkg === "interior" ? "an outlet we can reach (an indoor one is fine if we can run a cord outside)" : "an outdoor water spigot and an outlet we can reach"; }
 
@@ -143,9 +158,9 @@ async function emailNick(env, b, kind, extra) {
     ["Address", `${h(where)}<br><a href="${h(maps)}" style="color:#111">Directions</a>` + (b.miles != null ? ` · ${h(b.miles)} mi` : ""), true],
     ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ["Water / power", (b.pkg === "interior" ? "" : "Spigot: " + (b.water || "?") + " · ") + "Outlet: " + (b.power || "?")],
-    ["Estimate", b.quote ? "$" + b.quote + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
+    ["Estimate", b.quote ? (e => usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
     ["Payment", b.kind === "member" ? "Apex Membership visit (included)" : b.card ? "Card on file: " + JSON.parse(b.card).brand + " ending " + JSON.parse(b.card).last4 + " (charge after the job)" : "In person"],
-    ["Membership", b._mem ? "Signed up: " + b._mem.label + " · $" + b._mem.monthly + "/mo, first charge " + dayLabel(b._mem.firstBill) : b._memErr ? "Tried to sign up but: " + b._memErr : ""], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
+    ["Membership", b._mem ? "Signed up: " + memLine(b._mem) : b._memErr ? "Tried to sign up but: " + b._memErr : ""], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
   if (extra) list.unshift(["Was", extra]);
   const body = `<h1 style="font-size:22px;margin:0 0 6px">${h(label)}</h1><p style="margin:0;color:#444">${h(whenText(b))}</p>` + rows(list) +
     (kind === "new" ? `<p style="margin:0 0 10px">${button(site + "/ack/" + b.ack_token, "Got it")} &nbsp; ${button(site + "/job/" + b.ack_token, "Job done — get paid", false)}</p><p style="margin:0;color:#777;font-size:13px">The customer is already confirmed. "Got it" just marks it seen for you. After the job, open "Job done — get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.</p>` : "");
@@ -220,7 +235,7 @@ async function api(req, env, url) {
     if (travelFee(f.miles) === null) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084." }, 400);
     const prior = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE email = ? AND status != 'cancelled'").bind(normEmail(f.email)).first();
     const q = priceQuote({ pkg: f.pkg, size: f.size, adds: f.adds, miles: f.miles, returning: prior.n > 0, member: false });
-    const shownQuote = f.quote; f.quote = q.total; f.travel_fee = q.travel;
+    const shownQuote = f.quote; f.quote = q.subtotal; f.travel_fee = q.travel;   // quote = price before tax (tax is added on the bill)
     const session = await currentCustomer(env, req);
     const customerId = await upsertFromBooking(env, f, session && session.id);
     let bookingCard = null;
@@ -254,7 +269,7 @@ async function api(req, env, url) {
     tasks.push(emailNick(env, b, "new").catch(e => console.log("nick email failed", e.message)));
     await Promise.all(tasks);
     return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, manage: env.SITE_URL + "/b/" + b.token,
-      total: q.total, priceChanged: shownQuote !== q.total, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
+      subtotal: q.subtotal, tax: q.tax, total: q.total, priceChanged: shownQuote !== q.subtotal, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
   }
 
   if (p === "/api/auth/start" && req.method === "POST") return authStart(req, env);
@@ -308,7 +323,7 @@ async function memberApi(req, env, url) {
     const q = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? AND kind != 'member' AND status = 'confirmed' AND day >= ? AND day <= ? ORDER BY day DESC LIMIT 1").bind(c.id, since, todayKey()).first();
     if (!q) return json({ error: "Memberships start within 14 days after a qualifying detail." }, 400);
     try { const r = await createMembership(env, { customerId: c.id, booking: q, type: String(body.type), freq: +body.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: req.headers.get("CF-Connecting-IP") || "" } });
-      return json({ ok: true, message: "You're in! " + r.label + " at $" + r.monthly + "/mo. Your first charge is " + dayLabel(r.firstBill) + "." }); }
+      return json({ ok: true, message: "You're in! " + r.label + " at $" + r.monthly + "/mo + " + TAX.name + ". Your first charge (" + usd(withTax(r.monthly * 100).total) + ") is " + dayLabel(r.firstBill) + "." }); }
     catch (e) { return json({ error: e.message }, 400); }
   }
   const m = await activeFor(env, c.id); if (!m) return json({ error: "You don't have an active membership." }, 400);
@@ -383,7 +398,7 @@ async function reminders(env) {
 async function calSave(env, b) {
   const where = [b.address, b.town].filter(Boolean).join(", "), adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a);
   const desc = [b.name + " · " + b.phone, b.email, pkgName(b) + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), [b.car, b.color].filter(Boolean).join(" · "),
-    b.quote ? "Estimate $" + b.quote : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Job done / get paid: " + env.SITE_URL + "/job/" + b.ack_token].filter(Boolean).join("\n");
+    b.quote ? (e => "Estimate " + usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Job done / get paid: " + env.SITE_URL + "/job/" + b.ack_token].filter(Boolean).join("\n");
   const href = await writeJob(env, b, { summary: pkgName(b) + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/job/" + b.ack_token });
   if (href) await env.DB.prepare("UPDATE bookings SET cal_href = ? WHERE id = ?").bind(href, b.id).run();
   b.cal_href = href;

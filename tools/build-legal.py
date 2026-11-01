@@ -2,8 +2,8 @@ import re, os
 root = os.path.dirname(os.path.abspath(__file__))
 site = open(os.path.join(root, '..', 'apex', 'index.html')).read()
 i = site.index('<svg class="logo"'); logo = site[i:site.index('</svg>', i) + 6]
-UPDATED = "October 31, 2026"
-VERSION = "2026-10-31"
+UPDATED = "November 1, 2026"
+VERSION = "2026-11-01"
 
 def page(slug, title, intro, body):
     nav = ' · '.join(f'<a href="/{s}"{" aria-current=\"page\"" if s == slug else ""}>{t}</a>' for s, t in [("terms", "Terms of Service"), ("membership-terms", "Membership Terms"), ("privacy", "Privacy Policy")])
@@ -74,6 +74,7 @@ terms = '''
 <li>Prices on our site are starting prices for a vehicle in normal condition, by vehicle size (Sedan, SUV, Truck / 3-row).</li>
 <li>Launch pricing applies to a customer's first detail only. Later details are billed at regular prices.</li>
 <li>A travel fee applies outside our usual service area and is shown before you book.</li>
+<li><b>Sales tax.</b> Our prices don't include New Jersey sales tax (currently 6.625%). We add it to your bill and show it on its own line on your estimate and receipt. Tips aren't taxed.</li>
 <li><b>Final price.</b> If your vehicle needs more than the package covers (for example heavy pet hair, heavy stains or odors, or extreme dirt), we'll tell you the final price <b>before we start</b>. You can approve it, choose a different package, or cancel at no charge. We never add charges after the work is done that you didn't approve.</li>
 <li>Prices can change. Changes don't affect a booking that's already confirmed.</li>
 </ul>
@@ -81,7 +82,7 @@ terms = '''
 <h2 id="payment">5. Payment</h2>
 <ul>
 <li>Payment is due when the detail is done. You can pay by card on file, by card in person, by cash, or with a payment link we send you.</li>
-<li><b>Card on file.</b> If you choose card on file, you authorize Apex Detailing LLC to charge that card for the final price you approved, plus any travel fee, after the detail is done, and any tip you choose to add. Cards are stored securely by our payment processor, Square. We never see or store your full card number.</li>
+<li><b>Card on file.</b> If you choose card on file, you authorize Apex Detailing LLC to charge that card for the final price you approved, plus any travel fee and New Jersey sales tax, after the detail is done, and any tip you choose to add. Cards are stored securely by our payment processor, Square. We never see or store your full card number.</li>
 <li>If a payment fails, we'll ask you for another payment method. Unpaid balances are a debt you owe us. If an invoice stays unpaid after reasonable reminders, we may use a collection service or small claims court, and you agree to pay reasonable costs of collecting it where the law allows.</li>
 <li>Tips are never required.</li>
 </ul>
@@ -142,7 +143,7 @@ mem = '''
 </ul>
 
 <h2 id="billing">3. Billing</h2>
-<div class="box"><p><b>Recurring charge authorization.</b> When you sign up, you authorize Apex Detailing LLC to charge your card on file the monthly price shown, starting <b>one month after your qualifying detail</b> and on that same date every month, until your membership ends as described below. Your bank statement will show Apex Detailing. We'll email you a receipt for each charge.</p></div>
+<div class="box"><p><b>Recurring charge authorization.</b> When you sign up, you authorize Apex Detailing LLC to charge your card on file the monthly price shown plus New Jersey sales tax (currently 6.625%), starting <b>one month after your qualifying detail</b> and on that same date every month, until your membership ends as described below. Your bank statement will show Apex Detailing. We'll email you a receipt for each charge.</p></div>
 <ul>
 <li>If the date doesn't exist in a month (like the 31st), we bill on the last day of that month.</li>
 <li>We may change membership prices with at least <b>30 days' notice</b> by email. You can cancel before the new price applies, subject to the minimum term below.</li>
@@ -182,7 +183,7 @@ mem = '''
 <ul>
 <li>Before your first monthly charge, you can cancel for free.</li>
 <li><b>Finish your 3 months:</b> you keep your visits, the remaining monthly payments in your first 3 months are charged as usual, and your membership ends automatically after your third payment. No fee.</li>
-<li><b>Cancel now:</b> no more monthly charges, and you pay a one-time cancellation fee equal to <b>50% of the monthly payments left</b> in your 3-month minimum. You can still use visits you've already paid for until the end of that month. For example, if you cancel after your first payment, two payments are left, so the fee is one month's price.</li>
+<li><b>Cancel now:</b> no more monthly charges, and you pay a one-time cancellation fee equal to <b>50% of the monthly payments left</b> in your 3-month minimum, plus New Jersey sales tax. You can still use visits you've already paid for until the end of that month. For example, if you cancel after your first payment, two payments are left, so the fee is one month's price.</li>
 </ul>
 <h3>After 3 months</h3>
 <ul>

@@ -1,13 +1,32 @@
 // Owner dashboard (/admin) for Nick: schedule + blockouts, jobs, customers, members, money, settings.
 // Only reachable through Cloudflare Access; every request is also checked here (fail closed).
 import { RULES, dayInfo, nyToUtc, utcToNy, addDays, parseDay, sunsetMin, inWinter } from "./sched.js";
-import { PRICING } from "./pricing.js";
+import { PRICING, TAX } from "./pricing.js";
 import { MEM, planLabel } from "./membership.js";
 
 const json = (data, status) => new Response(JSON.stringify(data), { status: status || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const rid = () => Array.from(crypto.getRandomValues(new Uint8Array(9)), x => x.toString(16).padStart(2, "0")).join("");
 const todayKey = () => utcToNy(Date.now()).key;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// ---------- NJ sales tax owed, by quarter ----------
+// Tax is counted when the money comes in (detail paid, membership charge or fee). Amounts are cents.
+// NJ ST-50 return + payment is due the 20th of the month after each quarter (monthly payments only after $30,000/yr of tax).
+const quarterOf = key => key.slice(0, 4) + "-Q" + (Math.floor((+key.slice(5, 7) - 1) / 3) + 1);
+function quarterInfo(k) {
+  const y = +k.slice(0, 4), q = +k.slice(6);
+  return { key: k, label: ["Jan–Mar", "Apr–Jun", "Jul–Sep", "Oct–Dec"][q - 1] + " " + y, due: q === 4 ? (y + 1) + "-01-20" : y + "-" + String(q * 3 + 1).padStart(2, "0") + "-20" };
+}
+async function taxQuarters(env) {
+  const det = (await env.DB.prepare("SELECT paid_at t, final_cents a, tax_cents x FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' AND final_cents IS NOT NULL").all()).results || [];
+  const mem = (await env.DB.prepare("SELECT created_at t, amount_cents a, tax_cents x FROM membership_charges WHERE status = 'paid' AND amount_cents > 0").all()).results || [];
+  const filedRow = await env.DB.prepare("SELECT v FROM meta WHERE k = 'tax_filed'").first(), filed = filedRow ? JSON.parse(filedRow.v) : {};
+  const cur = quarterOf(todayKey()), Q = {};
+  const get = k => Q[k] || (Q[k] = Object.assign(quarterInfo(k), { sales: 0, taxed: 0, tax: 0, payments: 0 }));
+  get(cur);
+  for (const r of det.concat(mem)) { const x = get(quarterOf(utcToNy(r.t).key)); x.sales += r.a || 0; x.tax += r.x || 0; if (r.x) x.taxed += r.a || 0; x.payments++; }
+  return Object.values(Q).sort((a, b) => b.key.localeCompare(a.key)).map(q => ({ key: q.key, label: q.label, due: q.due, current: q.key === cur, sales: q.sales / 100, taxedSales: q.taxed / 100, tax: q.tax / 100, payments: q.payments, filed: filed[q.key] || null }));
+}
 
 // ---------- Cloudflare Access check ----------
 // Access puts a signed token (JWT) on every request it lets through. We verify the signature with Access's public
@@ -96,11 +115,12 @@ export async function adminApi(req, env, url, H) {
     const unpaid = (await env.DB.prepare("SELECT id, ack_token, pkg, kind, name, day, quote FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND paid_at IS NULL AND end_utc < ? ORDER BY start_utc DESC LIMIT 10").bind(now).all()).results || [];
     const pastDue = (await env.DB.prepare("SELECT COUNT(*) n FROM memberships WHERE status = 'past_due'").first()).n;
     const month = today.slice(0, 7), m0 = nyToUtc(month + "-01", 0);
-    const det = await env.DB.prepare("SELECT COALESCE(SUM(final_cents),0) a, COALESCE(SUM(tip_cents),0) t, COUNT(*) n FROM bookings WHERE paid_at >= ?").bind(m0).first();
-    const mem = await env.DB.prepare("SELECT COALESCE(SUM(amount_cents),0) a FROM membership_charges WHERE status = 'paid' AND created_at >= ?").bind(m0).first();
+    const det = await env.DB.prepare("SELECT COALESCE(SUM(final_cents),0) a, COALESCE(SUM(tip_cents),0) t, COALESCE(SUM(tax_cents),0) x, COUNT(*) n FROM bookings WHERE paid_at >= ? AND kind != 'member'").bind(m0).first();
+    const mem = await env.DB.prepare("SELECT COALESCE(SUM(amount_cents),0) a, COALESCE(SUM(tax_cents),0) x FROM membership_charges WHERE status = 'paid' AND created_at >= ?").bind(m0).first();
+    const tq = (await taxQuarters(env)).find(q => q.current);
     const active = (await env.DB.prepare("SELECT COUNT(*) n, COALESCE(SUM(monthly_cents),0) mrr FROM memberships WHERE status IN ('active','ending','past_due')").first());
     const sync = await env.DB.prepare("SELECT v FROM meta WHERE k = 'synced'").first();
-    return json({ next: next.map(b => jobRow(b, H)), unacked, unpaid: unpaid.map(b => jobRow(b, H)), pastDue, month: { details: det.a / 100, tips: det.t / 100, jobs: det.n, members: mem.a / 100 },
+    return json({ next: next.map(b => jobRow(b, H)), unacked, unpaid: unpaid.map(b => jobRow(b, H)), pastDue, month: { details: det.a / 100, tips: det.t / 100, jobs: det.n, members: mem.a / 100, tax: (det.x + mem.x) / 100 }, taxQuarter: tq,
       members: { count: active.n, monthly: active.mrr / 100 }, sync: sync ? JSON.parse(sync.v) : null });
   }
 
@@ -168,7 +188,7 @@ export async function adminApi(req, env, url, H) {
         (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id AND b.status = 'confirmed' AND b.kind != 'member') details,
         (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id AND b.status = 'confirmed' AND b.kind = 'member') visits,
         (SELECT MAX(day) FROM bookings b WHERE b.customer_id = c.id AND b.status = 'confirmed') last_day,
-        (SELECT COALESCE(SUM(final_cents + COALESCE(tip_cents,0)),0) FROM bookings b WHERE b.customer_id = c.id AND b.paid_at IS NOT NULL) paid,
+        (SELECT COALESCE(SUM(final_cents + COALESCE(tax_cents,0) + COALESCE(tip_cents,0)),0) FROM bookings b WHERE b.customer_id = c.id AND b.paid_at IS NOT NULL) paid,
         (SELECT status FROM memberships m WHERE m.customer_id = c.id AND m.status != 'cancelled' ORDER BY created_at DESC LIMIT 1) member
       FROM customers c ORDER BY c.created_at DESC LIMIT 500`).all()).results || [];
     return json({ customers: r.map(c => { const card = c.card ? JSON.parse(c.card) : null; const cars = JSON.parse(c.cars || "[]");
@@ -182,21 +202,31 @@ export async function adminApi(req, env, url, H) {
   }
 
   if (p === "/money" && M === "GET") {
-    const det = (await env.DB.prepare("SELECT substr(day,1,7) mo, COUNT(*) n, COALESCE(SUM(final_cents),0) a, COALESCE(SUM(tip_cents),0) t FROM bookings WHERE paid_at IS NOT NULL GROUP BY mo").all()).results || [];
-    const methods = (await env.DB.prepare("SELECT paid_method m, COUNT(*) n, COALESCE(SUM(final_cents + COALESCE(tip_cents,0)),0) a FROM bookings WHERE paid_at IS NOT NULL GROUP BY paid_method").all()).results || [];
-    const mem = (await env.DB.prepare("SELECT for_day, kind, amount_cents a, created_at FROM membership_charges WHERE status = 'paid'").all()).results || [];
+    const det = (await env.DB.prepare("SELECT paid_at, COALESCE(final_cents,0) a, COALESCE(tip_cents,0) t, COALESCE(tax_cents,0) x FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member'").all()).results || [];
+    const methods = (await env.DB.prepare("SELECT paid_method m, COUNT(*) n, COALESCE(SUM(final_cents + COALESCE(tax_cents,0) + COALESCE(tip_cents,0)),0) a FROM bookings WHERE paid_at IS NOT NULL AND kind != 'member' GROUP BY paid_method").all()).results || [];
+    const mem = (await env.DB.prepare("SELECT for_day, kind, amount_cents a, tax_cents x, created_at FROM membership_charges WHERE status = 'paid'").all()).results || [];
     const byMonth = {};
-    const row = mo => byMonth[mo] || (byMonth[mo] = { month: mo, details: 0, tips: 0, jobs: 0, members: 0, fees: 0 });
-    for (const r of det) { const x = row(r.mo); x.details += r.a / 100; x.tips += r.t / 100; x.jobs += r.n; }
-    for (const c of mem) { const x = row(String(c.for_day || utcToNy(c.created_at).key).slice(0, 7)); if (c.kind === "cancel_fee") x.fees += c.a / 100; else x.members += c.a / 100; }
+    const row = mo => byMonth[mo] || (byMonth[mo] = { month: mo, details: 0, tips: 0, jobs: 0, members: 0, fees: 0, tax: 0 });
+    // grouped by when the money came in (matches the sales tax quarters)
+    for (const r of det) { const x = row(utcToNy(r.paid_at).key.slice(0, 7)); x.details += r.a / 100; x.tips += r.t / 100; x.tax += r.x / 100; x.jobs++; }
+    for (const c of mem) { const x = row(utcToNy(c.created_at).key.slice(0, 7)); if (c.kind === "cancel_fee") x.fees += c.a / 100; else x.members += c.a / 100; x.tax += (c.x || 0) / 100; }
     const months = Object.values(byMonth).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12);
     const unpaid = (await env.DB.prepare("SELECT * FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND paid_at IS NULL AND end_utc < ? ORDER BY start_utc DESC LIMIT 30").bind(Date.now()).all()).results || [];
-    return json({ months, methods: methods.map(m => ({ method: m.m, count: m.n, total: m.a / 100 })), unpaid: unpaid.map(b => jobRow(b, H, true)), squareSandbox: env.SQUARE_ENV !== "production" });
+    return json({ months, methods: methods.map(m => ({ method: m.m, count: m.n, total: m.a / 100 })), unpaid: unpaid.map(b => jobRow(b, H, true)), squareSandbox: env.SQUARE_ENV !== "production",
+      tax: { name: TAX.name, pct: TAX.pct, quarters: await taxQuarters(env) } });
+  }
+  // mark a quarter's sales tax as filed and paid (or undo)
+  mm = p.match(/^\/tax\/(\d{4}-Q[1-4])\/filed$/);
+  if (mm && M === "POST") {
+    const r = await env.DB.prepare("SELECT v FROM meta WHERE k = 'tax_filed'").first(), filed = r ? JSON.parse(r.v) : {};
+    if (body.filed === false) delete filed[mm[1]]; else filed[mm[1]] = Date.now();
+    await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('tax_filed', ?)").bind(JSON.stringify(filed)).run();
+    return json({ ok: true, filed: filed[mm[1]] || null });
   }
 
   if (p === "/settings" && M === "GET") {
     const sync = await env.DB.prepare("SELECT v FROM meta WHERE k = 'synced'").first();
-    return json({ rules: RULES, pricing: PRICING, membership: { plans: MEM.plans, freqDiscount: MEM.freqDiscount, minPayments: MEM.minPayments, cancelFeeRate: MEM.cancelFeeRate, skipCreditRate: MEM.skipCreditRate, skipNoticeHours: MEM.skipNoticeHours, signupDays: MEM.signupDays },
+    return json({ rules: RULES, pricing: PRICING, tax: TAX, membership: { plans: MEM.plans, freqDiscount: MEM.freqDiscount, minPayments: MEM.minPayments, cancelFeeRate: MEM.cancelFeeRate, skipCreditRate: MEM.skipCreditRate, skipNoticeHours: MEM.skipNoticeHours, signupDays: MEM.signupDays },
       sync: sync ? JSON.parse(sync.v) : null, square: env.SQUARE_ENV || "sandbox", calendar: !!(env.ICLOUD_USER && env.ICLOUD_APP_PASSWORD), email: !!env.RESEND_API_KEY, texts: false });
   }
   if (p === "/sync" && M === "POST") { const r = await H.syncBusy(env); return json(Object.assign({ ok: true }, r)); }
@@ -207,7 +237,7 @@ export async function adminApi(req, env, url, H) {
 function jobRow(b, H, full) {
   const r = { id: b.id, kind: b.kind || "detail", what: H.pkgName(b), size: b.size, start_utc: b.start_utc, end_utc: b.end_utc, day: b.day, name: b.name, town: b.town, car: [b.car, b.color].filter(Boolean).join(" · "),
     acked: !!b.acked_at, paid: !!b.paid_at, done: !!b.completed_at, job: b.ack_token ? "/job/" + b.ack_token : null };
-  if (full) Object.assign(r, { status: b.status, phone: b.phone, email: b.email, address: b.address, quote: b.quote, final: b.final_cents != null ? b.final_cents / 100 : null, tip: b.tip_cents ? b.tip_cents / 100 : 0,
+  if (full) Object.assign(r, { status: b.status, phone: b.phone, email: b.email, address: b.address, quote: b.quote, final: b.final_cents != null ? b.final_cents / 100 : null, tax: b.tax_cents ? b.tax_cents / 100 : 0, tip: b.tip_cents ? b.tip_cents / 100 : 0,
     method: b.paid_method, adds: JSON.parse(b.adds || "[]"), notes: b.notes, water: b.water, power: b.power, manage: b.token ? "/b/" + b.token : null });
   if (!full && b.quote != null) r.quote = b.quote;
   return r;

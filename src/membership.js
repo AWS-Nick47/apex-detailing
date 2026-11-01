@@ -1,6 +1,6 @@
 // Apex Membership: sign-up, monthly billing on the anniversary date, visits, skips/credits, pause, cancel.
 // Rules are in public/membership-terms.html — keep the two in sync.
-import { PRICING } from "./pricing.js";
+import { PRICING, TAX, taxCents } from "./pricing.js";
 import { RULES, inWinter, parseDay, dayKey, addDays, utcToNy, nyToUtc, slotsFor, dayInfo, jobMin } from "./sched.js";
 import { charge } from "./square.js";
 import { send, layout, rows, button, h } from "./email.js";
@@ -16,6 +16,7 @@ export const MEM = {
 const SIZES = ["Sedan", "SUV", "Truck"];
 const round5 = x => Math.round(x / 5) * 5;
 const money = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
+const TAX_LABEL = TAX.name + " (" + TAX.pct + ")";   // monthly prices and fees are before tax; NJ sales tax is added to every charge
 const rid = () => Array.from(crypto.getRandomValues(new Uint8Array(9)), x => x.toString(16).padStart(2, "0")).join("");
 
 export function planPrice(type, size, freq) {
@@ -72,8 +73,12 @@ export async function summary(env, m, customer) {
   const remaining = Math.max(0, MEM.minPayments - m.payments_made);
   const fee = Math.round(MEM.cancelFeeRate * remaining * m.monthly_cents / 100) * 100;
   const qual = m.start_day, cardDeadline = addDays(qual, MEM.signupDays);
+  // the next charge as billOne() will make it: winter may pause Wash or bill Wash + interior at the Interior price; credits come off before tax
+  const cov = m.next_bill ? coverOn(m.type, m.next_bill) : m.type, nextFull = cov === null ? 0 : cov === m.type ? m.monthly_cents : planPrice(cov, m.size, m.freq).monthly * 100;
+  const nextSub = nextFull - Math.min(m.credit_cents, nextFull), nextTotal = nextSub + taxCents(nextSub);
   return {
     id: m.id, status: m.status, type: m.type, freq: m.freq, size: m.size, car: m.car, label: planLabel(m.type, m.freq, m.size), monthly: m.monthly_cents / 100,
+    monthlyTax: taxCents(m.monthly_cents) / 100, monthlyTotal: (m.monthly_cents + taxCents(m.monthly_cents)) / 100, cancelFeeTax: taxCents(fee) / 100, cancelFeeTotal: (fee + taxCents(fee)) / 100, nextChargeTotal: nextTotal / 100, nextWinter: cov !== m.type,
     since: m.start_day, nextBill: m.status === "cancelled" || (m.status === "ending" && !(m.cancel_mode === "finish" && m.payments_made < MEM.minPayments)) ? null : m.next_bill, periodStart: m.period_start, periodEnd: m.period_end,
     paymentsMade: m.payments_made, minLeft: remaining, cancelFee: fee / 100, credit: m.credit_cents / 100, owed: m.owed_cents / 100, endsOn: m.ends_on, cancelMode: m.cancel_mode, pauseUntil: m.pause_until,
     needsCard: !card, cardDeadline, card: card ? card.brand + " ending " + card.last4 : null,
@@ -141,35 +146,36 @@ async function billOne(env, m, today) {
     return "winter pause";
   }
   const full = cover === m.type ? m.monthly_cents : planPrice(cover, m.size, m.freq).monthly * 100;
-  const credit = Math.min(m.credit_cents, full), amount = full - credit;
+  const credit = Math.min(m.credit_cents, full), amount = full - credit, tax = taxCents(amount), total = amount + tax;   // credits come off before tax
   const card = m.card ? JSON.parse(m.card) : null;
   let p = null;
   if (amount > 0) {
     if (!card) return failed(env, m, billDay, amount, credit, "No card on file");
-    try { p = await charge(env, { source: card.id, amount, customerId: m.square_customer_id, reference: "MEM-" + m.id.slice(0, 8), note: "Apex Membership · " + planLabel(m.type, m.freq, m.size) + " · " + billDay, email: m.email, idem: "mem-" + m.id + "-" + billDay + "-" + (m.fail_count || 0) }); }
+    try { p = await charge(env, { source: card.id, amount: total, customerId: m.square_customer_id, reference: "MEM-" + m.id.slice(0, 8), note: "Apex Membership · " + planLabel(m.type, m.freq, m.size) + " · " + billDay + " · " + money(amount) + " + " + money(tax) + " " + TAX.name, email: m.email, idem: "mem-" + m.id + "-" + billDay + "-" + (m.fail_count || 0) }); }
     catch (e) { return failed(env, m, billDay, amount, credit, e.message); }
   }
   const periodEnd = addMonths(m.start_day, monthsBetween(m.start_day, billDay) + 1);
-  await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, credit_used_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, 'paid', ?, ?, ?, ?)")
-    .bind(rid(), m.id, amount, credit, p ? p.id : null, p ? p.receipt : null, billDay, Date.now()).run();
+  await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, credit_used_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, ?, 'paid', ?, ?, ?, ?)")
+    .bind(rid(), m.id, amount, tax, credit, p ? p.id : null, p ? p.receipt : null, billDay, Date.now()).run();
   const made = m.payments_made + 1;
   const fields = { status: m.status === "past_due" ? "active" : m.status, payments_made: made, credit_cents: m.credit_cents - credit, fail_count: 0, retry_day: null, owed_cents: 0,
     period_start: billDay, period_end: periodEnd, period_visit_cents: Math.round(full / m.freq), period_type: cover, next_bill: periodEnd };
   if (m.cancel_mode === "finish" && made >= MEM.minPayments) { fields.status = "ending"; fields.ends_on = addDays(periodEnd, -1); }
   await upd(env, m.id, fields);
-  await mail(env, m, "receipt", { amount, credit, full, period: [billDay, periodEnd], cover, receipt: p && p.receipt, card, last: fields.ends_on });
-  return "charged " + amount;
+  await mail(env, m, "receipt", { amount, tax, credit, full, period: [billDay, periodEnd], cover, receipt: p && p.receipt, card, last: fields.ends_on });
+  return "charged " + total;
 }
 
+// amount is before tax; what's owed (and shown to the member) includes NJ sales tax
 async function failed(env, m, billDay, amount, credit, why) {
-  const fails = (m.fail_count || 0) + 1, today = todayNY().key;
-  await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, credit_used_cents, status, error, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, 'failed', ?, ?, ?)").bind(rid(), m.id, amount, credit, String(why).slice(0, 300), billDay, Date.now()).run();
+  const fails = (m.fail_count || 0) + 1, today = todayNY().key, tax = taxCents(amount), total = amount + tax;
+  await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, credit_used_cents, status, error, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, ?, 'failed', ?, ?, ?)").bind(rid(), m.id, amount, tax, credit, String(why).slice(0, 300), billDay, Date.now()).run();
   if (fails > MEM.retryDays.length) {
-    await upd(env, m.id, { status: "cancelled", ends_on: today, cancel_mode: "payment_failed", owed_cents: amount, fail_count: fails });
-    await mail(env, m, "fail_final", { amount }); return "cancelled after failed payments";
+    await upd(env, m.id, { status: "cancelled", ends_on: today, cancel_mode: "payment_failed", owed_cents: total, fail_count: fails });
+    await mail(env, m, "fail_final", { amount: total }); return "cancelled after failed payments";
   }
-  await upd(env, m.id, { status: "past_due", fail_count: fails, retry_day: addDays(today, MEM.retryDays[fails - 1]), owed_cents: amount });
-  await mail(env, m, "fail", { amount, retry: addDays(today, MEM.retryDays[fails - 1]) }); return "failed (" + why + ")";
+  await upd(env, m.id, { status: "past_due", fail_count: fails, retry_day: addDays(today, MEM.retryDays[fails - 1]), owed_cents: total });
+  await mail(env, m, "fail", { amount: total, retry: addDays(today, MEM.retryDays[fails - 1]) }); return "failed (" + why + ")";
 }
 
 // Try a past-due charge again right away (after the member updates their card)
@@ -198,15 +204,15 @@ export async function cancelMembership(env, m, mode, customer) {
     return { message: "Got it. You'll keep your visits. Your last " + (MEM.minPayments - m.payments_made === 1 ? "monthly payment goes" : (MEM.minPayments - m.payments_made) + " monthly payments go") + " through as usual, and then your membership ends automatically." };
   }
   if (mode === "now") {
-    const remaining = MEM.minPayments - m.payments_made, fee = Math.round(MEM.cancelFeeRate * remaining * m.monthly_cents / 100) * 100;
+    const remaining = MEM.minPayments - m.payments_made, fee = Math.round(MEM.cancelFeeRate * remaining * m.monthly_cents / 100) * 100, tax = taxCents(fee), total = fee + tax;
     const card = customer.card ? JSON.parse(customer.card) : null;
     if (!card) throw new Error("Add a card first so we can charge the cancellation fee.");
-    const p = await charge(env, { source: card.id, amount: fee, customerId: customer.square_customer_id, reference: "MEM-" + m.id.slice(0, 8), note: "Apex Membership early cancellation fee", email: customer.email, idem: "memfee-" + m.id });
-    await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'cancel_fee', ?, 'paid', ?, ?, ?, ?)").bind(rid(), m.id, fee, p.id, p.receipt, today, Date.now()).run();
+    const p = await charge(env, { source: card.id, amount: total, customerId: customer.square_customer_id, reference: "MEM-" + m.id.slice(0, 8), note: "Apex Membership early cancellation fee · " + money(fee) + " + " + money(tax) + " " + TAX.name, email: customer.email, idem: "memfee-" + m.id });
+    await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'cancel_fee', ?, ?, 'paid', ?, ?, ?, ?)").bind(rid(), m.id, fee, tax, p.id, p.receipt, today, Date.now()).run();
     const ends = m.period_end && m.period_end > today ? addDays(m.period_end, -1) : today;
     await upd(env, m.id, { status: ends > today ? "ending" : "cancelled", cancel_mode: "now", ends_on: ends, cancel_requested_at: Date.now() });
-    await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "cancel_fee", { fee, ends, card });
-    return { message: "Cancelled. We charged the " + money(fee) + " cancellation fee to your " + card.brand + " ending " + card.last4 + ". No more monthly charges." + (ends > today ? " You can still use visits you've already paid for through " + niceDay(ends) + "." : "") };
+    await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "cancel_fee", { fee, tax, ends, card });
+    return { message: "Cancelled. We charged the " + money(fee) + " cancellation fee plus " + money(tax) + " " + TAX.name + " (" + money(total) + ") to your " + card.brand + " ending " + card.last4 + ". No more monthly charges." + (ends > today ? " You can still use visits you've already paid for through " + niceDay(ends) + "." : "") };
   }
   throw new Error("Pick how you'd like to cancel.");
 }
@@ -225,8 +231,8 @@ async function mail(env, m, kind, o) {
   const c = m.email ? m : await env.DB.prepare("SELECT email, name FROM customers WHERE id = ?").bind(m.customer_id).first();
   const first = (c.name || "").split(" ")[0] || "there", site = env.SITE_URL, acct = site + "/#account", label = planLabel(m.type, m.freq, m.size);
   const T = {
-    receipt: () => ["Apex Membership receipt · " + money(o.amount), `<h1 style="font-size:22px;margin:0 0 8px">Thanks, ${h(first)}!</h1><p style="margin:0;color:#444">Your Apex Membership is paid for this month. Pick your visit times in your account.</p>` +
-      rows([["Plan", label], ["Period", niceDay(o.period[0]) + " – " + niceDay(addDays(o.period[1], -1))], ["Visits", m.freq + (o.cover !== m.type ? " (" + MEM.plans[o.cover].name + " visits for winter)" : "")], ["Charged", money(o.amount) + (o.credit ? " (" + money(o.credit) + " credit used)" : "")], ["Card", o.card ? o.card.brand + " ending " + o.card.last4 : ""], ["Last month", o.last ? "Your membership ends " + niceDay(o.last) : ""]]) +
+    receipt: () => ["Apex Membership receipt · " + money(o.amount + (o.tax || 0)), `<h1 style="font-size:22px;margin:0 0 8px">Thanks, ${h(first)}!</h1><p style="margin:0;color:#444">Your Apex Membership is paid for this month. Pick your visit times in your account.</p>` +
+      rows([["Plan", label], ["Period", niceDay(o.period[0]) + " – " + niceDay(addDays(o.period[1], -1))], ["Visits", m.freq + (o.cover !== m.type ? " (" + MEM.plans[o.cover].name + " visits for winter)" : "")], ["Membership", money(o.amount) + (o.credit ? " (" + money(o.credit) + " credit used)" : "")], [TAX_LABEL, money(o.tax || 0)], ["Charged", money(o.amount + (o.tax || 0))], ["Card", o.card ? o.card.brand + " ending " + o.card.last4 : ""], ["Last month", o.last ? "Your membership ends " + niceDay(o.last) : ""]]) +
       (o.receipt ? `<p style="margin:0 0 14px"><a href="${h(o.receipt)}" style="color:#111">View the Square receipt</a></p>` : "") + `<p style="margin:0">${button(acct, "Pick my visit times")}</p>`],
     fail: () => ["Action needed: your Apex Membership payment didn't go through", `<h1 style="font-size:22px;margin:0 0 8px">Your payment didn't go through</h1><p style="margin:0;color:#444;line-height:1.55">We couldn't charge ${money(o.amount)} for your Apex Membership. Please update your card in your account. We'll try again on ${niceDay(o.retry || "")}. Visits are paused until it's paid.</p><p style="margin:18px 0 0">${button(acct, "Update my card")}</p>`],
     fail_final: () => ["Your Apex Membership was cancelled", `<h1 style="font-size:22px;margin:0 0 8px">Your membership was cancelled</h1><p style="margin:0;color:#444;line-height:1.55">We tried several times but couldn't charge ${money(o.amount)} for your Apex Membership, so it's been cancelled. That amount is still owed. Reply to this email or text (732) 206-7084 and we'll sort it out.</p>`],
@@ -234,7 +240,7 @@ async function mail(env, m, kind, o) {
     nocard_cancel: () => ["Your Apex Membership didn't start", `<h1 style="font-size:22px;margin:0 0 8px">Your membership didn't start</h1><p style="margin:0;color:#444;line-height:1.55">We didn't get a card within 14 days of your detail, so your Apex Membership wasn't started and you won't be charged. You can start one after your next qualifying detail.</p>`],
     cancelled: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">No more monthly charges. Your membership stays active through ${niceDay(o.ends)}, so keep using any visits you've booked. We'd love to have you back anytime.</p>`],
     finishing: () => ["Your Apex Membership will end after your 3rd month", `<h1 style="font-size:22px;margin:0 0 8px">Got it, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">You'll keep your visits and the remaining ${o.left} monthly payment(s) in your first 3 months will go through as usual. Your membership ends automatically after that. No fee.</p>`],
-    cancel_fee: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">We charged the ${money(o.fee)} early cancellation fee to your ${h((o.card || {}).brand || "card")} ending ${h((o.card || {}).last4 || "")}. No more monthly charges.${o.ends > todayNY().key ? " You can still use visits you've already paid for through " + niceDay(o.ends) + "." : ""}</p>`]
+    cancel_fee: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">We charged the ${money(o.fee)} early cancellation fee plus ${money(o.tax || 0)} ${h(TAX.name)} (${money(o.fee + (o.tax || 0))} total) to your ${h((o.card || {}).brand || "card")} ending ${h((o.card || {}).last4 || "")}. No more monthly charges.${o.ends > todayNY().key ? " You can still use visits you've already paid for through " + niceDay(o.ends) + "." : ""}</p>`]
   }[kind];
   if (!T) return;
   let R; try { R = T(); } catch (e) { console.log("membership email failed", kind, e.message); return; }

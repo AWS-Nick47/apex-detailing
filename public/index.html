@@ -1020,6 +1020,11 @@ summary .am { font-size: .78em; letter-spacing: .14em; vertical-align: .05em; ma
 .pbar .pb-s .am { font-size: 9.5px; letter-spacing: .12em; vertical-align: 1px; }
 .res-pr { display: inline-flex; align-items: baseline; gap: 8px; }
 .res-pr s { color: var(--muted); font-size: 15px; }
+.pbar .pb-tax { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 5px; letter-spacing: 0; }
+.ql-mem > span:last-child { white-space: nowrap; }
+.res-pr .res-tax { color: var(--muted); font-size: 13px; font-weight: 500; }
+.summary .total .c { font-size: .5em; letter-spacing: -.01em; margin-left: 1px; opacity: .8; }
+.summary .lines .ql-tax { padding-top: 8px; border-top: 1px solid var(--line); }
 #bkMemType button[hidden] { display: none; }
 #bkMemMore b { color: var(--fg); }
 @media (max-width: 760px) { #plan { margin-bottom: 70px; } }
@@ -1496,7 +1501,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <div class="eyebrow">Mobile detailing<span class="eb-sep"> · </span><span class="eb-2">Ocean County, NJ</span></div>
       <h1>Peak condition.</h1>
       <p class="sub">We come to your driveway. You get your car back looking better than the day you bought it.</p>
-      <div class="hero-offer" id="heroOffer"><span class="ho-k" id="hoK">Launch pricing</span><span class="ho-p"><s id="hoReg">$249</s><span id="hoNow">$179</span></span><span class="ho-l">Full Detail</span><span class="ho-f" id="hoF">first detail only · sedan</span></div>
+      <div class="hero-offer" id="heroOffer"><span class="ho-k" id="hoK">Launch pricing</span><span class="ho-p"><s id="hoReg">$249</s><span id="hoNow">$179</span></span><span class="ho-l">Full Detail</span><span class="ho-f" id="hoF">first detail only · sedan · plus tax</span></div>
       <div class="hero-actions">
         <a class="btn" href="#book" id="heroBook">Book my first detail</a>
         <a class="btn btn-ghost" href="#services">See packages</a>
@@ -1574,7 +1579,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
         <div class="pk-hero">
           <div class="pk-info">
-            <div class="price" data-p="179,199,229" id="pkPrice"><span class="cur">$</span><span class="odo" aria-hidden="true"></span><span class="sr-only">$179</span><small>starting</small></div>
+            <div class="price" data-p="179,199,229" id="pkPrice"><span class="cur">$</span><span class="odo" aria-hidden="true"></span><span class="sr-only">$179</span><small>starting + tax</small></div>
             <div class="pk-reg" id="pkReg"><span class="launch">Launch price</span><s id="pkRegAmt">$249</s><span class="pk-reg-n">first detail, for a limited time</span></div>
           <p class="pk-blurb" id="pkBlurb">Inside and out. The full reset for a car that needs it.</p>
           <ul class="specs" id="pkSpecs">
@@ -1720,7 +1725,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="plan-col">
           <div class="plan-right">
           <div class="plan-price">
-            <div><span class="big" id="planMonthly">$100</span><span class="per">/mo</span></div>
+            <div><span class="big" id="planMonthly">$100</span><span class="per">/mo + tax</span></div>
             <div class="sub" id="planPerVisit">$100 per visit · <span id="planSize">Sedan</span></div>
           </div>
           <div class="save" aria-label="Price comparison">
@@ -1778,7 +1783,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="res-thumbs" id="resThumbs" role="group" aria-label="Photo"></div>
           <div class="res-incl"><h4>Included in this detail</h4><ul id="resIncl"></ul></div>
           <div class="res-cta">
-            <div class="res-price"><span>Full Detail starts at</span><span class="res-pr"><s id="resReg">$249</s><strong id="resPrice">$179</strong></span></div>
+            <div class="res-price"><span>Full Detail starts at</span><span class="res-pr"><s id="resReg">$249</s><strong id="resPrice">$179</strong><small class="res-tax">+ tax</small></span></div>
             <a class="btn" href="#book" id="resBook">Book this detail</a>
             <a class="res-link" href="#services">Compare packages</a>
           </div>
@@ -1864,7 +1869,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
                 </ul>
               </div>
             </div></details>
-          <details><summary>How do I pay?</summary><p>After the job, once you've walked around the car and you're happy with it. Pay by card or cash in person, or save a card on file when you book and we'll charge it automatically after the detail. Apex Membership is always billed to a card on file.</p></details>
+          <details><summary>How do I pay?</summary><p>After the job, once you've walked around the car and you're happy with it. Pay by card or cash in person, or save a card on file when you book and we'll charge it automatically after the detail. Apex Membership is always billed to a card on file.</p><p>Our prices are before New Jersey sales tax (6.625%). The tax is added to your bill and shown on its own line on your estimate and receipt. Tips aren't taxed.</p></details>
           <details><summary>Are you insured?</summary><p>Yes. Your car is covered while we work on it.</p></details>
         </div>
       </div>
@@ -2038,7 +2043,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div><svg><use href="#i-cal"/></svg><span id="bkWhen">Pick a day and time</span></div>
           <div><svg><use href="#i-ext"/></svg><span id="bkCar">Your car</span></div>
         </div>
-        <p class="fine">Pay after the job. Final price depends on condition; we confirm before we start, never after.</p>
+        <p class="fine">Includes NJ sales tax. Pay after the job. Final price depends on condition; we confirm before we start, never after.</p>
       </aside>
       <div class="bk-sum-scrim" data-sum="close"></div>
     </form>
@@ -2343,6 +2348,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     signupWindowDays: 14
   };
   var REG = PRICING.regular;
+  /* NJ sales tax: every price on the site is before tax. The tax is added to the customer's bill on its own line.
+     Same rate and rounding as the server (src/pricing.js), so estimates match the final bill to the cent. Tips aren't taxed. */
+  var TAX = { name: "NJ sales tax", rate: 0.06625, pct: "6.625%" };
+  function taxCents(c) { c = Math.round(c); return c > 0 ? Math.floor((c * Math.round(TAX.rate * 100000) + 50000) / 100000) : 0; }
+  function taxOf(d) { return taxCents(d * 100) / 100; }                               // dollars -> the tax, in dollars
+  function withTax(d) { var c = Math.round(d * 100); return (c + taxCents(c)) / 100; }  // dollars -> total with tax
+  function usd(d) { var c = Math.round(d * 100); return "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); }
+  function usdBig(d) { var t = usd(d), i = t.indexOf("."); return i < 0 ? t : t.slice(0, i) + '<span class="c">' + t.slice(i) + "</span>"; }
   /* ================= SCHEDULING SETTINGS ================= */
   var SCHED = {
     winter: { start: [12, 15], end: [3, 1] },   // [month, day]: only Interior is bookable between these dates
@@ -2456,17 +2469,18 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var base = pkgPrice(pkg, size);
     var adds = ADDONS.filter(function (a) { var el = document.getElementById("q-add-" + a.id); return el && el.checked; });
     var travel = window.__travel.fee || 0;
-    var total = adds.reduce(function (s, a) { return s + addPrice(a); }, base) + travel;
-    return { size: size, pkg: pkg, base: base, adds: adds, total: total, travel: travel };
+    var total = adds.reduce(function (s, a) { return s + addPrice(a); }, base) + travel;   // before tax
+    return { size: size, pkg: pkg, base: base, adds: adds, total: total, travel: travel, tax: taxOf(total), grand: withTax(total) };
   }
 
   function updateQuote() {
     var q = current();
-    document.getElementById("qTotal").textContent = "$" + q.total;
+    document.getElementById("qTotal").innerHTML = usdBig(q.grand);
     var html = "<div><span>" + NAMES[q.pkg] + " · " + SIZES[q.size] + "</span><span>$" + q.base + "</span></div>";
     q.adds.forEach(function (a) { html += "<div><span>" + a.name + "</span><span>+$" + addPrice(a) + "</span></div>"; });
     if (q.travel) html += "<div><span>Travel fee (" + Math.round(window.__travel.miles) + " mi)</span><span>+$" + q.travel + "</span></div>";
-    if (window.__plan) html += '<div class="ql-mem"><span>' + AMH + " " + window.__plan.label + "</span><span>$" + window.__plan.monthly + "/mo</span></div>";
+    html += '<div class="ql-tax"><span>' + TAX.name + " (" + TAX.pct + ")</span><span>+" + usd(q.tax) + "</span></div>";
+    if (window.__plan) html += '<div class="ql-mem"><span>' + AMH + " " + window.__plan.label + "</span><span>$" + window.__plan.monthly + "/mo + tax</span></div>";
     document.getElementById("qLines").innerHTML = html;
     if (window.__bar) window.__bar(q);
     if (window.__bkSum) window.__bkSum(q);
@@ -2537,7 +2551,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var sz = currentSize(), extraNow = adds.reduce(function (t, a) { return t + addPrice(a); }, 0);
     rollPrice(pkPrice, pkgPrice(curPkg, sz) + extraNow);
     var small = pkPrice.querySelector("small");
-    small.textContent = adds.length ? "with " + adds.length + (adds.length === 1 ? " add-on" : " add-ons") : "starting";
+    small.textContent = adds.length ? "with " + adds.length + (adds.length === 1 ? " add-on" : " add-ons") + " + tax" : "starting + tax";
     pkPrice.classList.toggle("has-adds", adds.length > 0);
     var ra = document.getElementById("pkRegAmt"); if (ra) ra.textContent = "$" + (REG[curPkg][sz] + extraNow);
     var pr = document.getElementById("pkReg"); if (pr) pr.hidden = !onSale(curPkg, sz);
@@ -2590,7 +2604,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     window.__planInfo = { label: label, monthly: monthly, perVisit: perVisit, oneoffVisit: P.oneoffVisit, save: save, freq: planState.freq, type: planState.type, visits: planState.freq, of: P.of };
     var btn = document.getElementById("planAdd"), st = STARTER[planState.type];
     btn.setAttribute("aria-pressed", String(planState.added));
-    btn.innerHTML = planState.added ? "Added to your booking · $" + monthly + "/mo"
+    btn.innerHTML = planState.added ? "Added to your booking · $" + monthly + "/mo + tax"
       : "<span class=\"pb-part\">Start with " + (st === "exterior" ? "an Exterior" : st === "interior" ? "an Interior" : "a Full Detail") + " · $" + pkgPrice(st, size) + "</span> <span class=\"pb-part\"><span class=\"pb-arrow\">→</span> then $" + monthly + "/mo</span>";
     document.getElementById("planWhy").textContent = st === "full" ? "Wash + interior starts after a Full Detail, so every visit starts from a clean slate."
       : st === "exterior" ? "Wash plans start after an Exterior or Full Detail, so every visit starts from a clean slate."
@@ -2664,8 +2678,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var q = current(), g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ""; };
     var lines = ["Hi Apex Detailing, I'd like to book:", NAMES[q.pkg] + " for a " + SIZES[q.size] + " ($" + q.base + ")"];
     q.adds.forEach(function (a) { lines.push("+ " + a.name + " ($" + a.p + ")"); });
-    lines.push("Estimated total: $" + q.total);
-    if (window.__plan) lines.push("Also starting Apex Membership: " + window.__plan.label + ", $" + window.__plan.monthly + "/mo");
+    if (q.travel) lines.push("+ Travel fee ($" + q.travel + ")");
+    lines.push("Estimated total: " + usd(q.grand) + " (includes " + usd(q.tax) + " " + TAX.name + ")");
+    if (window.__plan) lines.push("Also starting Apex Membership: " + window.__plan.label + ", $" + window.__plan.monthly + "/mo + tax");
     var car = [g("bkYear"), g("bkMake"), g("bkModel")].join(" ").trim(); if (car) lines.push("Car: " + car + (g("bkColor") ? " (" + g("bkColor") + ")" : ""));
     if (g("bkAddr") || g("q-town")) lines.push("Address: " + [g("bkAddr"), g("q-town")].filter(Boolean).join(", "));
     if (window.__bkWhenText) lines.push("Time: " + window.__bkWhenText);
@@ -2701,14 +2716,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     window.__barPlan = function () { if (memZone()) paint(); };
     function paint() {
       if (memZone() && window.__planInfo) {
-        var P = window.__planInfo; tot.textContent = "$" + P.monthly + "/mo";
+        var P = window.__planInfo; tot.innerHTML = "$" + P.monthly + '/mo<small class="pb-tax">+ tax</small>';
         sub.innerHTML = AMH + " · " + P.label.replace(/^(.*?),/, "$1 ·").replace(/ \(.*\)$/, "");
         pbBtn.textContent = window.__plan ? "Book" : "Start";
       } else if (lastQ) window.__bar(lastQ, true);
     }
     window.__bar = function (q, quiet) {
       lastQ = q; if (memZone() && !quiet) { paint(); return; }
-      tot.textContent = "$" + q.total;
+      tot.innerHTML = "$" + q.total + '<small class="pb-tax">+ tax</small>';
       sub.textContent = NAMES[q.pkg] + " · " + SHORT[q.size] + (q.adds.length ? " · " + q.adds.length + (q.adds.length === 1 ? " add-on" : " add-ons") : "");
       if (lastTotal !== null && lastTotal !== q.total && !reduce) { tot.animate && tot.animate([{ transform: "scale(1.08)" }, { transform: "none" }], { duration: 260, easing: "ease-out" }); }
       lastTotal = q.total;
@@ -2752,7 +2767,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var fmt = function (ms, o) { return new Date(ms).toLocaleDateString("en-US", Object.assign({ timeZone: "America/New_York" }, o)); };
       var tm = function (ms) { return new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }); };
       var hist = j.bookings.filter(function (b) { return b.status !== "cancelled"; }).map(function (b) {
-        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, img: null, price: b.quote, manage: b.manage, start: b.start,
+        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, img: null, price: b.quote, paid: b.paid, manage: b.manage, start: b.start,
           when: fmt(b.start, { weekday: "long", month: "short", day: "numeric" }), time: tm(b.start) + "–" + tm(b.end) };
       });
       upcoming = hist.filter(function (h) { return h.status === "upcoming"; }).sort(function (a, b) { return a.start - b.start; });
@@ -2790,11 +2805,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function fill() {
       var last = DEMO.history[0] || { pkg: "full", size: DEMO.cars[0].size, car: DEMO.cars[0].name, adds: [], date: "", img: null };
       if (!LIVE) { var PP = window.__planPrice(DEMO.planType, DEMO.cars[0].size, DEMO.planFreq);
-        DEMO.planPrice = "$" + PP.monthly + "/mo"; DEMO.planSave = "$" + ((PP.oneoffVisit * DEMO.planFreq - PP.monthly) * 12).toLocaleString(); }
+        DEMO.planPrice = "$" + PP.monthly + "/mo + tax"; DEMO.planSave = "$" + ((PP.oneoffVisit * DEMO.planFreq - PP.monthly) * 12).toLocaleString(); }
       var NX = DEMO.next || { date: "", time: "", what: "" };
       var F = { first: DEMO.first, nextDate: NX.date, nextTime: NX.time, nextWhat: NX.what, planName: DEMO.plan, planPrice: DEMO.planPrice, planSave: DEMO.planSave,
         since: DEMO.since, billDate: DEMO.billDate, card: DEMO.card,
-        lastWhat: NAMES[last.pkg] + " · " + last.car, lastWhen: (last.status === "upcoming" ? "Booked for " : "Last detail ") + last.date, lastAdds: last.adds.length ? "+ " + addNames(last).join(", ") : "", lastPrice: "$" + priceOf(last) };
+        lastWhat: NAMES[last.pkg] + " · " + last.car, lastWhen: (last.status === "upcoming" ? "Booked for " : "Last detail ") + last.date, lastAdds: last.adds.length ? "+ " + addNames(last).join(", ") : "", lastPrice: "$" + priceOf(last) + " + tax" };
       $$("[data-f]").forEach(function (n) { if (F[n.dataset.f] != null) n.textContent = F[n.dataset.f]; });
       var lim = $('[data-src="lastImg"]'); if (lim) lim.src = last.img || "r-rav4-front-after.jpg";
       if (window.__nextSlots) document.getElementById("nextSlots").innerHTML = window.__nextSlots(last.pkg, last.size, last.adds, 3).map(function (n) {
@@ -2808,7 +2823,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         var rc = $("#acctProfile .acct-check"); if (rc) { rc.lastChild.textContent = " Email me a reminder the day before"; rc.querySelector("input").checked = DEMO.remind !== false; }
         if (typeof cardUI === "function") cardUI();
         if (MEMBER && MEMBER.status !== "cancelled") { var PPm = window.__planPrice(MEMBER.type, MEMBER.size, MEMBER.freq);
-          $$('[data-f="planName"]').forEach(function (n) { n.textContent = MEMBER.label; }); $$('[data-f="planPrice"]').forEach(function (n) { n.textContent = "$" + MEMBER.monthly + "/mo"; });
+          $$('[data-f="planName"]').forEach(function (n) { n.textContent = MEMBER.label; }); $$('[data-f="planPrice"]').forEach(function (n) { n.textContent = "$" + MEMBER.monthly + "/mo + tax"; });
           $$('[data-f="planSave"]').forEach(function (n) { n.textContent = "$" + Math.max(0, (PPm.oneoffVisit * MEMBER.freq - MEMBER.monthly) * 12).toLocaleString(); }); }
         $$("[data-if]").forEach(function (n) { n.hidden = n.dataset.if !== mode; });
         memRender();
@@ -2816,7 +2831,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       $$(".dash-demo button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.demo === mode)); });
       document.getElementById("acctHist").innerHTML = DEMO.history.map(function (h, i) {
         return '<div class="hist-item">' + (h.img ? '<img src="' + h.img + '" alt="">' : '<div class="ph"><svg><use href="#i-ext"/></svg></div>') +
-          '<div><div class="hi-top"><b>' + NAMES[h.pkg] + (h.status === "upcoming" ? ' <span class="badge">Upcoming</span>' : "") + '</b><span>$' + (h.price != null ? h.price : priceOf(h)) + '</span></div><div class="dc-sub">' + h.date + " · " + h.car + (h.adds.length ? " · + " + addNames(h).join(", ") : "") + "</div>" +
+          '<div><div class="hi-top"><b>' + NAMES[h.pkg] + (h.status === "upcoming" ? ' <span class="badge">Upcoming</span>' : "") + '</b><span>' + (h.paid != null ? usd(h.paid) + ' paid' : '$' + (h.price != null ? h.price : priceOf(h)) + ' + tax') + '</span></div><div class="dc-sub">' + h.date + " · " + h.car + (h.adds.length ? " · + " + addNames(h).join(", ") : "") + "</div>" +
           '<div class="hi-acts"><button type="button" class="link-btn" data-rebook="' + i + '">Book again</button>' + (h.manage ? '<a class="link-btn" href="' + h.manage + '">Reschedule or cancel</a>' : "") + (h.job != null ? '<button type="button" class="link-btn" data-photos="' + h.job + '">See photos</button>' : "") + "</div></div></div>";
       }).join("");
       document.getElementById("acctCars").innerHTML = DEMO.cars.map(function (c) { return '<div class="car-row"><svg><use href="#v-' + ["sedan", "suv", "truck"][c.size] + '"/></svg><div><b>' + c.name + "</b><span>" + SIZES[c.size] + "</span></div></div>"; }).join("");
@@ -2919,17 +2934,17 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         var st = { pending: "Starts " + dnice(M.since), active: "Active", past_due: "Payment failed", paused: "Paused", ending: "Ending " + dnice(M.endsOn) }[M.status] || M.status;
         if (M.status === "ending" && !M.endsOn) st = "Ends after your 3rd payment";
         html += '<div class="dcard plan-card"><div class="pc-top"><span class="badge"><svg><use href="#peak"/></svg>' + esc(st) + '</span><span class="dc-sub">' + (M.status === "pending" ? "With your detail" : "Member since " + esc(dnice(M.since))) + '</span></div>' +
-          '<div class="dc-big">' + esc(M.label) + '</div><div class="dc-sub">$' + M.monthly + '/mo' + (M.nextBill ? ' · next charge ' + esc(dnice(M.nextBill)) : '') + '</div>' +
+          '<div class="dc-big">' + esc(M.label) + '</div><div class="dc-sub">$' + M.monthly + '/mo + ' + usd(M.monthlyTax || taxOf(M.monthly)) + ' tax' + (M.nextBill ? ' · next charge ' + esc(dnice(M.nextBill)) + (M.nextChargeTotal != null ? (M.nextChargeTotal ? ' (' + usd(M.nextChargeTotal) + (M.nextWinter || M.credit ? ' with ' + (M.nextWinter ? 'winter pricing' : 'your credit') : '') + ')' : ' (no charge, winter pause)') : '') : '') + '</div>' +
           '<div class="ml-rows" style="margin-top:8px">' +
           (M.periodStart ? '<div><span>Paid through</span><b>' + esc(dnice(dprev(M.periodEnd))) + '</b></div>' : '') +
           '<div><span>Visits this month</span><b>' + (M.visitsAllowed ? M.visitsBooked + ' of ' + M.visitsAllowed + ' used' : M.status === "paused" ? "Paused" : M.status === "past_due" ? "On hold" : M.nextBill ? "Book from " + esc(dnice(M.nextBill)) : "—") + '</b></div>' +
-          (M.credit ? '<div><span>Credit</span><b>$' + M.credit + ' off your next charge</b></div>' : '') +
+          (M.credit ? '<div><span>Credit</span><b>' + usd(M.credit) + ' off your next charge, before tax</b></div>' : '') +
           '<div><span>Payment</span><b>' + esc(M.card || "No card yet") + '</b></div>' +
           (M.minLeft && M.status !== "pending" ? '<div><span>3-month minimum</span><b>' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left</b></div>' : '') +
           (M.winterNow && M.type !== "int" ? '<div><span>Winter</span><b>' + (M.type === "wash" ? "Paused until Mar 1" : "Interior visits until Mar 1") + '</b></div>' : '') +
           '</div></div>';
         if (M.needsCard && M.paymentsMade === 0) html += '<div class="ml-warn">Add a card by <b>' + esc(dnice(M.cardDeadline)) + '</b> or your membership won\'t start. <button type="button" class="link-btn" data-tab-go="profile">Add a card</button></div>';
-        if (M.status === "past_due") html += '<div class="ml-warn bad">Your last payment ($' + M.owed + ') didn\'t go through. Update your card, then retry. Visits are paused until it\'s paid.<div class="dc-actions" style="margin-top:8px"><button type="button" class="btn btn-sm btn-ghost" data-tab-go="profile">Update card</button><button type="button" class="btn btn-sm" id="mlRetry">Retry payment</button></div></div>';
+        if (M.status === "past_due") html += '<div class="ml-warn bad">Your last payment (' + usd(M.owed) + ') didn\'t go through. Update your card, then retry. Visits are paused until it\'s paid.<div class="dc-actions" style="margin-top:8px"><button type="button" class="btn btn-sm btn-ghost" data-tab-go="profile">Update card</button><button type="button" class="btn btn-sm" id="mlRetry">Retry payment</button></div></div>';
         html += '<div class="dcard"><div class="dc-k">Your visits</div>';
         html += M.upcoming.length ? M.upcoming.map(function (v) { var d = new Date(v.start); return '<div class="ml-visit"><span><b>' + d.toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" }) + '</b> · ' + d.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) + '</span><a class="link-btn" href="' + v.manage + '">Change or skip</a></div>'; }).join("") : '<p class="dc-sub">No visits booked yet.</p>';
         html += (M.visitsAllowed && M.visitsBooked < M.visitsAllowed ? '<button type="button" class="btn" id="mlBook" style="margin-top:8px">Book a visit</button>' : '') + '<div id="mlSlots"></div></div>';
@@ -2958,8 +2973,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function msUpdate() {
       var t = $("#msType [aria-pressed=true]"), f = $("#msFreq [aria-pressed=true]"); if (!t || !f) return;
       var P = window.__planPrice(t.dataset.v, CANSTART.size, +f.dataset.v), first = (function () { var p = CANSTART.day.split("-"); var d = new Date(Date.UTC(+p[0], +p[1], +p[2], 12)); return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); })();
-      $("#msPrice").textContent = "$" + P.monthly + "/mo"; $("#msSub").textContent = (+f.dataset.v === 1 ? "1 visit" : f.dataset.v + " visits") + " a month at $" + P.perVisit + " each, instead of $" + P.oneoffVisit;
-      $("#msAuthTxt").innerHTML = "I authorize Apex Detailing LLC to charge my card <b>$" + P.monthly + "/mo</b> starting " + first + " and on that date every month until I cancel, with a 3-month minimum, as described in the <a href=\"membership-terms.html\" target=\"_blank\" rel=\"noopener\">Membership Terms</a>.";
+      $("#msPrice").textContent = "$" + P.monthly + "/mo + tax"; $("#msSub").textContent = (+f.dataset.v === 1 ? "1 visit" : f.dataset.v + " visits") + " a month at $" + P.perVisit + " each, instead of $" + P.oneoffVisit;
+      $("#msAuthTxt").innerHTML = "I authorize Apex Detailing LLC to charge my card <b>" + usd(withTax(P.monthly)) + "/mo</b> ($" + P.monthly + " + " + usd(taxOf(P.monthly)) + " " + TAX.name + ") starting " + first + " and on that date every month until I cancel, with a 3-month minimum, as described in the <a href=\"membership-terms.html\" target=\"_blank\" rel=\"noopener\">Membership Terms</a>.";
     }
     function mlTimes(i) { var d = window.__mlDays[i]; $("#mlTimes").innerHTML = d.slots.map(function (m) { return '<button type="button" data-mv="' + d.day + '|' + m + '">' + window.__tstr(m) + '</button>'; }).join(""); }
     function memPanel(h) { var p = document.getElementById("mlPanel") || document.getElementById("mlSlots"); p.innerHTML = h; p.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
@@ -3004,7 +3019,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if (M.minLeft > 0) {
           memPanel('<div class="dcard"><div class="dc-t">Cancel during your first 3 months</div><div class="dc-sub">You have ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left in your 3-month minimum. Pick one:</div><div class="ml-opts" style="margin-top:8px">' +
             '<button type="button" class="ml-opt" data-cancel="finish"><b>Finish my 3 months</b><span>Keep your visits. The remaining payment' + (M.minLeft > 1 ? 's go' : ' goes') + ' through as usual, then it ends automatically. No fee.</span></button>' +
-            '<button type="button" class="ml-opt" data-cancel="now"><b>Cancel now · $' + M.cancelFee + ' fee</b><span>Half of the ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left, charged to your card. No more monthly charges.</span></button></div></div>');
+            '<button type="button" class="ml-opt" data-cancel="now"><b>Cancel now · $' + M.cancelFee + ' fee + tax</b><span>Half of the ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left, charged to your card. No more monthly charges.</span></button></div></div>');
         } else {
           memPanel('<div class="dcard"><div class="dc-t">Cancel Apex Membership?</div><div class="dc-sub">No fee. No more charges. You keep it through ' + esc(M.periodEnd ? dnice(dprev(M.periodEnd)) : "today") + '.</div><div class="ml-opts" style="margin-top:8px"><button type="button" class="ml-opt" data-cancel="after"><b>Cancel my membership</b></button></div></div>');
         }
@@ -3012,7 +3027,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       }
       var cx = t.closest("[data-cancel]");
       if (cx) {
-        if (!confirm(cx.dataset.cancel === "now" && MEMBER.minLeft > 0 && MEMBER.paymentsMade > 0 ? "Cancel now and pay the $" + MEMBER.cancelFee + " fee?" : "Cancel your membership?")) return;
+        if (!confirm(cx.dataset.cancel === "now" && MEMBER.minLeft > 0 && MEMBER.paymentsMade > 0 ? "Cancel now and pay the $" + MEMBER.cancelFee + " fee plus " + TAX.name + " (" + usd(MEMBER.cancelFeeTotal || withTax(MEMBER.cancelFee)) + ")?" : "Cancel your membership?")) return;
         post("/api/member/cancel", { mode: cx.dataset.cancel }).then(function (x) { toast(x.ok ? "Done" : x.j.error); if (x.ok) memPanel('<div class="dcard"><div class="dc-sub">' + esc(x.j.message) + '</div></div>'); loadMe().then(function () { fill(); tab("plan"); if (x.ok) memPanel('<div class="dcard"><div class="dc-sub">' + esc(x.j.message) + '</div></div>'); }); });
         return;
       }
@@ -3106,7 +3121,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       m = m || dur(); pkg = pkg || current().pkg;
       if (pkg !== "interior" && inWinter(d)) return [];
       var w0 = WEEK[d.getDay()]; if (!w0) return [];
-      var w = [w0[0], w0[1]]; if (pkg !== "interior") w[1] = Math.min(w[1], Math.floor(sunsetMin(d) / 30) * 30);   // exterior work done by sunset
+      var w = [w0[0], w0[1]]; w[1] = Math.min(w[1], Math.floor(sunsetMin(d) / 30) * 30);   // every job is done by sunset (Interior too), like the server
       var k = key(d); if (rnd(k, 7) < 0.1) return [];
       var busy = [];
       if (rnd(k, 3) < 0.5) { var len = 150 + Math.round(rnd(k, 5) * 4) * 30, st = w[0] + Math.round(rnd(k, 9) * Math.max(0, (w[1] - w[0] - len) / 30)) * 30; busy.push([st, st + len]); }
@@ -3184,7 +3199,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       document.querySelectorAll("[data-pp]").forEach(function (n) { var k = n.dataset.pp, now = pkgPrice(k, q.size); n.innerHTML = (now < REG[k][q.size] ? "<s>$" + REG[k][q.size] + "</s>" : "") + "$" + now + " · " + TIMES[k][q.size]; });
       document.querySelectorAll('#bk [data-f="pkgName"]').forEach(function (n) { n.textContent = NAMES[q.pkg]; });
       document.querySelectorAll('#bk [data-f="durText"]').forEach(function (n) { n.textContent = durText(dur()); });
-      $("bkTot").textContent = "$" + q.total;
+      $("bkTot").textContent = usd(q.grand);
       ["exterior", "full"].forEach(function (k) { var r = $("q-pkg-" + k); if (!r) return; var cold = winterNow(); r.disabled = cold; r.closest(".chip").classList.toggle("is-winter", cold); });
       memText();
       if (!bk.hidden && step === 3) renderCal(); else if (sel.time != null) { var p = sel.date.split("-"); if ((slots(new Date(+p[0], +p[1] - 1, +p[2])) || []).indexOf(sel.time) < 0) sel.time = null; syncWhen(); }
@@ -3205,7 +3220,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         '<div class="rv"><span>When</span><b>' + esc(window.__bkWhenText || "—") + ' <button type="button" class="lnk" data-rv="3">Edit</button></b></div>' +
         '<div class="rv"><span>Car</span><b>' + esc((car || SIZES[q.size]) + ($("bkColor").value ? " · " + $("bkColor").value : "")) + '</b></div>' +
         '<div class="rv"><span>Where</span><b>' + esc(where || "—") + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
-        '<div class="rv tot"><span>Estimate</span><b>$' + q.total + '</b></div>';
+        '<div class="rv"><span>Price</span><b>' + usd(q.total) + '</b></div>' +
+        '<div class="rv"><span>' + TAX.name + ' (' + TAX.pct + ')</span><b>' + usd(q.tax) + '</b></div>' +
+        '<div class="rv tot"><span>Estimate</span><b>' + usd(q.grand) + '</b></div>';
     }
     function nextSlots(pkg, size, addIds, n) {
       var m = jobMin(pkg, size, addIds), out = [], d = new Date(first);
@@ -3239,15 +3256,15 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       document.querySelectorAll("#bkMemType button").forEach(function (b) { var ok = PREREQ[b.dataset.v].indexOf(q.pkg) > -1; b.disabled = !ok; b.hidden = !ok; });
       if (P) {
         $("bkMemSave").textContent = "$" + P.perVisit + " a visit";
-        $("bkMemMonthly").textContent = "$" + P.monthly + "/mo";
+        $("bkMemMonthly").textContent = "$" + P.monthly + "/mo + tax";
         $("bkMemPer").textContent = "$" + P.perVisit; $("bkMemOne").textContent = "$" + P.oneoffVisit;
         $("bkMemN").textContent = P.freq === 1 ? "1 visit a month" : P.freq + " visits a month";
         $("bkMemOf").textContent = P.of === "exterior" ? "an Exterior" : P.of === "interior" ? "an Interior detail" : "a Full Detail";
-        $("bkMemTxt").textContent = on ? P.label + " · $" + P.monthly + "/mo, starting after this detail" : P.label + " · $" + P.monthly + "/mo";
+        $("bkMemTxt").textContent = on ? P.label + " · $" + P.monthly + "/mo + tax, starting after this detail" : P.label + " · $" + P.monthly + "/mo + tax";
       }
       var cash = radio("pay") !== "card";
       var MTL = ' <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a>';
-      $("bkMemAuthRow").hidden = !on; if (P) $("bkMemAuthAmt").textContent = "$" + P.monthly + "/mo";
+      $("bkMemAuthRow").hidden = !on; if (P) $("bkMemAuthAmt").textContent = usd(withTax(P.monthly)) + "/mo ($" + P.monthly + " + " + usd(taxOf(P.monthly)) + " " + TAX.name + ")";
       $("bkMemMore").innerHTML = (!on ? "Billing starts one month after this detail, then on that same date every month. 3-month minimum, then pause or cancel anytime. Prices may change with 30 days' notice."
         : cash ? "<b>Paying in person today?</b> That's fine. You'll have 14 days after your detail to add a card in your Apex account, and your membership bills to it one month after the detail. 3-month minimum, then pause or cancel anytime."
         : "We charge this detail after it's done. Your membership then bills to the same card one month later, and on that date every month. 3-month minimum, then pause or cancel anytime.") + MTL;
@@ -3437,9 +3454,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
           if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
-            if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
+            if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo + tax, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
             else if (x.j.membershipError) { $("dnMemRow").hidden = false; $("dnMem").textContent = "Not added: " + x.j.membershipError; }
-            if (x.j.priceChanged) $("dnTotal").textContent = "$" + x.j.total + " · pay after the job" + (x.j.regularPricing ? " (regular price: launch pricing is for a first detail)" : "");
+            if (x.j.priceChanged) $("dnTotal").textContent = usd(x.j.total) + " with tax · pay after the job" + (x.j.regularPricing ? " (regular price: launch pricing is for a first detail)" : "");
             if (window.__acctReload) window.__acctReload(); return; }
           if (x.status === 409) { fail(x.j.error); sel.time = null; loadAvail(true).then(function () { show(3); renderCal(); }); return; }
           fail((x.j && x.j.error) || "Something went wrong. Please text us at (732) 206-7084.");
@@ -3450,13 +3467,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var q = current();
       $("dnRef").textContent = ref; $("dnWhen").textContent = window.__bkWhenText; $("dnWhat").textContent = NAMES[q.pkg] + " · " + $("bkCar").textContent;
       $("dnWhere").textContent = [$("bkAddr").value.trim(), $("q-town").value.trim()].filter(Boolean).join(", ");
-      $("dnTotal").textContent = "$" + q.total + " · pay after"; $("dnPhone").textContent = $("bkPhone").value.trim();
-      $("dnMemRow").hidden = !window.__plan; if (window.__plan) $("dnMem").textContent = window.__plan.label + " · $" + window.__plan.monthly + "/mo, billed from one month after this detail";
+      $("dnTotal").textContent = usd(q.grand) + " with tax · pay after"; $("dnPhone").textContent = $("bkPhone").value.trim();
+      $("dnMemRow").hidden = !window.__plan; if (window.__plan) $("dnMem").textContent = window.__plan.label + " · $" + window.__plan.monthly + "/mo + tax, billed from one month after this detail";
       if (window.__LIVE) {
         done.querySelector("h3").textContent = "You're booked";
         done.querySelector(".bk-lede").innerHTML = 'We emailed your confirmation to <b id="dnPhone"></b>. Need to change it? Use the link in that email.';
         $("dnPhone").textContent = $("bkEmail").value.trim();
-        $("dnTotal").textContent = "$" + q.total + " · pay after the job";
+        $("dnTotal").textContent = usd(q.grand) + " with tax · pay after the job";
         var fb = done.querySelector(".done-fallback"); if (fb) fb.hidden = true;
         var rl = done.querySelector(".dn-row span"); if (rl) rl.textContent = "Booking code";
       }
@@ -3518,7 +3535,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var now = pkgPrice("full", 0), reg = REG.full[0], sale = now < reg;
     document.getElementById("hoNow").textContent = "$" + now; document.getElementById("hoReg").textContent = "$" + reg;
     document.getElementById("hoReg").hidden = !sale; document.getElementById("hoK").textContent = sale ? "Launch pricing" : "From";
-    document.getElementById("hoF").textContent = sale ? "first detail only · sedan" : "sedan";
+    document.getElementById("hoF").textContent = sale ? "first detail only · sedan · plus tax" : "sedan · plus tax";
     document.getElementById("heroBook").textContent = isReturning() ? "Book a detail" : "Book my first detail";
   }
   heroOffer();

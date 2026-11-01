@@ -1,10 +1,15 @@
 // Getting paid: Nick's "job done" page, the customer's pay / tip page, receipts.
 import { squareOn, saveCard, charge, ensureSquareCustomer } from "./square.js";
 import { send, layout, rows, button, h } from "./email.js";
+import { TAX, taxCents } from "./pricing.js";
 
 const methodLabel = m => m === "card_on_file" ? "card on file" : m === "online" ? "paid online" : /^in_person/.test(m || "") ? "in person (" + (m.split(":")[1] || "") + ")" : (m || "");
 const money = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
+const TAX_LABEL = TAX.name + " (" + TAX.pct + ")", TAX_UNITS = Math.round(TAX.rate * 100000);
+// what the customer owes for a detail: price before tax (Nick's final amount, or the estimate) + NJ sales tax
+// (final amounts set before sales tax started have tax_cents NULL: keep the amount that was already emailed)
+function bill(b) { const sub = b.final_cents || (b.quote || 0) * 100, tax = b.final_cents != null ? (b.tax_cents || 0) : taxCents(sub); return { sub, tax, total: sub + tax }; }
 const json = (d, s) => new Response(JSON.stringify(d), { status: s || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const html = (b, s) => new Response(b, { status: s || 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 const tok = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), x => x.toString(16).padStart(2, "0")).join("");
@@ -26,23 +31,25 @@ async function ensurePayToken(env, b) {
 async function emailReceipt(env, b, opts) {
   const site = env.SITE_URL, first = b.name.split(" ")[0];
   const tipLink = opts.offerTip ? site + "/pay/" + b.pay_token + "?tip=1" : null;
-  const subject = opts.tipOnly ? "Thanks for the tip, " + first + "!" : "Receipt: your " + NAMES[b.pkg] + " · " + money(opts.amount + (opts.tip || 0));
+  const tax = opts.tax || 0, tip = opts.tip || 0, total = (opts.amount || 0) + tax + tip;
+  const subject = opts.tipOnly ? "Thanks for the tip, " + first + "!" : "Receipt: your " + NAMES[b.pkg] + " · " + money(total);
   const body = (opts.tipOnly ? `<h1 style="font-size:24px;margin:0 0 8px">Thank you, ${h(first)}!</h1><p style="margin:0;color:#444;line-height:1.55">We got your ${money(opts.tip)} tip. It really means a lot.</p>`
       : `<h1 style="font-size:24px;margin:0 0 8px">Thanks, ${h(first)}. You're all set.</h1><p style="margin:0;color:#444;line-height:1.55">Here's your receipt for today's detail.</p>`) +
-    rows([["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Amount", opts.tipOnly ? "" : money(opts.amount)], ["Tip", opts.tip ? money(opts.tip) : ""],
-      ["Paid with", opts.method], ["Booking code", b.id]]) +
+    rows(opts.tipOnly ? [["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Tip", money(tip)], ["Paid with", opts.method], ["Booking code", b.id]]
+      : [["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Price", money(opts.amount)], [TAX_LABEL, money(tax)], ["Tip", tip ? money(tip) : ""], ["Total paid", money(total)],
+        ["Paid with", opts.method], ["Booking code", b.id]]) +
     (opts.receipt ? `<p style="margin:0 0 14px"><a href="${h(opts.receipt)}" style="color:#111">View the Square receipt</a></p>` : "") +
     (tipLink ? `<p style="margin:0 0 6px;font-weight:700">Happy with it?</p><p style="margin:0 0 16px;color:#444">Tips are never expected, always appreciated.</p><p style="margin:0 0 18px">${button(tipLink, "Add a tip")}</p>` : "") +
     `<p style="margin:0">${button(site + "/#book", "Book your next detail", false)}</p>`;
-  return send(env, { to: b.email, subject, html: layout(subject, body, opts.tipOnly ? "Thanks for the tip" : "Receipt " + money(opts.amount), site + "/email-logo.png") });
+  return send(env, { to: b.email, subject, html: layout(subject, body, opts.tipOnly ? "Thanks for the tip" : "Receipt " + money(total), site + "/email-logo.png") });
 }
 
-async function emailPayLink(env, b, cents) {
-  const site = env.SITE_URL, first = b.name.split(" ")[0], link = site + "/pay/" + b.pay_token;
-  const subject = "Your detail is done: " + money(cents) + " due";
+async function emailPayLink(env, b, cents, tax) {
+  const site = env.SITE_URL, first = b.name.split(" ")[0], link = site + "/pay/" + b.pay_token, total = cents + tax;
+  const subject = "Your detail is done: " + money(total) + " due";
   const body = `<h1 style="font-size:24px;margin:0 0 8px">All done, ${h(first)}!</h1><p style="margin:0;color:#444;line-height:1.55">Thanks for having us out. You can pay securely online below, and add a tip if you'd like.</p>` +
-    rows([["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Amount due", money(cents)], ["Booking code", b.id]]) + `<p style="margin:0">${button(link, "Pay " + money(cents))}</p>`;
-  return send(env, { to: b.email, subject, html: layout(subject, body, money(cents) + " due", site + "/email-logo.png") });
+    rows([["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Price", money(cents)], [TAX_LABEL, money(tax)], ["Amount due", money(total)], ["Booking code", b.id]]) + `<p style="margin:0">${button(link, "Pay " + money(total))}</p>`;
+  return send(env, { to: b.email, subject, html: layout(subject, body, money(total) + " due", site + "/email-logo.png") });
 }
 
 // ---------- Nick's job page: /job/<ack_token> ----------
@@ -63,26 +70,27 @@ export async function jobRoute(req, env, url, H) {
     Object.assign(b, { completed_at: Date.now(), paid_at: Date.now(), paid_method: "membership" }); ok = true; msg = "Marked done. Nice work!";
   } else if (req.method === "POST" && m[2] && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
     const fd = await req.formData(), dollars = parseFloat(String(fd.get("amount") || "").replace(/[^\d.]/g, "")), cents = Math.round(dollars * 100);
-    if (!(cents >= 100 && cents <= 200000)) msg = "Enter the final amount, like 179.";
+    const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)";
+    if (!(cents >= 100 && cents <= 200000)) msg = "Enter the price before tax, like 179.";
     else if (m[2] === "inperson") {
       const how = String(fd.get("how") || "cash").slice(0, 20);
-      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, paid_at = ?, paid_method = ? WHERE id = ?").bind(Date.now(), cents, Date.now(), "in_person:" + how, b.id).run();
-      Object.assign(b, { paid_at: Date.now(), final_cents: cents, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + ").";
+      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).run();
+      Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ".";
     } else if (m[2] === "link") {
       await ensurePayToken(env, b);
-      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ? WHERE id = ?").bind(Date.now(), cents, b.id).run();
-      b.final_cents = cents; b.completed_at = Date.now();
-      await emailPayLink(env, b, cents); ok = true; msg = "Sent " + b.email + " a link to pay " + money(cents) + ".";
+      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ? WHERE id = ?").bind(Date.now(), cents, tax, b.id).run();
+      Object.assign(b, { final_cents: cents, tax_cents: tax, completed_at: Date.now() });
+      await emailPayLink(env, b, cents, tax); ok = true; msg = "Sent " + b.email + " a link to pay " + money(total) + split + ".";
     } else if (m[2] === "charge") {
       if (!card || !squareOn(env)) msg = "No saved card for this customer. Send a pay link instead.";
       else {
         try {
           await ensurePayToken(env, b);
-          const p = await charge(env, { source: card.id, amount: cents, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id, email: b.email, idem: "job-" + b.id + "-" + cents });
-          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ? WHERE id = ?").bind(Date.now(), cents, Date.now(), p.id, p.receipt, b.id).run();
-          Object.assign(b, { paid_at: Date.now(), final_cents: cents, paid_method: "card_on_file" }); ok = true;
-          msg = "Charged " + money(cents) + " to " + card.brand + " ending " + card.last4 + ". Receipt sent.";
-          await emailReceipt(env, b, { amount: cents, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true });
+          const p = await charge(env, { source: card.id, amount: total, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(cents) + " + " + money(tax) + " " + TAX.name, email: b.email, idem: "job-" + b.id + "-" + total });
+          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ? WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), p.id, p.receipt, b.id).run();
+          Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "card_on_file" }); ok = true;
+          msg = "Charged " + money(total) + split + " to " + card.brand + " ending " + card.last4 + ". Receipt sent.";
+          await emailReceipt(env, b, { amount: cents, tax, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true });
         } catch (e) { msg = "Charge failed: " + e.message + " You can send them a pay link instead."; }
       }
     }
@@ -98,20 +106,24 @@ export async function jobRoute(req, env, url, H) {
       ${H.summaryCard(b)}
       ${b.status === "confirmed" && !b.completed_at ? `<div class="acts"><form method="post" action="/job/${b.ack_token}/done"><button class="btn" style="width:100%">Mark visit done</button></form></div>` : ""}${weatherBtn}`));
   }
-  const status = b.status === "cancelled" ? "Cancelled" : b.paid_at ? "Paid " + money(b.final_cents) + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(b.final_cents) + " link sent)" : "Not paid yet";
+  const B = bill(b), paidTotal = (b.final_cents || 0) + (b.tax_cents || 0);
+  const status = b.status === "cancelled" ? "Cancelled" : b.paid_at ? "Paid " + money(paidTotal) + (b.tax_cents ? " incl. tax" : "") + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(B.total) + " link sent)" : "Not paid yet";
   const forms = b.paid_at || b.status !== "confirmed" ? "" : `
     <h2>Job done? Get paid</h2>
-    <form method="post" id="jf"><label class="note" for="amt">Final amount (estimate was ${money(est)}${b.travel_fee ? ", includes $" + b.travel_fee + " travel" : ""})</label>
-    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 16px"><span style="font-size:22px">$</span><input id="amt" name="amount" inputmode="decimal" value="${(due / 100).toFixed(due % 100 ? 2 : 0)}" style="flex:1;min-height:52px;border-radius:14px;border:0;padding:0 14px;font:600 22px inherit;background:rgba(255,255,255,.08);color:#ededed"></div>
+    <form method="post" id="jf"><label class="note" for="amt">Price before tax (estimate was ${money(est)}${b.travel_fee ? ", includes $" + b.travel_fee + " travel" : ""})</label>
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 12px"><span style="font-size:22px">$</span><input id="amt" name="amount" inputmode="decimal" value="${(due / 100).toFixed(due % 100 ? 2 : 0)}" style="flex:1;min-height:52px;border-radius:14px;border:0;padding:0 14px;font:600 22px inherit;background:rgba(255,255,255,.08);color:#ededed"></div>
+    <div class="card" style="margin-bottom:4px"><div class="r"><span>${h(TAX_LABEL)}</span><b id="taxAmt">${money(taxCents(due))}</b></div><div class="r"><span>Customer pays</span><b id="totAmt" style="font-size:20px">${money(due + taxCents(due))}</b></div></div>
+    <script>(function(){var a=document.getElementById("amt"),t=document.getElementById("taxAmt"),T=document.getElementById("totAmt");function m(c){return "$"+(c/100).toFixed(c%100?2:0);}
+      function up(){var c=Math.round((parseFloat(String(a.value).replace(/[^\\d.]/g,""))||0)*100),x=c>0?Math.floor((c*${TAX_UNITS}+50000)/100000):0;t.textContent=m(x);T.textContent=m(c+x);}a.addEventListener("input",up);up();})();</script>
     <input type="hidden" name="how" value="cash">
     <div class="acts">
-      ${card && squareOn(env) ? `<button class="btn" formaction="/job/${b.ack_token}/charge" onclick="return confirm('Charge $' + document.getElementById('amt').value + ' to ${h(card.brand)} ending ${h(card.last4)}?')">Charge ${h(card.brand)} ending ${h(card.last4)}</button>` : ""}
+      ${card && squareOn(env) ? `<button class="btn" formaction="/job/${b.ack_token}/charge" onclick="return confirm('Charge ' + document.getElementById('totAmt').textContent + ' (with tax) to ${h(card.brand)} ending ${h(card.last4)}?')">Charge ${h(card.brand)} ending ${h(card.last4)}</button>` : ""}
       ${squareOn(env) ? `<button class="btn ${card ? "g" : ""}" formaction="/job/${b.ack_token}/link">Email them a pay link</button>` : ""}
       <button class="btn g" formaction="/job/${b.ack_token}/inperson" onclick="this.form.how.value='cash'">Paid in person: cash</button>
       <button class="btn g" formaction="/job/${b.ack_token}/inperson" onclick="this.form.how.value='card'">Paid in person: card / Tap to Pay</button>
       <button class="btn g" formaction="/job/${b.ack_token}/inperson" onclick="this.form.how.value='other'">Paid in person: Venmo / other</button>
     </div></form>
-    <p class="note">Charging a saved card or the pay link sends the customer a receipt with an optional "Add a tip" button.</p>`;
+    <p class="note">Paid in person? Collect the "Customer pays" total, which includes ${h(TAX.name)}. Charging a saved card or the pay link adds the tax automatically and sends a receipt with an optional "Add a tip" button. Tips aren't taxed.</p>`;
   return html(H.page("Job", `<h1>${h(NAMES[b.pkg])} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))}</p>
     ${msg ? `<p class="note" style="color:${ok ? "#c8f7c5" : "#ffb4ab"}">${h(msg)}</p>` : ""}
     <div class="card"><div class="r"><span>Status</span><b>${h(status)}</b></div><div class="r"><span>Saved card</span><b>${card ? h(card.brand + " ending " + card.last4) : "None"}</b></div></div>
@@ -128,11 +140,11 @@ export async function payPage(req, env, url, H) {
   if (tipMode && b.tip_cents) return html(H.page("Thank you", `<div class="ok">✓</div><h1>Thank you!</h1><p class="sub">We got your ${money(b.tip_cents)} tip.</p>`));
   if (tipMode && !/^card_on_file|^online/.test(b.paid_method || "")) return html(H.page("Thank you", `<div class="ok">✓</div><h1>You're all paid up</h1><p class="sub">Thanks for choosing Apex.</p>`));
   if (!cfg) return html(H.page("Pay", "<h1>Online payment isn't set up yet</h1><p class='sub'>Text us at (732) 206-7084.</p>"));
-  const due = tipMode ? 0 : (b.final_cents || (b.quote || 0) * 100), base = b.final_cents || (b.quote || 0) * 100;
+  const B = bill(b), due = tipMode ? 0 : B.total, base = B.sub, paid = (b.final_cents || 0) + (b.tax_cents || 0);   // tips are a % of the price before tax
   const tips = [0, 15, 20, 25].map(p => ({ p, c: Math.round(base * p / 100 / 100) * 100 }));
   return html(H.page(tipMode ? "Add a tip" : "Pay", `
   <h1>${tipMode ? "Add a tip" : "Pay for your detail"}</h1><p class="sub">${h(NAMES[b.pkg])} · ${h(b.car || "")} · ${h(H.whenText(b))}</p>
-  <div class="card">${tipMode ? `<div class="r"><span>Paid</span><b>${money(base)}</b></div>` : `<div class="r"><span>Amount due</span><b>${money(due)}</b></div>`}</div>
+  <div class="card">${tipMode ? `<div class="r"><span>Paid</span><b>${money(paid)}</b></div>` : `<div class="r"><span>Price</span><b>${money(B.sub)}</b></div><div class="r"><span>${h(TAX_LABEL)}</span><b>${money(B.tax)}</b></div><div class="r"><span>Amount due</span><b>${money(due)}</b></div>`}</div>
   <h2>${tipMode ? "How much?" : "Add a tip?"} <span class="note">Never expected, always appreciated</span></h2>
   <div class="ts" id="tips">${tips.filter(x => !tipMode || x.p).map((x, i) => `<button type="button" data-c="${x.c}" ${i === (tipMode ? 1 : 0) ? 'aria-pressed="true"' : ""}>${x.p ? x.p + "% · " + money(x.c) : "No tip"}</button>`).join("")}<button type="button" data-c="custom">Other</button></div>
   <input id="tipOther" inputmode="decimal" placeholder="Tip amount, like 25" hidden style="margin-top:10px;width:100%;min-height:48px;border-radius:12px;border:0;padding:0 14px;font:600 16px inherit;background:rgba(255,255,255,.08);color:#ededed">
@@ -191,11 +203,11 @@ export async function payApi(req, env, url) {
       await emailReceipt(env, b, { tipOnly: true, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt }).catch(() => {});
       return json({ ok: true, message: "We got your " + money(tip) + " tip. It really means a lot." });
     }
-    const due = b.final_cents || (b.quote || 0) * 100;
-    const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + (tip ? " + tip" : "") + " · " + b.id, email: b.email, idem: "pay-" + b.id + "-" + (due + tip) });
-    await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?) WHERE id = ?")
-      .bind(Date.now(), p.id, p.receipt, due, tip, Date.now(), b.id).run();
-    await emailReceipt(env, Object.assign(b, { tip_cents: tip }), { amount: due, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt, offerTip: false }).catch(() => {});
+    const B = bill(b), due = B.total;
+    const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) });
+    await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tax_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?) WHERE id = ?")
+      .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, Date.now(), b.id).run();
+    await emailReceipt(env, Object.assign(b, { tip_cents: tip }), { amount: B.sub, tax: B.tax, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt, offerTip: false }).catch(() => {});
     return json({ ok: true, message: "We emailed your receipt to " + b.email + "." });
   } catch (e) { return json({ error: e.message }, 402); }
 }

@@ -78,6 +78,7 @@ function mock(path, body) {
   if (path === "/v2/customers") return { customer: { id: "MOCKCUST" + Math.random().toString(36).slice(2, 8) } };
   if (path === "/v2/cards") { if (/decline/.test(body.source_id)) { const e = new Error("Your card was declined. Try another card."); throw e; } return { card: { id: "ccof:mock" + Math.random().toString(36).slice(2, 8), card_brand: "VISA", last_4: "1111", exp_month: 12, exp_year: 2030 } }; }
   if (path === "/v2/payments" && /decline/.test(body.source_id)) throw new Error("Your card was declined.");
+  if (path === "/v2/payments") console.log("mock payment", body.amount_money.amount, "|", body.note);   // local testing: shows exactly what would be charged
   if (path === "/v2/payments") return { payment: { id: "mockpay" + Math.random().toString(36).slice(2, 8), status: "COMPLETED", receipt_url: null, card_details: { card: { card_brand: "VISA", last_4: "1111" } } } };
   return {};
 }

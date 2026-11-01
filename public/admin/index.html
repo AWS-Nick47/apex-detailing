@@ -45,6 +45,10 @@ h2 { font-size: 17px; margin: 26px 0 10px; letter-spacing: -.01em; }
 .stat .k { color: var(--muted); font-size: 13px; }
 .stat .v { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
 .stat .s { color: var(--dim); font-size: 12.5px; }
+.taxc { margin-top: 10px; box-shadow: inset 0 0 0 1px rgba(200,247,197,.22); }
+.qrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); } .qrow:first-child { padding-top: 2px; }
+.qrow .qr { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; } .qrow .qr b { font-size: 17px; }
+.taxc .k { color: var(--muted); font-size: 13px; } .taxc .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; font-variant-numeric: tabular-nums; } .taxc .s { color: var(--dim); font-size: 12.5px; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .row + .row { margin-top: 6px; }
 .muted { color: var(--muted); } .dim { color: var(--dim); } .small { font-size: 13.5px; }
@@ -197,6 +201,12 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
       '<div style="display:grid;gap:6px;justify-items:end">' + (j.kind === "member" ? '<span class="badge block">Member</span>' : '') + (!j.acked ? '<span class="badge warn">New</span>' : '') + '</div></div>' +
       '<div class="acts">' + (j.job ? '<a class="btn sm" href="' + esc(j.job) + '">Open job</a>' : '') + (!j.acked ? '<button class="btn g sm" data-ack="' + esc(j.id) + '">Mark seen</button>' : '') + '</div></div>';
   }
+  // NJ sales tax owed for a quarter (Today shows the current one; Money shows all)
+  function taxCard(q, link) {
+    return '<div class="card taxc"><div class="row"><div><div class="k">NJ sales tax to set aside</div><div class="v">' + money(q.tax) + '</div>' +
+      '<div class="s">' + esc(q.label) + (q.filed ? ' · filed ' + esc(new Date(q.filed).toLocaleDateString("en-US", { month: "short", day: "numeric" })) : ' · file and pay by ' + esc(dlabel(q.due))) + '</div></div>' +
+      (link ? '<button class="btn g sm" data-go="money">Details</button>' : '') + '</div></div>';
+  }
   function renderToday() {
     loading();
     api("/home").then(function (d) {
@@ -212,7 +222,8 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
         '<div class="card stat"><div class="k">Details paid</div><div class="v">' + money(d.month.details) + '</div><div class="s">' + d.month.jobs + ' job' + (d.month.jobs === 1 ? '' : 's') + '</div></div>' +
         '<div class="card stat"><div class="k">Tips</div><div class="v">' + money(d.month.tips) + '</div></div>' +
         '<div class="card stat"><div class="k">Memberships</div><div class="v">' + money(d.month.members) + '</div><div class="s">charged this month</div></div>' +
-        '<div class="card stat"><div class="k">Members</div><div class="v">' + d.members.count + '</div><div class="s">' + money(d.members.monthly) + '/mo</div></div></div>';
+        '<div class="card stat"><div class="k">Members</div><div class="v">' + d.members.count + '</div><div class="s">' + money(d.members.monthly) + '/mo + tax</div></div></div>';
+      if (d.taxQuarter) h += taxCard(d.taxQuarter, true);
       h += '<div class="acts" style="margin-top:16px"><button class="btn" data-newblock>Block off time</button><button class="btn g" data-go="schedule">See my week</button></div>';
       main.innerHTML = h;
     }).catch(fail);
@@ -326,13 +337,13 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
     else {
       if (j.kind === "member") badges.push('<span class="badge block">Member</span>');
       if (!j.acked && j.end_utc > Date.now()) badges.push('<span class="badge warn">New</span>');
-      if (j.paid) badges.push('<span class="badge good">Paid' + (j.final != null ? " " + money(j.final + (j.tip || 0)) : "") + '</span>');
+      if (j.paid) badges.push('<span class="badge good">Paid' + (j.final != null ? " " + money(j.final + (j.tax || 0) + (j.tip || 0)) : "") + '</span>');
       else if (j.end_utc < Date.now() && j.kind !== "member") badges.push('<span class="badge bad">Not paid</span>');
       else if (j.done) badges.push('<span class="badge good">Done</span>');
     }
     var adds = (j.adds || []).length ? j.adds.join(", ") : "";
     return '<div class="card job" data-job="' + esc(j.id) + '"><div class="row"><div><div class="when">' + esc(whenUtc(j.start_utc)) + '–' + esc(timeUtc(j.end_utc)) + '</div>' +
-      '<div class="what">' + esc(j.what) + ' · ' + esc(SIZES[j.size] || "") + (j.quote != null && j.kind !== "member" ? ' · <span class="muted">est. ' + money(j.quote) + '</span>' : '') + '</div>' +
+      '<div class="what">' + esc(j.what) + ' · ' + esc(SIZES[j.size] || "") + (j.quote != null && j.kind !== "member" ? ' · <span class="muted">est. ' + money(j.quote) + ' + tax</span>' : '') + '</div>' +
       '<div class="muted small">' + esc(j.name) + (j.town ? ' · ' + esc(j.town) : '') + (j.car ? ' · ' + esc(j.car) : '') + '</div></div><div style="display:grid;gap:6px;justify-items:end">' + badges.join("") + '</div></div>' +
       '<div class="det" hidden>' +
         '<div class="kv"><span>Code</span><b>' + esc(j.id) + '</b></div>' +
@@ -342,7 +353,7 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
         (adds ? '<div class="kv"><span>Add-ons</span><b>' + esc(adds) + '</b></div>' : '') +
         '<div class="kv"><span>Water / power</span><b>' + esc([j.water, j.power].filter(Boolean).join(" · ") || "—") + '</b></div>' +
         (j.notes ? '<div class="kv"><span>Notes</span><b>' + esc(j.notes) + '</b></div>' : '') +
-        (j.paid ? '<div class="kv"><span>Paid</span><b>' + money(j.final) + (j.tip ? " + " + money(j.tip) + " tip" : "") + (j.method ? " · " + esc(j.method.replace(/_/g, " ")) : "") + '</b></div>' : '') +
+        (j.paid ? '<div class="kv"><span>Paid</span><b>' + money(j.final) + (j.tax ? " + " + money(j.tax) + " tax" : "") + (j.tip ? " + " + money(j.tip) + " tip" : "") + (j.method ? " · " + esc(j.method.replace(/_/g, " ")) : "") + '</b></div>' : '') +
         '<div class="acts">' + (j.job ? '<a class="btn sm" href="' + esc(j.job) + '">Open job</a>' : '') + (!j.acked && j.status !== "cancelled" ? '<button class="btn g sm" data-ack="' + esc(j.id) + '">Mark seen</button>' : '') + '</div>' +
       '</div></div>';
   }
@@ -364,7 +375,7 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
     list = list.filter(function (x) { return !q || [x.name, x.email, x.phone, x.town, x.car].join(" ").toLowerCase().indexOf(q) > -1; });
     if (PEOPLE === "members") {
       h += list.length ? '<div class="list">' + list.map(function (m) {
-        return '<div class="card"><div class="row"><div><div style="font-weight:650">' + esc(m.name) + '</div><div class="small">' + esc(m.label) + ' · ' + money(m.monthly) + '/mo</div>' +
+        return '<div class="card"><div class="row"><div><div style="font-weight:650">' + esc(m.name) + '</div><div class="small">' + esc(m.label) + ' · ' + money(m.monthly) + '/mo + tax</div>' +
           '<div class="muted small">' + (m.nextBill && m.status !== "cancelled" ? 'Next charge ' + esc(dlabel(m.nextBill)) + ' · ' : '') + m.paymentsMade + ' paid' + (m.credit ? ' · ' + money(m.credit) + ' credit' : '') + (m.owed ? ' · owes ' + money(m.owed) : '') + (m.endsOn ? ' · ends ' + esc(dlabel(m.endsOn)) : '') + '</div>' +
           '<div class="dim small">' + esc(m.email) + (m.phone ? ' · ' + esc(m.phone) : '') + '</div></div>' + stBadge(m.status) + '</div></div>';
       }).join("") + '</div>' : '<div class="card empty">No members' + (q ? ' match' : ' yet') + '.</div>';
@@ -386,16 +397,24 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
   function renderMoney() {
     loading();
     api("/money").then(function (d) {
-      var h = '<h1>Money</h1><p class="sub">What came in through the site, by month.' + (d.squareSandbox ? ' <span class="badge warn">Square test mode</span>' : '') + '</p>';
+      var h = '<h1>Money</h1><p class="sub">What came in through the site.' + (d.squareSandbox ? ' <span class="badge warn">Square test mode</span>' : '') + '</p>';
+      var T = d.tax, Q = T.quarters, cur = Q.filter(function (q) { return q.current; })[0];
+      h += '<h2>' + esc(T.name) + '</h2>' + (cur ? taxCard(cur) : '');
+      h += '<div class="card" style="margin-top:10px">' +
+        Q.map(function (q) { return '<div class="qrow"><div><div style="font-weight:650">' + esc(q.label) + (q.current ? ' <span class="dim small">so far</span>' : '') + '</div>' +
+          '<div class="dim small">Taxed sales ' + money(q.taxedSales) + (q.sales !== q.taxedSales ? ' (all sales ' + money(q.sales) + ')' : '') + ' · due ' + esc(dlabel(q.due)) + '</div></div>' +
+          '<div class="qr"><b>' + money(q.tax) + '</b>' + (q.filed ? '<button class="btn g sm" data-taxfiled="' + esc(q.key) + '" data-on="0" title="Undo">Filed ✓</button>' : '<button class="btn ' + (q.current ? 'g ' : '') + 'sm" data-taxfiled="' + esc(q.key) + '" data-on="1">Mark filed</button>') + '</div></div>'; }).join("") +
+        '<p class="dim small" style="margin-top:10px">' + esc(T.pct) + ' of every bill: details, add-ons, travel, membership charges and fees. Tips aren\'t taxed. Counted when the money comes in, including cash and card payments you mark paid in person on the job page. File Form ST-50 with the NJ Division of Taxation and pay this amount by the due date. If you ever collect more than $30,000 of tax in a year, NJ switches you to monthly payments.</p></div>';
+      h += '<h2>By month</h2>';
       if (d.months.length) {
-        h += '<div class="card scroll"><table class="tbl"><thead><tr><th>Month</th><th>Details</th><th>Tips</th><th>Members</th><th>Fees</th><th>Total</th></tr></thead><tbody>' +
+        h += '<div class="card scroll"><table class="tbl"><thead><tr><th>Month</th><th>Details</th><th>Members</th><th>Fees</th><th>Sales tax</th><th>Tips</th><th>Total in</th></tr></thead><tbody>' +
           d.months.map(function (m) { var p = m.month.split("-"), lbl = new Date(Date.UTC(+p[0], +p[1] - 1, 15)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", year: "numeric" });
-            return '<tr><td>' + lbl + '</td><td>' + money(m.details) + '</td><td>' + money(m.tips) + '</td><td>' + money(m.members) + '</td><td>' + money(m.fees) + '</td><td><b>' + money(m.details + m.tips + m.members + m.fees) + '</b></td></tr>'; }).join("") +
-          '</tbody></table></div>';
+            return '<tr><td>' + lbl + '</td><td>' + money(m.details) + '</td><td>' + money(m.members) + '</td><td>' + money(m.fees) + '</td><td>' + money(m.tax) + '</td><td>' + money(m.tips) + '</td><td><b>' + money(m.details + m.members + m.fees + m.tax + m.tips) + '</b></td></tr>'; }).join("") +
+          '</tbody></table><p class="dim small" style="margin-top:8px">Details, members and fees are before tax. Sales tax is money you hold for the state.</p></div>';
       } else h += '<div class="card empty">Nothing paid yet.</div>';
       if (d.methods.length) h += '<h2>How people paid</h2><div class="card">' + d.methods.map(function (m) { return '<div class="kv"><span>' + esc(String(m.method || "other").replace(/_/g, " ").replace(":", " · ")) + ' (' + m.count + ')</span><b>' + money(m.total) + '</b></div>'; }).join("") + '</div>';
       h += '<h2>Finished, not marked paid</h2>' + (d.unpaid.length ? '<div class="list">' + d.unpaid.map(jobCard).join("") + '</div>' : '<div class="card empty">All caught up.</div>');
-      h += soon("Square fees, payouts and a yearly total for taxes.", "Square's own dashboard shows fees and deposits to your bank.");
+      h += soon("Square fees, payouts and a yearly total for income taxes.", "Square's own dashboard shows fees and deposits to your bank. It shows each payment as one amount; the sales tax split is tracked here.");
       main.innerHTML = h;
     }).catch(fail);
   }
@@ -425,7 +444,8 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
         ["exterior", "interior", "full"].map(function (k) { var n = { exterior: "Exterior", interior: "Interior", full: "Full Detail" }[k]; return '<tr><td>' + n + '</td>' + P.regular[k].map(function (v, i) { return '<td>' + (P.launchSale ? '<span class="dim" style="text-decoration:line-through">' + money(v) + '</span> ' + money(P.launch[k][i]) : money(v)) + '</td>'; }).join("") + '</tr>'; }).join("") +
         '</tbody></table><div style="margin-top:10px">' + kv("Launch sale", P.launchSale ? "On (first detail only)" : "Off") +
         kv("Add-ons", Object.keys(P.addons).map(function (k) { return { pet: "Pet hair", stain: "Stain/odor", lights: "Headlights", engine: "Engine bay" }[k] + " " + money(P.addons[k]); }).join(", ")) +
-        kv("Travel", P.zones.map(function (z) { return "≤" + z.max + " mi " + (z.fee ? "+" + money(z.fee) : "free"); }).join(", ")) + '</div>' + soon("change prices, the launch sale and travel fees here (the site will update instantly).") + '</div>';
+        kv("Travel", P.zones.map(function (z) { return "≤" + z.max + " mi " + (z.fee ? "+" + money(z.fee) : "free"); }).join(", ")) +
+        (d.tax ? kv("Sales tax", d.tax.name + " " + d.tax.pct + ", added to every bill and membership charge (not tips)") : "") + '</div>' + soon("change prices, the launch sale and travel fees here (the site will update instantly).") + '</div>';
       h += '<h2>Apex Membership</h2><div class="card">' +
         kv("Plans", Object.keys(M.plans).map(function (k) { return M.plans[k].name + " " + Math.round(M.plans[k].pct * 100) + "% of " + M.plans[k].of; }).join(", ")) +
         kv("Extra discount", "2 visits/mo " + Math.round(M.freqDiscount[2] * 100) + "%, weekly " + Math.round(M.freqDiscount[4] * 100) + "%") +
@@ -445,6 +465,8 @@ label.f { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
     if ((b = t.closest(".tabs button"))) return show(b.dataset.tab);
     if ((b = t.closest("[data-go]"))) { if (b.dataset.people) PEOPLE = b.dataset.people; return show(b.dataset.go); }
     if (t.closest("[data-reload]")) return show(TAB);
+    if ((b = t.closest("[data-taxfiled]"))) { var on = b.dataset.on === "1"; if (on && !confirm("Mark this quarter's sales tax as filed and paid?")) return; b.disabled = true;
+      post("/tax/" + b.dataset.taxfiled + "/filed", { filed: on }).then(function () { toast(on ? "Marked filed" : "Unmarked"); renderMoney(); }).catch(function (e2) { toast(e2.message); b.disabled = false; }); return; }
     if ((b = t.closest("[data-sync]"))) { b.disabled = true; post("/sync").then(function (r) { toast(r.skipped ? "Calendar isn't connected" : "Synced " + r.events + " events"); show(TAB); }).catch(function (e2) { toast(e2.message); b.disabled = false; }); return; }
     if ((b = t.closest("[data-week]"))) { var n = +b.dataset.week; WEEK_FROM = n ? addD(WEEK_FROM, n) : weekStart(todayNY()); return renderSchedule(); }
     if (t.closest("[data-newblock]")) return openBlockSheet();
