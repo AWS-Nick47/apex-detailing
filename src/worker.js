@@ -228,6 +228,13 @@ async function api(req, env, url) {
     if (body.website) return json({ ok: true, id: "OK" });   // spam trap
     const { f, err } = readBooking(body);
     if (err.length) return json({ error: "Please check: " + err.join(", ") }, 400);
+    // An email that already has an account: adding Apex Membership or a card on file needs that account's sign-in code,
+    // so nobody can start a membership on someone else's saved card or replace it (audit IA-001 / IA-002).
+    // The website asks for the code right in the booking form, then sends the booking again signed in.
+    const session = await currentCustomer(env, req);
+    const owner = await env.DB.prepare("SELECT id FROM customers WHERE email = ?").bind(normEmail(f.email)).first();
+    if (owner && !(session && session.id === owner.id) && (f.plan || f.card))
+      return json({ error: "This email already has an Apex account. Enter the code we email you to add Apex Membership or a card on file, or choose Pay in person.", needCode: true }, 403);
     const max = addDays(todayKey(), RULES.horizonDays);
     if (f.day > max) return json({ error: "That date is too far out." }, 400);
     if (!(await slotOpen(env, f.day, f.start, f.pkg, f.size, f.adds))) return json({ error: "Sorry, that time was just taken. Please pick another.", taken: true }, 409);
@@ -236,7 +243,6 @@ async function api(req, env, url) {
     const prior = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE email = ? AND status != 'cancelled'").bind(normEmail(f.email)).first();
     const q = priceQuote({ pkg: f.pkg, size: f.size, adds: f.adds, miles: f.miles, returning: prior.n > 0, member: false });
     const shownQuote = f.quote; f.quote = q.subtotal; f.travel_fee = q.travel;   // quote = price before tax (tax is added on the bill)
-    const session = await currentCustomer(env, req);
     const customerId = await upsertFromBooking(env, f, session && session.id);
     let bookingCard = null;
     if (f.card && f.cardToken && squareOn(env)) {

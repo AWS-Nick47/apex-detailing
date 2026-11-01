@@ -876,6 +876,16 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .bk-review .rv:first-of-type { border-top: 0; }
 .bk-review .rv span { color: var(--muted); } .bk-review .rv b { text-align: right; font-weight: 600; }
 .bk-review .rv.tot b { font-size: 17px; }
+.bk-code { display: grid; gap: 12px; justify-items: start; margin-top: 14px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
+.bk-code-h { display: flex; align-items: center; gap: 8px; font-size: 16px; } .bk-code-h svg { width: 18px; height: 18px; }
+.bk-code p { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--muted); } .bk-code p b { color: var(--fg); word-break: break-all; }
+.bk-code-in { width: 100%; max-width: 240px; font: inherit; font-size: 26px; font-weight: 700; letter-spacing: .32em; text-align: center; padding: 12px 0 12px .32em; border-radius: 12px; border: 0; background: var(--well); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.bk-code-in:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--fg); }
+.bk-code-in::placeholder { color: rgba(255,255,255,.18); }
+.bk-code-acts { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.bk-code .lnk { border: 0; background: none; color: var(--fg); text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: 14px; padding: 4px 0; cursor: pointer; }
+.bk-code #bkCodeSkip { color: var(--muted); font-size: 13.5px; }
+.bk-code-msg:empty { display: none; } .bk-code-msg.bad { color: #ffb4ab !important; }
 .bk-review .lnk { border: 0; background: none; color: var(--fg); text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: 13px; padding: 2px 0; cursor: pointer; }
 /* mini 3D car */
 .bk3d { position: relative; height: 0; margin: 0 -6px; border-radius: 18px; overflow: hidden; opacity: 0; transition: opacity .5s, height .45s cubic-bezier(.3,.7,.2,1), margin .45s; background: radial-gradient(ellipse at 50% 85%, rgba(255,255,255,.07), transparent 65%); }
@@ -2021,6 +2031,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
             <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
           </div>
+          <div class="bk-code" id="bkCode" hidden>
+            <div class="bk-code-h"><svg aria-hidden="true"><use href="#i-lock"/></svg><b>Confirm it's you</b></div>
+            <p>This email already has an Apex account. To <span id="bkCodeWhy">add Apex Membership</span>, enter the 6-digit code we just emailed to <b id="bkCodeTo"></b>.</p>
+            <input id="bkCodeIn" class="bk-code-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="6-digit code">
+            <div class="bk-code-acts"><button type="button" class="btn btn-sm" id="bkCodeGo">Verify and book</button><button type="button" class="lnk" id="bkCodeResend">Send a new code</button></div>
+            <p class="bk-code-msg" id="bkCodeMsg" role="status" aria-live="polite"></p>
+            <button type="button" class="lnk" id="bkCodeSkip">Book without it and pay in person</button>
+          </div>
           <div class="bk-warn" id="bkErr" role="alert" hidden></div>
         </section>
 
@@ -2787,6 +2805,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       }).catch(function () { return false; });
     }
     window.__acctReload = function () { if (LIVE && signedIn) loadMe().then(function () { if (!el.hidden) fill(); }); };
+    window.__acctLoad = function () { if (LIVE && !signedIn) loadMe(); };   // after the booking form verified a sign-in code
     var el = document.getElementById("acct"), sheet = el.querySelector(".acct-sheet"), toastEl = document.getElementById("acctToast"), toastT;
     function $(s, r) { return (r || el).querySelector(s); }
     function $$(s, r) { return Array.prototype.slice.call((r || el).querySelectorAll(s)); }
@@ -3439,8 +3458,47 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type, freq: (window.__planInfo || {}).freq || 1 } : null,
         card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "" };
     }
+    // ---- an email that already has an account: Apex Membership or a card on file needs that account's sign-in code (the server enforces it) ----
+    var codeFor = null, codeOk = false;
+    function codeMsg(t, bad) { var m = $("bkCodeMsg"); m.textContent = t || ""; m.classList.toggle("bad", !!bad); }
+    function codeSend() {
+      codeMsg("Sending your code…");
+      return fetch("/api/auth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: codeFor }) })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "We couldn't send the code. Try again."); codeMsg("Code sent. Check your email (and junk folder). It works for 10 minutes."); }); })
+        .catch(function (e) { codeMsg(e.message || "We couldn't send the code. Check your connection and try again.", true); });
+    }
+    function codeGate(email) {
+      codeFor = email;
+      $("bkCodeWhy").textContent = [window.__plan ? "add Apex Membership" : null, radio("pay") === "card" ? "use a card on file" : null].filter(Boolean).join(" and ") || "continue";
+      $("bkCodeTo").textContent = email; $("bkCodeIn").value = ""; $("bkCode").hidden = false; $("bkErr").hidden = true;
+      $("bkNext").textContent = "Verify and book";
+      codeSend();
+      $("bkCode").scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(function () { $("bkCodeIn").focus({ preventScroll: true }); }, 350);
+    }
+    function codeClose() { codeFor = null; $("bkCode").hidden = true; $("bkNext").textContent = "Confirm booking"; }
+    var verifying = false;
+    function codeVerify() {
+      var code = $("bkCodeIn").value.replace(/\D/g, "");
+      if (code.length !== 6) { codeMsg("Enter the 6-digit code from the email.", true); $("bkCodeIn").focus(); return; }
+      if (verifying) return; verifying = true; $("bkCodeGo").disabled = true; codeMsg("Checking…");
+      fetch("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: codeFor, code: code }) })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "That code didn't work. Try again."); }); })
+        .then(function () { verifying = false; $("bkCodeGo").disabled = false; codeOk = true; codeClose(); finish(); },
+          function (e) { verifying = false; $("bkCodeGo").disabled = false; codeMsg(e.message, true); $("bkCodeIn").select(); });
+    }
+    $("bkCodeGo").addEventListener("click", codeVerify);
+    $("bkCodeResend").addEventListener("click", function () { $("bkCodeIn").value = ""; codeSend(); $("bkCodeIn").focus(); });
+    $("bkCodeIn").addEventListener("input", function () { this.value = this.value.replace(/\D/g, "").slice(0, 6); if (this.value.length === 6) codeVerify(); else if ($("bkCodeMsg").classList.contains("bad")) codeMsg(""); });
+    $("bkCodeIn").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); codeVerify(); } });
+    $("bkCodeSkip").addEventListener("click", function () {
+      if (window.__plan) { $("bkMemOn").checked = false; $("bkMemOn").dispatchEvent(new Event("change", { bubbles: true })); }
+      var p = form.querySelector('input[name="pay"][value="person"]'); if (p && !p.checked) { p.checked = true; payUI(); }
+      $("bkMemAuth").checked = false; codeClose(); finish();
+    });
+    $("bkEmail").addEventListener("input", function () { if (codeFor) codeClose(); });
     function finish() {
       if (!window.__LIVE) return showDone("APX-" + (10000 + Math.floor(Math.random() * 89999)));
+      if (codeFor && !$("bkCode").hidden) return codeVerify();
       if (sending) return; sending = true;
       var btn = $("bkNext"), was = btn.innerHTML; btn.disabled = true; btn.innerHTML = "Booking…";
       var fail = function (msg) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) { w.innerHTML = msg; w.hidden = false; } };
@@ -3453,7 +3511,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         }, function (e) { fail(e.message); throw "handled"; })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
         .then(function (x) {
+          if (x.status === 403 && x.j && x.j.needCode) { sending = false; btn.disabled = false; btn.innerHTML = was; codeGate($("bkEmail").value.trim()); return; }
           if (x.ok) { sending = false; btn.disabled = false; btn.innerHTML = was; var w = $("bkErr"); if (w) w.hidden = true; window.__lastBooking = x.j; loadAvail(true); showDone(x.j.id);
+            if (codeOk && window.__acctLoad) window.__acctLoad();
             if (x.j.membership) { $("dnMemRow").hidden = false; var fb2 = x.j.membership.firstBill.split("-"); $("dnMem").textContent = x.j.membership.label + " · $" + x.j.membership.monthly + "/mo + tax, first charge " + new Date(Date.UTC(+fb2[0], +fb2[1] - 1, +fb2[2], 12)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); }
             else if (x.j.membershipError) { $("dnMemRow").hidden = false; $("dnMem").textContent = "Not added: " + x.j.membershipError; }
             if (x.j.priceChanged) $("dnTotal").textContent = usd(x.j.total) + " with tax · pay after the job" + (x.j.regularPricing ? " (regular price: launch pricing is for a first detail)" : "");
