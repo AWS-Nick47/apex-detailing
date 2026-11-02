@@ -2549,9 +2549,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
      Same rate and rounding as the server (src/pricing.js), so estimates match the final bill to the cent. Tips aren't taxed. */
   var TAX = { name: "NJ sales tax", rate: 0.06625, pct: "6.625%" };
   // Square's card fields, styled like our own dark inputs (Square only lets us set these few properties).
-  // If Square ever rejects a property, fall back to the style without the font, then to Square's default.
+  // Square checks these inside its iframe (it rejects -apple-system/system-ui fonts) and then attach() fails, so if attach fails we retry with Square's default look.
   window.__sqStyle = {
-    input: { backgroundColor: "#1d1d1d", color: "#f2f2f2", fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif", fontSize: "16px", fontWeight: "500" },
+    input: { backgroundColor: "#1d1d1d", color: "#f2f2f2", fontFamily: "helvetica neue, sans-serif", fontSize: "16px", fontWeight: "500" },
     "input::placeholder": { color: "#8c8c8c" },
     ".input-container": { borderColor: "#3a3a3a", borderRadius: "12px", borderWidth: "1px" },
     ".input-container.is-focus": { borderColor: "#f2f2f2", borderWidth: "1px" },
@@ -2560,8 +2560,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     ".message-text": { color: "#b8b8b8" }, ".message-icon": { color: "#b8b8b8" },
     ".message-text.is-error": { color: "#ff9a9a" }, ".message-icon.is-error": { color: "#ff9a9a" }
   };
-  window.__sqCard = function (p) { var S = window.__sqStyle, S2 = JSON.parse(JSON.stringify(S)); delete S2.input.fontFamily;
-    return p.card({ style: S }).catch(function () { return p.card({ style: S2 }); }).catch(function () { return p.card(); }); };
+  window.__sqMount = function (p, sel) {
+    function one(st) { return p.card(st ? { style: st } : undefined).then(function (c) { return c.attach(sel).then(function () { return c; }, function (e) { try { c.destroy(); } catch (x) {} throw e; }); }); }
+    return one(window.__sqStyle).catch(function () { return one(null); });
+  };
   function taxCents(c) { c = Math.round(c); return c > 0 ? Math.floor((c * Math.round(TAX.rate * 100000) + 50000) / 100000) : 0; }
   function taxOf(d) { return taxCents(d * 100) / 100; }                               // dollars -> the tax, in dollars
   function withTax(d) { var c = Math.round(d * 100); return (c + taxCents(c)) / 100; }  // dollars -> total with tax
@@ -3309,8 +3311,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         var cfg = j.square; if (!cfg) throw new Error("Saving cards isn't available yet.");
         $(".acct-sq-test").hidden = !cfg.sandbox;
         return new Promise(function (ok, bad) { if (window.Square) return ok(); var sc = document.createElement("script"); sc.src = cfg.script; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); })
-          .then(function () { return window.__sqCard(window.Square.payments(cfg.appId, cfg.locationId)); })
-          .then(function (c) { acCard = c; document.getElementById("acctCardForm").hidden = false; return c.attach("#acct-card-container"); })
+          .then(function () { document.getElementById("acctCardForm").hidden = false; return window.__sqMount(window.Square.payments(cfg.appId, cfg.locationId), "#acct-card-container"); })
+          .then(function (c) { acCard = c; })
           .then(function () { btn.hidden = true; document.getElementById("acctCardSave").hidden = false; });
       }).catch(function (e) { btn.disabled = false; toast(e.message || "The card form didn't load."); });
     });
@@ -3592,8 +3594,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if (!cfg) throw new Error("off");
         $("sqTest").hidden = !cfg.sandbox;
         return new Promise(function (ok, bad) { if (window.Square) return ok(); var sc = document.createElement("script"); sc.src = cfg.script; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); })
-          .then(function () { return window.__sqCard(window.Square.payments(cfg.appId, cfg.locationId)); })
-          .then(function (c) { sqCard = c; return c.attach("#sq-card-container").then(function () { return c; }); });
+          .then(function () { return window.__sqMount(window.Square.payments(cfg.appId, cfg.locationId), "#sq-card-container"); })
+          .then(function (c) { sqCard = c; return c; });
       }).catch(function (e) { sqLoading = null; if (e && e.message !== "off") { var w = $("bkErr"); w.innerHTML = "The card form didn't load. Choose Pay in person, or refresh and try again."; w.hidden = false; } return null; });
       return sqLoading;
     }
