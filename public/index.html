@@ -2634,6 +2634,24 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     { id: "lights", name: "Headlight restoration", p: 60, pkgs: ["exterior", "full"], desc: "Sand, polish and UV-seal cloudy or yellowed lenses for clearer, brighter light at night. Worth it if your headlights look foggy." },
     { id: "engine", name: "Engine bay", p: 35, pkgs: ["exterior", "full"], desc: "Degrease, gentle rinse and dress the plastics under the hood. Good before selling, after winter, or if it's caked in dust and leaves." }
   ];
+  /* Live settings from the owner dashboard: the Worker puts them in the page as window.__APEX_SETTINGS (same shapes as
+     PRICING / SCHED above), so prices, job lengths, the launch sale and winter dates change without editing this file. */
+  (function () {
+    var S = window.__APEX_SETTINGS; if (!S || typeof S !== "object") return;
+    try {
+      var P = S.pricing || {}, D = S.sched || {};
+      if (P.launchSale != null) PRICING.launchSale = !!P.launchSale;
+      if (P.memberAddonDiscount != null) PRICING.memberAddonDiscount = +P.memberAddonDiscount;
+      if (P.regular) PRICING.regular = P.regular; if (P.launch) PRICING.launch = P.launch;
+      if (P.membership) Object.keys(PRICING.membership).forEach(function (k) { if (P.membership[k] && P.membership[k].pct != null) PRICING.membership[k].pct = +P.membership[k].pct; });
+      if (P.freqDiscount) PRICING.freqDiscount = { 1: +P.freqDiscount[1] || 0, 2: +P.freqDiscount[2] || 0, 4: +P.freqDiscount[4] || 0 };
+      if (P.addons) ADDONS.forEach(function (a) { if (P.addons[a.id] != null) a.p = +P.addons[a.id]; });
+      ["winter", "baseMin", "addonMin", "zones"].forEach(function (k) { if (D[k]) SCHED[k] = D[k]; });
+      REG = PRICING.regular; PRICES = PRICING.launchSale ? PRICING.launch : PRICING.regular;
+      Object.keys(TIMES).forEach(function (k) { if (SCHED.baseMin[k]) TIMES[k] = SCHED.baseMin[k].map(function (m) { var h = Math.round(m / 30) / 2; return "~" + h + (h === 1 ? " hr" : " hrs"); }); });
+      ADDONS.forEach(function (a) { var el = document.querySelector('.achip[data-addon="' + a.id + '"] .ap'); if (el) el.textContent = "+$" + a.p; });
+    } catch (e) { if (window.console) console.warn("settings", e); }
+  })();
 
   var sizeBtns = document.querySelectorAll(".sizes button");
   function buildOdo(el) {

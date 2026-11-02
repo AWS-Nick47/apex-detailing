@@ -7,13 +7,16 @@ import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, cu
 import { jobRoute, payPage, payApi, publicConfig, emailReceipt, emailPayLink } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
 import { adminApi, accessUser, blockoutBusy } from "./admin.js";
+import { loadSettings, publicSettings } from "./settings.js";
+import { galleryRoute, purgeTrash } from "./photos.js";
+import { syncSquare } from "./owner.js";
 import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge, mailWelcome, previewMail, notifyNick } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const TERMS_VERSION = "2026-11-02";   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
 const VISIT_NAMES = { exterior: "Wash visit", interior: "Interior visit", full: "Wash + interior visit" };
-const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : NAMES[b.pkg];
+const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : b.custom_name || NAMES[b.pkg];   // jobs Nick adds can have a custom package name
 const ADDON_NAMES = { pet: "Heavy pet hair", stain: "Heavy stain or odor", lights: "Headlight restoration", engine: "Engine bay" };
 
 const usd = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);   // cents -> "$244.17" / "$229"
@@ -224,8 +227,8 @@ async function emailNick(env, b, kind, extra) {
     (b._locFlag ? alertBox(h(b._locFlag)) : "") +
     buttons([kind === "cancel" ? null : [maps, "Directions", "secondary"], tel ? ["sms:" + tel, "Text", "secondary"] : null, tel ? ["tel:" + tel, "Call", "secondary"] : null], { inline: true }) +
     rows(list) +
-    (kind === "new" ? buttons([[site + "/ack/" + b.ack_token, "Got it"], [site + "/job/" + b.ack_token, "Job done · get paid", "secondary"]]) +
-      note(`The customer is already confirmed. "Got it" just marks it seen. After the job, open "Job done · get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.`) : "") +
+    (kind === "new" ? buttons([[site + "/ack/" + b.ack_token, "Got it"], [site + "/admin/#job/" + b.id, "Open in dashboard", "secondary"]]) +
+      note(`The customer is already confirmed. "Got it" just marks it seen. The job in your dashboard is where you take before and after photos, then charge their card, send a pay link or mark it paid in person. It's in your Apex Jobs calendar.`) : "") +
     (kind === "new" && b._photos && b._photos.length ? note(b._photos.length + " photo" + (b._photos.length > 1 ? "s" : "") + " of the areas of concern attached.") : "");
   const photos = kind === "new" && b._photos && b._photos.length ? b._photos : null;
   return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body, label + " · " + day + ", " + time, site, { who: "nick" }), attachments: photos || undefined });
@@ -286,6 +289,10 @@ const MSGS = { moved: "Moved. We sent you a new confirmation.", cancelled: "Done
 const backTo = (b, code, extra) => new Response(null, { status: 303, headers: { Location: "/b/" + b.token + "?m=" + code + (extra || ""), "Cache-Control": "no-store" } });
 
 async function managePage(env, b, msg) {
+  const pics = b.photos_sent_at ? `<p class="note" style="margin-top:14px"><a class="btn g" style="width:100%" href="/b/${b.token}/photos">See your before &amp; after photos</a></p>` : "";
+  return (await managePage0(env, b, msg)).replace("</main>", pics + "</main>");
+}
+async function managePage0(env, b, msg) {
   if (b.status === "cancelled") return b.kind === "member" ? page("Skipped", `<h1>This visit is skipped</h1><p class="sub">${msg ? h(msg) + " " : ""}It counts as this month's visit. <a href="/#account" style="color:#ededed">Your account</a> shows your membership and next visits.</p>${summaryCard(b)}`)
     : page("Cancelled", `<h1>This booking is cancelled</h1><p class="sub">${msg ? h(msg) + " " : ""}Want a new time? <a href="/#book" style="color:#ededed">Book again</a>.</p>${summaryCard(b)}`);
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
@@ -631,13 +638,20 @@ async function cleanup(env) {
 async function calSave(env, b) {
   const where = [b.address, b.town].filter(Boolean).join(", "), adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a);
   const desc = [b.name + " · " + b.phone, b.email, pkgName(b) + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), [b.car, b.color].filter(Boolean).join(" · "),
-    b.quote ? (e => "Estimate " + usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Job done / get paid: " + env.SITE_URL + "/job/" + b.ack_token].filter(Boolean).join("\n");
-  const href = await writeJob(env, b, { summary: pkgName(b) + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/job/" + b.ack_token });
+    b.quote ? (e => "Estimate " + usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Photos / get paid: " + env.SITE_URL + "/admin/#job/" + b.id].filter(Boolean).join("\n");
+  const href = await writeJob(env, b, { summary: pkgName(b) + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/admin/#job/" + b.id });
   if (href) await env.DB.prepare("UPDATE bookings SET cal_href = ? WHERE id = ?").bind(href, b.id).run();
   b.cal_href = href;
 }
 
 async function manage(req, env, url) {
+  const g = url.pathname.match(/^\/b\/([a-f0-9]{36})\/(photos|share|p\/[a-f0-9-]{16,40})$/i);
+  if (g) {   // the customer's before/after photo gallery
+    const gb = await env.DB.prepare("SELECT * FROM bookings WHERE token = ?").bind(g[1]).first();
+    if (!gb) return html(page("Not found", "<h1>Link not found</h1>"), 404);
+    const r = await galleryRoute(req, env, url, gb, g[2], { page, html, pkgName, whenText });
+    return r || html(page("Not found", "<h1>Link not found</h1>"), 404);
+  }
   const m = url.pathname.match(/^\/b\/([a-f0-9]{36})(?:\/(cancel|move))?$/);
   if (!m) return html(page("Not found", "<h1>Link not found</h1>"), 404);
   const b = await env.DB.prepare("SELECT * FROM bookings WHERE token = ?").bind(m[1]).first();
@@ -697,23 +711,40 @@ const SEC_HEADERS = { "X-Content-Type-Options": "nosniff", "Referrer-Policy": "s
 function secure(res) { const out = new Response(res.body, res); for (const [k, v] of Object.entries(SEC_HEADERS)) if (!out.headers.has(k)) out.headers.set(k, v); return out; }
 
 export default {
-  async fetch(req, env) { return secure(await handle(req, env)); },
-  async scheduled(event, env, ctx) { return scheduledRun(event, env, ctx); }
+  async fetch(req, env) { await loadSettings(env); return secure(await handle(req, env)); },
+  async scheduled(event, env, ctx) { await loadSettings(env); return scheduledRun(event, env, ctx); }
 };
+
+// The home page with the prices, job lengths and seasons Nick set in the dashboard (window.__APEX_SETTINGS, applied by the site's script)
+async function homePage(req, env) {
+  const r = await env.ASSETS.fetch(req);
+  if (!r.ok || !/text\/html/.test(r.headers.get("Content-Type") || "")) return r;
+  const data = JSON.stringify(publicSettings()).replace(/</g, "\\u003c");
+  const out = new HTMLRewriter().on("head", { element(e) { e.prepend("<script>window.__APEX_SETTINGS=" + data + ";</script>", { html: true }); } }).transform(r);
+  const res = new Response(out.body, out); res.headers.set("Cache-Control", "no-cache"); res.headers.delete("ETag"); return res;
+}
+
+// what the owner dashboard API (admin.js / owner.js) can use from here
+const OWNER_H = { syncBusy, pkgName, emailCustomer, emailNick, calSave: (env, b) => (calConfigured(env) ? calSave(env, b) : Promise.resolve()), days, cancelByUs, creditVisit, emailSkip, emailCancelByUs,
+  code, secret, page, html, whenText, dayLabel };
 
 async function handle(req, env) {
     const url = new URL(req.url);
     // owner actions (dashboard writes, job page, Got it) must come from this site's own pages (audit IA-037)
     const ownerWrite = req.method !== "GET" && req.method !== "HEAD" && (url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/job/") || url.pathname.startsWith("/ack/"));
     if (ownerWrite) { const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);
-      if (url.pathname.startsWith("/api/admin/") && !/application\/json/.test(req.headers.get("Content-Type") || "")) return json({ error: "Send JSON" }, 415); }
+      const ct = req.headers.get("Content-Type") || "", upload = url.pathname === "/api/admin/photos" && /^multipart\/form-data/.test(ct);
+      if (url.pathname.startsWith("/api/admin/") && req.method !== "DELETE" && !upload && !/application\/json/.test(ct)) return json({ error: "Send JSON" }, 415); }
     try {
       if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/admin/")) {
         const who = await accessUser(req, env).catch(e => { console.log("admin auth error", e.message); return null; });
         if (!who) { console.log("admin denied", url.pathname); return url.pathname.startsWith("/api/") ? json({ error: "Not allowed" }, 403) : html(page("Not allowed", "<h1>Owner only</h1><p class='sub'>Sign in through Cloudflare Access to open the dashboard.</p>"), 403); }
-        if (url.pathname.startsWith("/api/admin/")) return await adminApi(req, env, url, { syncBusy, pkgName });
+        if (url.pathname.startsWith("/api/admin/")) return await adminApi(req, env, url, OWNER_H, who);
         if (url.pathname === "/admin") return Response.redirect(url.origin + "/admin/", 302);
-        const r = await env.ASSETS.fetch(req); const out = new Response(r.body, r); out.headers.set("Cache-Control", "no-store"); out.headers.set("X-Robots-Tag", "noindex"); return out;
+        const r = await env.ASSETS.fetch(req); const out = new Response(r.body, r); out.headers.set("Cache-Control", "no-store"); out.headers.set("X-Robots-Tag", "noindex");
+        out.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self), usb=()");   // the dashboard camera (before/after photos)
+        if (url.pathname.endsWith("/sw.js")) out.headers.set("Service-Worker-Allowed", "/admin/");
+        return out;
       }
       if (url.pathname.startsWith("/api/")) return await api(req, env, url);
       if (url.pathname.startsWith("/b/")) return await manage(req, env, url);
@@ -725,6 +756,7 @@ async function handle(req, env) {
         return await jobRoute(req, env, url, { page, summaryCard, whenText, cancelByUs, pkgName });
       }
       if (url.pathname.startsWith("/pay/")) return await payPage(req, env, url, { page, summaryCard, whenText });
+      if ((url.pathname === "/" || url.pathname === "/index.html") && (req.method === "GET" || req.method === "HEAD")) return await homePage(req, env);
     } catch (e) {
       console.log("error", e.stack || e.message);
       return url.pathname.startsWith("/api/") ? json({ error: "Something went wrong on our side. Please text (732) 206-7084." }, 500) : html(page("Error", "<h1>Something went wrong</h1><p class='sub'>Please text (732) 206-7084.</p>"), 500);
@@ -737,7 +769,11 @@ async function scheduledRun(event, env, ctx) {
     ctx.waitUntil(syncBusy(env).then(r => console.log("sync", JSON.stringify(r))).catch(e => console.log("sync failed", e.message)));
     ctx.waitUntil(reminders(env).catch(e => console.log("reminders failed", e.message)));
     ctx.waitUntil(runBilling(env).then(l => l.length && console.log("billing", JSON.stringify(l))).catch(e => console.log("billing failed", e.message)));
-    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 10) ctx.waitUntil(cleanup(env).catch(e => console.log("cleanup failed", e.message)));   // once an hour
+    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 10) {   // once an hour
+      ctx.waitUntil(cleanup(env).catch(e => console.log("cleanup failed", e.message)));
+      ctx.waitUntil(purgeTrash(env).catch(e => console.log("photo trash failed", e.message)));
+      ctx.waitUntil(syncSquare(env).then(r => r.payments && console.log("square sync", JSON.stringify(r))).catch(e => console.log("square sync failed", e.message)));
+    }
   }
 }
 

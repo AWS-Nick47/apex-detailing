@@ -32,7 +32,7 @@ export function addMonths(startKey, n) {
   const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
   return dayKey(t.getUTCFullYear(), t.getUTCMonth() + 1, Math.min(d, last));
 }
-const monthsBetween = (startKey, key) => { let n = 0; while (addMonths(startKey, n + 1) <= key) n++; return n; };
+export const monthsBetween = (startKey, key) => { let n = 0; while (addMonths(startKey, n + 1) <= key) n++; return n; };
 const todayNY = () => utcToNy(Date.now());
 const winterDay = key => { const { y, m, d } = parseDay(key); return inWinter(y, m, d); };
 function niceDay(key) { if (!key) return ""; const { y, m, d } = parseDay(key); return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }); }
@@ -285,6 +285,45 @@ export async function pauseMembership(env, m, months) {
   return { message: "Paused. You can still use visits you've paid for through " + (m.period_end ? niceDay(addDays(m.period_end, -1)) : "today") + ". Your next charge is " + niceDay(resume) + ", at the same price." };
 }
 
+// ---------- owner (dashboard) actions ----------
+// Nick cancels with no early-cancellation fee: paid visits still count, no more charges.
+export async function cancelWaived(env, m, customer) {
+  const today = todayNY().key;
+  if (m.status === "cancelled") throw new Error("Already cancelled.");
+  if (m.status === "pending" || m.payments_made === 0 || m.payments_made >= MEM.minPayments) return cancelMembership(env, m, "", customer);   // no fee on these paths anyway
+  const ends = m.period_end && m.period_end > today ? addDays(m.period_end, -1) : today;
+  await upd(env, m.id, { status: ends > today ? "ending" : "cancelled", cancel_mode: "waived", ends_on: ends, cancel_requested_at: Date.now() });
+  await mail(env, Object.assign({}, m, { email: customer.email, name: customer.name }), "cancelled", { ends });
+  return { message: "Cancelled with no fee. No more charges" + (ends > today ? "; paid visits run through " + niceDay(ends) : "") + "." };
+}
+// Nick can pause any active membership (members themselves can only pause after the minimum)
+export async function pauseByOwner(env, m, months) {
+  months = Math.max(1, Math.min(6, Math.round(+months) || 1));
+  if (m.status !== "active") throw new Error("Only an active membership can be paused.");
+  const resume = addMonths(m.start_day, monthsBetween(m.start_day, m.next_bill || todayNY().key) + months);
+  await upd(env, m.id, { status: "paused", pause_until: resume, next_bill: resume });
+  await mail(env, m, "paused", { resume, through: m.period_end && m.period_end > todayNY().key ? addDays(m.period_end, -1) : null });
+  return { message: "Paused. No charges until " + niceDay(resume) + "." };
+}
+export async function resumeByOwner(env, m) {
+  if (m.status !== "paused") throw new Error("It isn't paused.");
+  const today = todayNY().key, n = monthsBetween(m.start_day, today); let next = addMonths(m.start_day, n); if (next < today) next = addMonths(m.start_day, n + 1);
+  await upd(env, m.id, { status: "active", pause_until: null, next_bill: next });
+  await mail(env, m, "resumed", { next });
+  return { message: "Resumed. Next charge " + niceDay(next) + "." };
+}
+// new plan, frequency or car size: the new price starts with the next monthly charge
+export async function changePlan(env, m, type, freq, size) {
+  freq = +freq; size = +size;
+  if (!MEM.plans[type] || ![1, 2, 4].includes(freq) || ![0, 1, 2].includes(size)) throw new Error("Pick a plan, how often and the car size.");
+  if (m.status === "cancelled") throw new Error("This membership is cancelled.");
+  const p = planPrice(type, size, freq);
+  await upd(env, m.id, { type, freq, size, monthly_cents: p.monthly * 100 });
+  await mail(env, Object.assign({}, m, { type, freq, size, monthly_cents: p.monthly * 100 }), "plan_changed", { next: m.next_bill });
+  return { message: "Changed to " + planLabel(type, freq, size) + " at $" + p.monthly + "/mo + tax, starting with the next charge.", monthly: p.monthly };
+}
+export const mailMember = (env, m, kind, o) => mail(env, m, kind, o);
+
 // ---------- emails ----------
 // welcome email for a membership started from the account (at booking, the booking email covers it)
 export async function mailWelcome(env, id, info, card) {
@@ -333,6 +372,15 @@ async function mail(env, m, kind, o) {
     detail_cancelled: () => ["Your Apex Membership was cancelled with your detail", "Your detail was cancelled, so the membership was too. No charge.",
       hero("Membership cancelled", "Your membership was cancelled too.", `Your ${h(label)} ${AM} starts after your first detail, and that detail was cancelled${o.byUs ? " on our side" : ""}, so the membership was cancelled too. You weren't charged.`) +
       para(o.byUs ? "When you book your new time, you can add the membership again from your account." : "You can add it again when you book your next detail.") + buttons([[acct, "Go to my account"]])],
+    paused: () => ["Your Apex Membership is paused", "No charges until " + niceDay(o.resume) + ".",
+      hero("Membership paused", "You're paused.", `Your ${AM} is paused. No charges until ${b(niceDay(o.resume))}, then it picks up at the same price.`) +
+      (o.through ? para("You can still use visits you've already paid for through " + b(niceDay(o.through)) + ".") : "") + buttons([[acct, "My membership"]])],
+    resumed: () => ["Your Apex Membership is back on", "Your next charge is " + niceDay(o.next) + ".",
+      hero("Membership resumed", `Welcome back, ${h(first)}.`, `Your ${AM} is active again. Your next charge is ${b(niceDay(o.next))}: ${b(money(m.monthly_cents))} + tax. Once it's paid, pick your visit times in your account.`) +
+      buttons([[acct, "My membership"]])],
+    plan_changed: () => ["Your Apex Membership plan changed", "New plan: " + label + ".",
+      hero("Plan updated", "Your plan changed.", `Your ${AM} is now ${b(h(label))} at ${b(money(m.monthly_cents))}/mo + tax, starting with your next charge${o.next ? " on " + b(niceDay(o.next)) : ""}.`) +
+      para("Questions? Just reply to this email.") + buttons([[acct, "My membership"]])],
     cancel_fee: () => ["Your Apex Membership is cancelled", "Cancelled. No more monthly charges.",
       hero("Membership cancelled", "You're cancelled.", `We charged the ${b(money(o.fee))} early cancellation fee to your ${h((o.card || {}).brand || "card")} ending ${h((o.card || {}).last4 || "")}. No more monthly charges.`) +
       (o.ends > todayNY().key ? para("You can still use visits you've already paid for through " + b(niceDay(o.ends)) + ".") : "") + buttons([[site + "/#book", "Book a detail", "secondary"]])]

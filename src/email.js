@@ -6,6 +6,8 @@
 export async function send(env, msg) {
   if (msg.html && !msg.text) msg.text = toText(msg.html);
   if (env.__capture) { env.__capture.push(msg); return { captured: true }; }   // dev preview (/__dev/emails): build, don't send
+  // customers Nick added without an email get a placeholder address ending in .invalid: never send to it
+  if (!msg.to || /\.invalid$/i.test(String(msg.to).trim())) { console.log("email skipped (no email address):", msg.subject); return { skipped: true }; }
   if (!env.RESEND_API_KEY) { console.log("email skipped (no RESEND_API_KEY):", msg.subject, "->", msg.to); return { skipped: true }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",

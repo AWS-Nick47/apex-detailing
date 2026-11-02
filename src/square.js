@@ -76,10 +76,30 @@ export async function charge(env, { source, amount, customerId, reference, note,
   return { id: p.id, status: p.status, receipt: p.receipt_url || null, brand: p.card_details && p.card_details.card ? brandName(p.card_details.card.card_brand) : null, last4: p.card_details && p.card_details.card ? p.card_details.card.last_4 : null };
 }
 
+// All Square payments since a time (website charges AND Square app / Tap to Pay), with their processing fees. One page per call.
+export async function listPayments(env, beginIso, cursor) {
+  const q = new URLSearchParams({ begin_time: beginIso, sort_order: "ASC", limit: "100", location_id: env.SQUARE_LOCATION_ID });
+  if (cursor) q.set("cursor", cursor);
+  const j = await sq(env, "GET", "/v2/payments?" + q.toString());
+  return { cursor: j.cursor || null, payments: (j.payments || []).map(p => ({
+    id: p.id, created_at: Date.parse(p.created_at) || Date.now(), amount_cents: (p.total_money || p.amount_money || {}).amount || 0,
+    fee_cents: (p.processing_fee || []).reduce((t, f) => t + ((f.amount_money || {}).amount || 0), 0) || (p.processing_fee ? 0 : null),
+    refunded_cents: (p.refunded_money || {}).amount || 0, status: p.status || "", source: p.source_type || "", note: (p.note || "").slice(0, 200) })) };
+}
+// Deposits from Square to the bank (newest first)
+export async function listPayouts(env) {
+  const q = new URLSearchParams({ location_id: env.SQUARE_LOCATION_ID, sort_order: "DESC", limit: "20" });
+  const j = await sq(env, "GET", "/v2/payouts?" + q.toString());
+  return (j.payouts || []).map(p => ({ id: p.id, status: p.status, amount: ((p.amount_money || {}).amount || 0) / 100, arrival: p.arrival_date || null, created: p.created_at || null,
+    to: p.destination && p.destination.type ? p.destination.type.replace(/_/g, " ").toLowerCase() : "" }));
+}
+
 function brandName(b) { return ({ VISA: "Visa", MASTERCARD: "Mastercard", AMERICAN_EXPRESS: "Amex", DISCOVER: "Discover", DISCOVER_DINERS: "Diners", JCB: "JCB", CHINA_UNIONPAY: "UnionPay", SQUARE_GIFT_CARD: "Gift card" })[b] || "Card"; }
 
 // Local testing without Square (SQUARE_MOCK=1)
 function mock(path, body) {
+  if (path.startsWith("/v2/payments?")) return { payments: [] };
+  if (path.startsWith("/v2/payouts?")) return { payouts: [] };
   if (path === "/v2/customers") return { customer: { id: "MOCKCUST" + Math.random().toString(36).slice(2, 8) } };
   if (path === "/v2/cards") { if (/decline/.test(body.source_id)) { const e = new Error("Your card was declined. Try another card."); throw e; } return { card: { id: "ccof:mock" + Math.random().toString(36).slice(2, 8), card_brand: "VISA", last_4: "1111", exp_month: 12, exp_year: 2030 } }; }
   if (path === "/v2/payments" && /decline/.test(body.source_id)) throw new Error("Your card was declined.");

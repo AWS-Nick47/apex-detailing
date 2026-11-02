@@ -6,6 +6,7 @@ import { TAX, taxCents } from "./pricing.js";
 const methodLabel = m => m === "card_on_file" ? "card on file" : m === "online" ? "paid online" : /^in_person/.test(m || "") ? "in person (" + (m.split(":")[1] || "") + ")" : (m || "");
 const money = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
+export const jobName = b => b.custom_name || NAMES[b.pkg] || "Detail";   // jobs Nick adds can have their own package name
 const TAX_LABEL = TAX.name + " (" + TAX.pct + ")", TAX_UNITS = Math.round(TAX.rate * 100000);
 // biggest tip the pay page takes: half the price before tax, at least $50 (a bigger one: text us). Audit IA-039.
 const tipLimit = sub => Math.max(5000, Math.round(sub / 2));
@@ -33,8 +34,8 @@ async function ensurePayToken(env, b) {
 export async function emailReceipt(env, b, opts) {
   const site = env.SITE_URL, first = (b.name || "").split(" ")[0] || "there";
   const tipLink = opts.offerTip ? site + "/pay/" + b.pay_token + "?tip=1" : null;
-  const tax = opts.tax || 0, tip = opts.tip || 0, total = (opts.amount || 0) + tax + tip, detail = NAMES[b.pkg] + (b.car ? " · " + b.car : "");
-  const subject = opts.tipOnly ? "Thanks for the tip, " + first + "!" : "Receipt: your " + NAMES[b.pkg] + " · " + money(total);
+  const tax = opts.tax || 0, tip = opts.tip || 0, total = (opts.amount || 0) + tax + tip, detail = jobName(b) + (b.car ? " · " + b.car : "");
+  const subject = opts.tipOnly ? "Thanks for the tip, " + first + "!" : "Receipt: your " + jobName(b) + " · " + money(total);
   let body;
   if (opts.tipOnly) {
     body = hero("Tip received", `Thank you, ${h(first)}!`, `We got your ${money(tip)} tip. It really means a lot.`) +
@@ -54,7 +55,7 @@ export async function emailPayLink(env, b, cents, tax) {
   const site = env.SITE_URL, first = (b.name || "").split(" ")[0] || "there", link = site + "/pay/" + b.pay_token, total = cents + tax;
   const subject = "Your detail is done: " + money(total) + " due";
   const body = hero("Detail complete", `All done, ${h(first)}!`, "Thanks for having us out. You can pay securely online below, and add a tip if you'd like.") +
-    rows([["Detail", NAMES[b.pkg] + (b.car ? " · " + b.car : "")], ["Price", money(cents)], [TAX_LABEL, money(tax)], ["Amount due", money(total), false, "total"], ["Booking code", b.id]]) +
+    rows([["Detail", jobName(b) + (b.car ? " · " + b.car : "")], ["Price", money(cents)], [TAX_LABEL, money(tax)], ["Amount due", money(total), false, "total"], ["Booking code", b.id]]) +
     buttons([[link, "Pay " + money(total)]]) + note("Secured by Square. Card numbers never touch our site.");
   return send(env, { to: b.email, subject, html: layout(subject, body, money(total) + " due. Pay securely online.", site) });
 }
@@ -81,6 +82,65 @@ const releaseBill = async (env, id) => { if (await claimsOn(env)) await env.DB.p
 const clearClaim = async env => (await claimsOn(env)) ? ", paying_at = NULL" : "";   // added to the UPDATE that records a payment
 const BUSY_MSG = "A payment for this job is going through right now. Refresh this page in a minute.";
 
+// One "job done / get paid" action for a booking: weather | done (member visit) | undo (paid in person) | charge | link | inperson.
+// Used by the job page (forms) and the owner dashboard (JSON). input: { amount, how, big }. Returns { ok, msg }.
+export async function jobAction(env, b, action, input, H) {
+  input = input || {};
+  const c = await customerFor(env, b), card = b.card ? JSON.parse(b.card) : null;
+  let msg = "That can't be done for this job right now.", ok = false, payLink = null;
+  if (action === "weather" && b.status === "confirmed" && !b.paid_at) {
+    const credit = await H.cancelByUs(env, b); ok = true;
+    msg = "Cancelled and the customer was emailed." + (credit ? " Added a " + money(credit) + " credit to their membership." : " They were asked to pick a new time.");
+  } else if (action === "done" && b.kind === "member" && b.status === "confirmed" && !b.completed_at) {
+    await env.DB.prepare("UPDATE bookings SET completed_at = ?, paid_at = ?, paid_method = 'membership', final_cents = 0 WHERE id = ?").bind(Date.now(), Date.now(), b.id).run();
+    Object.assign(b, { completed_at: Date.now(), paid_at: Date.now(), paid_method: "membership" }); ok = true; msg = "Marked done. Nice work!";
+  } else if (action === "undo" && b.paid_at && /^in_person/.test(b.paid_method || "") && b.status === "confirmed") {
+    // undo a "paid in person" tap (mis-tap or wrong amount): back to not paid
+    await env.DB.prepare("UPDATE bookings SET paid_at = NULL, paid_method = NULL, final_cents = NULL, tax_cents = NULL WHERE id = ?").bind(b.id).run();
+    Object.assign(b, { paid_at: null, paid_method: null, final_cents: null, tax_cents: null }); ok = true; msg = "Undone. It's marked not paid again.";
+  } else if (["charge", "link", "inperson"].includes(action) && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
+    const raw = String(input.amount || "").trim(), dollars = /^\$?\d+(\.\d{1,2})?$/.test(raw.replace(/,/g, "")) ? parseFloat(raw.replace(/[$,]/g, "")) : NaN, cents = Math.round(dollars * 100);
+    const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)", est = (b.quote || 0) * 100;
+    if (cents > 200000) msg = "That's over the $2,000 limit for one job. Check the amount (price before tax).";
+    else if (!(cents >= 100)) msg = "Enter the price before tax as a number, like 179.";
+    else if (est && cents > 2 * est && String(input.big) !== "1") msg = "That's more than double the " + money(est) + " estimate. Check the amount and confirm it when asked.";
+    else if (action === "inperson") {
+      const how = ["cash", "card", "other"].includes(String(input.how)) ? String(input.how) : "cash";
+      const free = (await claimsOn(env)) ? " AND (paying_at IS NULL OR paying_at < " + (Date.now() - CLAIM_MS) + ")" : "";
+      const done = await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
+        .bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).first();
+      if (!done) msg = BUSY_MSG; else {
+      Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
+      // in-person customers get a receipt too (audit IA-051)
+      await emailReceipt(env, b, { amount: cents, tax, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
+      }
+    } else if (action === "link") {
+      await ensurePayToken(env, b);
+      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ? WHERE id = ?").bind(Date.now(), cents, tax, b.id).run();
+      Object.assign(b, { final_cents: cents, tax_cents: tax, completed_at: Date.now() });
+      ok = true; payLink = env.SITE_URL + "/pay/" + b.pay_token;
+      if (!b.email || /\.invalid$/i.test(b.email)) msg = "No email on file, so nothing was sent. Text them this link to pay " + money(total) + split + ": " + payLink;
+      else { await emailPayLink(env, b, cents, tax); msg = "Sent " + b.email + " a link to pay " + money(total) + split + "."; }
+    } else if (action === "charge") {
+      if (!card || !squareOn(env)) msg = "No saved card for this customer. Send a pay link instead.";
+      else if (!(await claimBill(env, b.id, false))) msg = BUSY_MSG;
+      else {
+        let jobCharged = false;
+        try {
+          await ensurePayToken(env, b);
+          const p = await charge(env, { source: card.id, amount: total, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + jobName(b) + " · " + b.id + " · " + money(cents) + " + " + money(tax) + " " + TAX.name, email: b.email, idem: "job-" + b.id + "-" + total }); jobCharged = true;
+          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ?" + (await clearClaim(env)) + " WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), p.id, p.receipt, b.id).run();
+          Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "card_on_file" }); ok = true;
+          msg = "Charged " + money(total) + split + " to " + card.brand + " ending " + card.last4 + ". Receipt sent.";
+          await emailReceipt(env, b, { amount: cents, tax, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true }).catch(() => {});
+        } catch (e) { if (!jobCharged) await releaseBill(env, b.id); msg = jobCharged ? "The card was charged, but saving it here failed. Check Square before charging again." : "Charge failed: " + e.message + " You can send them a pay link instead."; }
+      }
+    }
+  }
+
+  return { ok, msg, payLink };
+}
+
 // ---------- Nick's job page: /job/<ack_token> ----------
 export async function jobRoute(req, env, url, H) {
   const m = url.pathname.match(/^\/job\/([a-f0-9]{36})(?:\/(charge|link|inperson|done|weather|undo))?$/);
@@ -91,59 +151,16 @@ export async function jobRoute(req, env, url, H) {
   const c = await customerFor(env, b), card = b.card ? JSON.parse(b.card) : null;
   let msg = "", ok = false;
 
-  if (req.method === "POST" && m[2] === "weather" && b.status === "confirmed" && !b.paid_at) {
-    const credit = await H.cancelByUs(env, b); ok = true;
-    msg = "Cancelled and the customer was emailed." + (credit ? " Added a " + money(credit) + " credit to their membership." : " They were asked to pick a new time.");
-  } else if (req.method === "POST" && m[2] === "done" && b.kind === "member" && b.status === "confirmed" && !b.completed_at) {
-    await env.DB.prepare("UPDATE bookings SET completed_at = ?, paid_at = ?, paid_method = 'membership', final_cents = 0 WHERE id = ?").bind(Date.now(), Date.now(), b.id).run();
-    Object.assign(b, { completed_at: Date.now(), paid_at: Date.now(), paid_method: "membership" }); ok = true; msg = "Marked done. Nice work!";
-  } else if (req.method === "POST" && m[2] === "undo" && b.paid_at && /^in_person/.test(b.paid_method || "") && b.status === "confirmed") {
-    // undo a "paid in person" tap (mis-tap or wrong amount): back to not paid
-    await env.DB.prepare("UPDATE bookings SET paid_at = NULL, paid_method = NULL, final_cents = NULL, tax_cents = NULL WHERE id = ?").bind(b.id).run();
-    Object.assign(b, { paid_at: null, paid_method: null, final_cents: null, tax_cents: null }); ok = true; msg = "Undone. It's marked not paid again.";
-  } else if (req.method === "POST" && m[2] && m[2] !== "undo" && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
-    const fd = await req.formData(), raw = String(fd.get("amount") || "").trim(), dollars = /^\$?\d+(\.\d{1,2})?$/.test(raw.replace(/,/g, "")) ? parseFloat(raw.replace(/[$,]/g, "")) : NaN, cents = Math.round(dollars * 100);
-    const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)", est = (b.quote || 0) * 100;
-    if (cents > 200000) msg = "That's over the $2,000 limit for one job. Check the amount (price before tax).";
-    else if (!(cents >= 100)) msg = "Enter the price before tax as a number, like 179.";
-    else if (est && cents > 2 * est && fd.get("big") !== "1") msg = "That's more than double the " + money(est) + " estimate. Check the amount and confirm it when asked.";
-    else if (m[2] === "inperson") {
-      const how = String(fd.get("how") || "cash").slice(0, 20);
-      const free = (await claimsOn(env)) ? " AND (paying_at IS NULL OR paying_at < " + (Date.now() - CLAIM_MS) + ")" : "";
-      const done = await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
-        .bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).first();
-      if (!done) msg = BUSY_MSG; else {
-      Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
-      // in-person customers get a receipt too (audit IA-051)
-      await emailReceipt(env, b, { amount: cents, tax, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
-      }
-    } else if (m[2] === "link") {
-      await ensurePayToken(env, b);
-      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ? WHERE id = ?").bind(Date.now(), cents, tax, b.id).run();
-      Object.assign(b, { final_cents: cents, tax_cents: tax, completed_at: Date.now() });
-      await emailPayLink(env, b, cents, tax); ok = true; msg = "Sent " + b.email + " a link to pay " + money(total) + split + ".";
-    } else if (m[2] === "charge") {
-      if (!card || !squareOn(env)) msg = "No saved card for this customer. Send a pay link instead.";
-      else if (!(await claimBill(env, b.id, false))) msg = BUSY_MSG;
-      else {
-        let jobCharged = false;
-        try {
-          await ensurePayToken(env, b);
-          const p = await charge(env, { source: card.id, amount: total, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(cents) + " + " + money(tax) + " " + TAX.name, email: b.email, idem: "job-" + b.id + "-" + total }); jobCharged = true;
-          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ?" + (await clearClaim(env)) + " WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), p.id, p.receipt, b.id).run();
-          Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "card_on_file" }); ok = true;
-          msg = "Charged " + money(total) + split + " to " + card.brand + " ending " + card.last4 + ". Receipt sent.";
-          await emailReceipt(env, b, { amount: cents, tax, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true }).catch(() => {});
-        } catch (e) { if (!jobCharged) await releaseBill(env, b.id); msg = jobCharged ? "The card was charged, but saving it here failed. Check Square before charging again." : "Charge failed: " + e.message + " You can send them a pay link instead."; }
-      }
-    }
+  if (req.method === "POST" && m[2]) {
+    const fd = await req.formData().catch(() => null), g = k => (fd ? fd.get(k) : null);
+    const r = await jobAction(env, b, m[2], { amount: g("amount"), how: g("how"), big: g("big") }, H); msg = r.msg; ok = r.ok;
   }
 
   const est = (b.quote || 0) * 100, due = b.final_cents || est;
   const weatherBtn = b.status === "confirmed" && !b.paid_at ? `<form method="post" action="/job/${b.ack_token}/weather" onsubmit="return confirm('Cancel this job and email the customer?${b.kind === "member" ? " They get a full credit." : ""}')" style="margin-top:22px"><button class="btn d" style="width:100%">We had to cancel (weather or our side)</button></form><p class="note">${b.kind === "member" ? "Members get a full credit for that visit." : "The customer gets an email asking them to pick a new time."}</p>` : "";
   if (b.kind === "member") {
     const st = b.status === "cancelled" ? "Cancelled" : b.completed_at ? "Done" : "Scheduled";
-    return html(H.page("Job", `<h1>${h(H.pkgName(b))} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))}</p>
+    return html(H.page("Job", `<h1>${h(H.pkgName(b))} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))} · <a href="/admin/#job/${h(b.id)}" style="color:#ededed">Open in the dashboard</a></p>
       ${msg ? `<p class="note" style="color:${ok ? "#c8f7c5" : "#ffb4ab"}">${h(msg)}</p>` : ""}
       <div class="card"><div class="r"><span>Status</span><b>${st}</b></div><div class="r"><span>Payment</span><b>Included in their Apex Membership</b></div></div>
       ${H.summaryCard(b)}
@@ -173,7 +190,7 @@ export async function jobRoute(req, env, url, H) {
       <button class="btn g" formaction="/job/${b.ack_token}/inperson" onclick="this.form.how.value='other'">Paid in person: Venmo / other</button>
     </div></form>
     <p class="note">Paid in person? Collect the "Customer pays" total, which includes ${h(TAX.name)}. Charging a saved card or the pay link adds the tax automatically and sends a receipt with an optional "Add a tip" button. Tips aren't taxed.</p>`;
-  return html(H.page("Job", `<h1>${h(NAMES[b.pkg])} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))}</p>
+  return html(H.page("Job", `<h1>${h(jobName(b))} · ${h(b.name)}</h1><p class="sub">${h(H.whenText(b))} · <a href="/admin/#job/${h(b.id)}" style="color:#ededed">Open in the dashboard</a> (photos, status)</p>
     ${msg ? `<p class="note" style="color:${ok ? "#c8f7c5" : "#ffb4ab"}">${h(msg)}</p>` : ""}
     <div class="card"><div class="r"><span>Status</span><b>${h(status)}</b></div><div class="r"><span>Saved card</span><b>${card ? h(card.brand + " ending " + card.last4) : "None"}</b></div></div>
     ${H.summaryCard(b)}${forms}${undoBtn}${weatherBtn}`));
@@ -193,7 +210,7 @@ export async function payPage(req, env, url, H) {
   const B = bill(b), due = tipMode ? 0 : B.total, base = B.sub, paid = (b.final_cents || 0) + (b.tax_cents || 0);   // tips are a % of the price before tax
   const tips = [0, 15, 20, 25].map(p => ({ p, c: Math.round(base * p / 100 / 100) * 100 })), tipCap = tipLimit(base);
   return html(H.page(tipMode ? "Add a tip" : "Pay", `
-  <h1>${tipMode ? "Add a tip" : "Pay for your detail"}</h1><p class="sub">${h(NAMES[b.pkg])} · ${h(b.car || "")} · ${h(H.whenText(b))}</p>
+  <h1>${tipMode ? "Add a tip" : "Pay for your detail"}</h1><p class="sub">${h(jobName(b))} · ${h(b.car || "")} · ${h(H.whenText(b))}</p>
   <div class="card">${tipMode ? `<div class="r"><span>Paid</span><b>${money(paid)}</b></div>` : `<div class="r"><span>Price</span><b>${money(B.sub)}</b></div><div class="r"><span>${h(TAX_LABEL)}</span><b>${money(B.tax)}</b></div><div class="r"><span>Amount due</span><b>${money(due)}</b></div>`}</div>
   <h2>${tipMode ? "How much?" : "Add a tip?"} <span class="note">Never expected, always appreciated</span></h2>
   <div class="ts" id="tips">${tips.filter(x => !tipMode || x.p).map((x, i) => `<button type="button" data-c="${x.c}" ${!tipMode && i === 0 ? 'aria-pressed="true"' : ""}>${x.p ? x.p + "% · " + money(x.c) : "No tip"}</button>`).join("")}<button type="button" data-c="custom">Other</button></div>
@@ -267,7 +284,7 @@ export async function payApi(req, env, url) {
       return json({ ok: true, message: "We got your " + money(tip) + " tip. It really means a lot." });
     }
     const B = bill(b), due = B.total;
-    const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + NAMES[b.pkg] + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) }); charged = true;
+    const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + jobName(b) + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) }); charged = true;
     await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tax_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?)" + (await clearClaim(env)) + " WHERE id = ?")
       .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, Date.now(), b.id).run();
     await emailReceipt(env, Object.assign(b, { tip_cents: tip }), { amount: B.sub, tax: B.tax, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt, offerTip: false }).catch(() => {});
