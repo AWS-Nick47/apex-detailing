@@ -29,9 +29,11 @@
     // Owner dashboard: Cloudflare Access team + app audience tags (comma list; add the real-domain app later)
     "ACCESS_TEAM": "awsomenick47.cloudflareaccess.com",
     "ACCESS_AUD": "4f6fe8ceb216e81aaaddff0ca9cc144b3fcf066ba842c22a007fc27ac528b290",
-    "ADMIN_EMAILS": "awsomenick47@gmail.com,contact@apexdetailingoc.com"
+    "ADMIN_EMAILS": "awsomenick47@gmail.com,contact@apexdetailingoc.com",
+    // Turnstile ("are you human" on booking + sign-in): public site key. Switches on once the TURNSTILE_SECRET secret also exists.
+    "TURNSTILE_SITEKEY": "0x4AAAAAAFxKfeWBMUpYjRCQ"
   }
   // Secrets (set in the Cloudflare dashboard, never in this file):
-  //   ICLOUD_USER, ICLOUD_APP_PASSWORD, RESEND_API_KEY, SQUARE_ACCESS_TOKEN
+  //   ICLOUD_USER, ICLOUD_APP_PASSWORD, RESEND_API_KEY, SQUARE_ACCESS_TOKEN, TURNSTILE_SECRET
   // Local dev: wrangler.local.jsonc (gitignored) is the same file; run wrangler dev -c wrangler.local.jsonc
 }
