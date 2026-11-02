@@ -266,8 +266,14 @@ function page(title, inner) {
 form{margin:0}.ts button[aria-pressed="true"]{background:#ededed;color:#0a0a0a}.r input[type=radio]{margin-right:8px}.btn:disabled{opacity:.5}</style></head><body><div class="w"><a class="brand" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>APEX DETAILING</a><main>${inner}</main></div></body></html>`;
 }
 
+// plain-text rows for the site's own pages (manage, job, pay, Got it). Emails use details(), which returns HTML.
+function pageRows(b) {
+  const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
+  return [["When", whenText(b)], ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+    ["Where", [b.address, b.town].filter(Boolean).join(", ")], ...priceRows(b), b._mem ? ["Apex Membership", memLine(b._mem)] : null, ["Booking code", b.id]].filter(Boolean);
+}
 function summaryCard(b) {
-  return `<div class="card">${details(b).filter(r => r[1]).map(r => `<div class="r"><span>${h(r[0])}</span><b>${h(r[1])}</b></div>`).join("")}</div>`;
+  return `<div class="card">${pageRows(b).filter(r => r[1]).map(r => `<div class="r"><span>${h(r[0])}</span><b>${h(r[1])}</b></div>`).join("")}</div>`;
 }
 
 // a time button on the manage page: asks before moving (audit IA-025)
