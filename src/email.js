@@ -19,7 +19,7 @@ export async function send(env, msg) {
 export const h = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // ---------- design tokens ----------
-const C = { page: "#000000", card: "#0c0c0c", panel: "#151515", line: "#262626", line2: "#1e1e1e", fg: "#f5f5f5", text: "#c4c4c4", muted: "#9a9a9a", faint: "#707070", warn: "#ff8a80" };
+const C = { page: "#000000", card: "#0b0b0b", panel: "#151515", line: "#262626", line2: "#1e1e1e", fg: "#f5f5f5", text: "#c4c4c4", muted: "#9a9a9a", faint: "#707070", warn: "#ff8a80" };
 const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 // ---------- layout ----------
@@ -27,7 +27,8 @@ const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Robot
 // opts.who: "customer" (default) or "nick" (shorter footer)
 export function layout(title, body, preheader, site, opts) {
   opts = opts || {};
-  const logo = site + "/email/apex-logo-white-360.png", mark = site + "/email/apex-mark-white-56.png";
+  // the header logo is /email-logo.png: that one file is public on the test site too (a Cloudflare Access bypass), so it always loads
+  const logo = site + "/email-logo.png";
   const foot = opts.who === "nick"
     ? `<p style="margin:0;font-size:12px;line-height:1.6;color:${C.faint}">Sent to you by the Apex booking system. Reply to reach the customer.</p>`
     : `<p style="margin:0 0 10px;font-size:13px;line-height:1.6;color:${C.muted}">Questions? Just reply to this email.</p>
@@ -57,11 +58,10 @@ a{color:${C.fg}}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.page}" style="background:${C.page}"><tr><td align="center" class="wrap" style="padding:28px 12px 40px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" bgcolor="${C.card}" style="max-width:600px;background:${C.card};border:1px solid ${C.line2};border-radius:26px;overflow:hidden">
 <tr><td class="pad" bgcolor="${C.card}" style="padding:26px 34px 22px;background-color:${C.card};background-image:linear-gradient(${C.card},${C.card});border-bottom:1px solid ${C.line2}">
-<a href="${h(site)}" style="text-decoration:none"><img src="${h(logo)}" width="180" height="17" alt="APEX DETAILING" style="display:block;border:0;width:180px;height:17px;color:${C.fg};font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:.2em"></a>
+<a href="${h(site)}" style="text-decoration:none"><img src="${h(logo)}" width="190" height="19" alt="APEX DETAILING" style="display:block;border:0;width:190px;height:19px;color:${C.fg};font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:.2em"></a>
 </td></tr>
 <tr><td class="pad" style="padding:34px 34px 10px;font-family:${FONT}">${body}</td></tr>
 <tr><td class="pad" style="padding:26px 34px 32px;border-top:1px solid ${C.line2};font-family:${FONT}">
-<img src="${h(mark)}" width="20" height="15" alt="" style="display:block;border:0;width:20px;height:15px;margin:0 0 14px;opacity:.9">
 ${foot}
 </td></tr>
 </table>
