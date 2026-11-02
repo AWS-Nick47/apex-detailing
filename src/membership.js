@@ -11,6 +11,7 @@ export const MEM = {
   freqName: { 1: "monthly", 2: "every 2 weeks", 4: "weekly" },
   prereq: { wash: ["exterior", "full"], int: ["interior", "full"], both: ["full"] },
   visitPkg: { wash: "exterior", int: "interior", both: "full" },
+  winter: { start: [12, 15], end: [3, 1] },   // Membership Terms §6 (Wash pauses, Wash + interior billed at the Interior price). NOT the booking winter Nick can edit.
   signupDays: 14, minPayments: 3, cancelFeeRate: 0.5, skipCreditRate: 0.5, skipNoticeHours: 48, billHour: 9, retryDays: [2, 4, 7]
 };
 const SIZES = ["Sedan", "SUV", "Truck"];
@@ -34,7 +35,18 @@ export function addMonths(startKey, n) {
 }
 export const monthsBetween = (startKey, key) => { let n = 0; while (addMonths(startKey, n + 1) <= key) n++; return n; };
 const todayNY = () => utcToNy(Date.now());
-const winterDay = key => { const { y, m, d } = parseDay(key); return inWinter(y, m, d); };
+const winterDay = key => { const { m, d } = parseDay(key), v = m * 100 + d, s = MEM.winter.start[0] * 100 + MEM.winter.start[1], e = MEM.winter.end[0] * 100 + MEM.winter.end[1]; return s > e ? (v >= s || v < e) : (v >= s && v < e); };
+// The winter price (Wash + interior billed at the Interior price) is locked when they sign up or change plan, like the monthly
+// price, so later price changes in the dashboard don't change what current members pay. Kept in meta('memw:<id>').
+async function saveWinter(env, id, type, size, freq) {
+  if (type !== "both") return;
+  await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)").bind("memw:" + id, String(planPrice("int", size, freq).monthly * 100)).run();
+}
+async function coverCents(env, m, cover) {
+  if (cover === m.type) return m.monthly_cents;
+  const r = await env.DB.prepare("SELECT v FROM meta WHERE k = ?").bind("memw:" + m.id).first().catch(() => null);
+  return r && +r.v > 0 ? +r.v : planPrice(cover, m.size, m.freq).monthly * 100;
+}
 function niceDay(key) { if (!key) return ""; const { y, m, d } = parseDay(key); return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }); }
 
 // What a visit covers on a given day (winter: wash pauses, wash + interior gets interior visits)
@@ -59,6 +71,7 @@ export async function createMembership(env, { customerId, booking, type, freq, a
   await env.DB.prepare(`INSERT INTO memberships (id, customer_id, status, type, freq, size, car, monthly_cents, qualifying_booking, start_day, next_bill, terms_version, auth_at, auth_ip, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, customerId, booking.day <= todayNY().key ? "active" : "pending", type, +freq, booking.size, booking.car || null, p.monthly * 100,
     booking.id, booking.day, addMonths(booking.day, 1), auth.version, auth.at, auth.ip, now, now).run();
+  await saveWinter(env, id, type, booking.size, +freq);
   const fc = firstCharge(type, booking.size, +freq, booking.day);
   return { id, monthly: p.monthly, firstBill: fc.day, firstAmount: fc.amount, firstSkipped: fc.skipped, firstWinter: fc.winterPrice, label: planLabel(type, +freq, booking.size) };
 }
@@ -120,7 +133,7 @@ export async function summary(env, m, customer) {
   const fee = Math.round(MEM.cancelFeeRate * remaining * m.monthly_cents / 100) * 100;
   const qual = m.start_day, cardDeadline = addDays(qual, MEM.signupDays);
   // the next charge as billOne() will make it: winter may pause Wash or bill Wash + interior at the Interior price; credits come off before tax
-  const cov = m.next_bill ? coverOn(m.type, m.next_bill) : m.type, nextFull = cov === null ? 0 : cov === m.type ? m.monthly_cents : planPrice(cov, m.size, m.freq).monthly * 100;
+  const cov = m.next_bill ? coverOn(m.type, m.next_bill) : m.type, nextFull = cov === null ? 0 : await coverCents(env, m, cov);
   const nextSub = nextFull - Math.min(m.credit_cents, nextFull), nextTotal = nextSub + taxCents(nextSub);
   return {
     id: m.id, status: m.status, type: m.type, freq: m.freq, size: m.size, car: m.car, label: planLabel(m.type, m.freq, m.size), monthly: m.monthly_cents / 100,
@@ -192,7 +205,7 @@ async function billOne(env, m, today, manual) {
     await upd(env, m.id, { next_bill: addMonths(m.start_day, monthsBetween(m.start_day, billDay) + 1), period_start: null, period_end: null });
     return "winter pause";
   }
-  const full = cover === m.type ? m.monthly_cents : planPrice(cover, m.size, m.freq).monthly * 100;
+  const full = await coverCents(env, m, cover);
   const credit = Math.min(m.credit_cents, full), amount = full - credit, tax = taxCents(amount), total = amount + tax;   // credits come off before tax
   const card = m.card ? JSON.parse(m.card) : null;
   let p = null;
@@ -211,7 +224,13 @@ async function billOne(env, m, today, manual) {
   try {
     await env.DB.prepare("INSERT INTO membership_charges (id, membership_id, kind, amount_cents, tax_cents, credit_used_cents, status, payment_id, receipt_url, for_day, created_at) VALUES (?, ?, 'monthly', ?, ?, ?, 'paid', ?, ?, ?, ?)")
       .bind(rid(), m.id, amount, tax, credit, p ? p.id : null, p ? p.receipt : null, billDay, Date.now()).run();
-  } catch (e) { if (/UNIQUE/i.test(e.message)) return "already billed (another run got there first)"; throw e; }   // cron and "Retry payment" at once (audit IA-038)
+  } catch (e) {
+    if (/UNIQUE/i.test(e.message)) {   // this day is already paid (cron and "Retry payment" at once, or a stale next_bill): move on, never bill it twice
+      await env.DB.prepare("UPDATE memberships SET next_bill = ?, updated_at = ? WHERE id = ? AND next_bill = ?").bind(periodEnd, Date.now(), m.id, billDay).run();
+      return "already billed (another run got there first)";
+    }
+    throw e;
+  }   // cron and "Retry payment" at once (audit IA-038)
   const made = m.payments_made + 1;
   const fields = { status: m.status === "past_due" ? "active" : m.status, payments_made: made, credit_cents: m.credit_cents - credit, fail_count: 0, retry_day: null, owed_cents: 0,
     period_start: billDay, period_end: periodEnd, period_visit_cents: Math.round(full / m.freq), period_type: cover, next_bill: periodEnd };
@@ -308,6 +327,7 @@ export async function pauseByOwner(env, m, months) {
 export async function resumeByOwner(env, m) {
   if (m.status !== "paused") throw new Error("It isn't paused.");
   const today = todayNY().key, n = monthsBetween(m.start_day, today); let next = addMonths(m.start_day, n); if (next < today) next = addMonths(m.start_day, n + 1);
+  if (m.period_end && m.period_end > next) next = m.period_end;   // the current month is already paid: next charge after it
   await upd(env, m.id, { status: "active", pause_until: null, next_bill: next });
   await mail(env, m, "resumed", { next });
   return { message: "Resumed. Next charge " + niceDay(next) + "." };
@@ -319,6 +339,7 @@ export async function changePlan(env, m, type, freq, size) {
   if (m.status === "cancelled") throw new Error("This membership is cancelled.");
   const p = planPrice(type, size, freq);
   await upd(env, m.id, { type, freq, size, monthly_cents: p.monthly * 100 });
+  await saveWinter(env, m.id, type, size, freq);
   await mail(env, Object.assign({}, m, { type, freq, size, monthly_cents: p.monthly * 100 }), "plan_changed", { next: m.next_bill });
   return { message: "Changed to " + planLabel(type, freq, size) + " at $" + p.monthly + "/mo + tax, starting with the next charge.", monthly: p.monthly };
 }

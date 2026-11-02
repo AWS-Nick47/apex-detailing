@@ -145,6 +145,7 @@
   function jobBadges(j) {
     var b = [stateBadge(j.state)];
     if (j.kind === "member") b.push('<span class="badge block">Member</span>');
+    if (j.paid && j.kind !== "member" && j.state !== "paid" && j.status !== "cancelled") b.push('<span class="badge good">Prepaid</span>');
     if (!j.acked && j.status !== "cancelled" && j.end_utc > Date.now()) b.push('<span class="badge warn">New</span>');
     if (j.status !== "cancelled" && j.kind !== "member" && !j.paid && (j.state === "done" || j.end_utc < Date.now())) b.push('<span class="badge bad">Not paid</span>');
     return b.join("");
@@ -296,7 +297,7 @@
     if (!cancelled) {
       var order = member ? ["scheduled", "in_progress", "done"] : ["scheduled", "in_progress", "done", "paid"], at = order.indexOf(st);
       h += '<div class="steps" aria-label="Status: ' + esc(STATE[st]) + '">' + order.map(function (s, i) { return '<span class="' + (i < at ? "on" : i === at ? (s === "paid" || (member && s === "done") ? "on" : "now") : "") + '">' + STATE[s] + "</span>"; }).join("") + "</div>";
-    } else h += '<p class="note">Cancelled ' + (j.cancelledAt ? esc(dateUtc(j.cancelledAt)) : "") + (j.cancelReason ? " · " + esc({ customer: "the customer asked", us: "weather or our side", noshow: "no-show" }[j.cancelReason] || "") : "") + "</p>";
+    } else h += '<p class="note">Cancelled ' + (j.cancelledAt ? esc(dateUtc(j.cancelledAt)) : "") + (j.cancelReason ? " · " + esc({ customer: "the customer asked", us: "weather or our side", noshow: "no-show", refunded: "refunded in Square" }[j.cancelReason] || "") : "") + "</p>";
     // contact
     var ph = tel(j.phone);
     h += '<div class="contact"><a href="https://maps.apple.com/?daddr=' + encodeURIComponent(where) + '" target="_blank" rel="noopener"' + (where ? "" : ' aria-disabled="true"') + ">" + IC.map + "Directions</a>" +
@@ -334,12 +335,13 @@
     // manage
     if (!cancelled) {
       h += "<h2>Change it</h2><div class=\"acts\" style=\"margin-top:0\">";
-      if (!j.paid && !j.done) h += '<button class="btn g" data-jmove>Reschedule</button>';
+      if (!j.done) h += '<button class="btn g" data-jmove>Reschedule</button>';
       if (!j.paid) h += '<button class="btn g" data-jedit>Edit details</button>';
       if (st === "in_progress") h += '<button class="btn g" data-jobact="scheduled">Back to scheduled</button>';
       if (st === "scheduled") h += '<button class="btn g" data-jobact="in_progress">Mark in progress</button>';
       if (st === "done" && !member && !j.paid) h += '<button class="btn g" data-jobact="not_done">Mark not done</button>';
-      if (!j.paid || member) h += '<button class="btn d" data-jcancel>Cancel job</button>';
+      if (member ? !j.done : !j.paid) h += '<button class="btn d" data-jcancel>Cancel job</button>';
+      if (!member && j.paid) h += '<button class="btn d" data-jrefund>Refunded in Square</button>';
       h += "</div>";
       h += '<p class="note">Customer link: <button class="lnk" data-copy="' + esc(j.manageLink) + '">copy manage link</button>' + (j.payLink ? ' · <button class="lnk" data-copy="' + esc(j.payLink) + '">copy pay link</button>' : "") + "</p>";
     }
@@ -804,6 +806,7 @@
       '<label class="f">Booking window (days ahead)' + num("r.horizonDays", R.horizonDays, 'min="7" max="180"') + "</label>" +
       '<label class="chk"><input type="checkbox" name="r.winterOn"' + (R.winterOn ? " checked" : "") + "> Winter mode: Interior only</label>" +
       '<div class="fg2"><label class="f">Winter starts' + mdSel("r.ws", R.winter.start) + '</label><label class="f">Winter ends' + mdSel("r.we", R.winter.end) + "</label></div>" +
+      '<p class="note" style="margin:0">This only changes what customers can book. Membership winter (Wash paused, Wash + interior billed at the Interior price, Dec 15 – Mar 1) is fixed by your Membership Terms.</p>' +
       '<div class="locked"><span><span class="lock-ic">LOCKED</span> Customers must book ' + L.noticeHours + ' hours ahead, and change for free until then</span><b>In your Terms</b></div></div>';
     h += '<h2>Job lengths <span class="dim small" style="font-weight:500">minutes</span></h2><div class="card scroll"><table class="tbl"><thead><tr><th></th><th>Sedan</th><th>SUV</th><th>Truck</th></tr></thead><tbody>' +
       ["exterior", "interior", "full"].map(function (k) { return "<tr><td>" + PKG[k] + "</td>" + [0, 1, 2].map(function (i) { return "<td>" + num("r.base." + k + "." + i, R.baseMin[k][i], 'step="15" min="30" max="720"') + "</td>"; }).join("") + "</tr>"; }).join("") +
@@ -838,14 +841,14 @@
   }
   function setVal(f, n) { var el = f.elements[n]; return el ? (el.type === "checkbox" ? el.checked : el.value) : null; }
   function readSettings(f) {
-    var g = function (n) { return setVal(f, n); }, n = function (x) { return Number(g(x)); };
+    var g = function (n) { return setVal(f, n); }, n = function (x) { var v = g(x); return v === "" || v == null ? "" : Number(v); }, pc = function (x) { var v = n(x); return v === "" ? "" : v / 100; };
     var base = {}, add = {}, reg = {}, lau = {}, padd = {};
     ["exterior", "interior", "full"].forEach(function (k) { base[k] = [0, 1, 2].map(function (i) { return n("r.base." + k + "." + i); }); reg[k] = [0, 1, 2].map(function (i) { return n("p.reg." + k + "." + i); }); lau[k] = [0, 1, 2].map(function (i) { return n("p.launch." + k + "." + i); }); });
     Object.keys(ADDN).forEach(function (a) { add[a] = n("r.add." + a); padd[a] = n("p.add." + a); });
     return { rules: { startMin: fromHHMM(g("r.startMin")), latestEnd: fromHHMM(g("r.latestEnd")), bySunset: g("r.bySunset"), gapMin: n("r.gapMin"), stepMin: n("r.stepMin"), maxJobs: n("r.maxJobs"), maxJobsDayOff: n("r.maxJobsDayOff"), horizonDays: n("r.horizonDays"),
         winterOn: g("r.winterOn"), winter: { start: [n("r.wsm"), n("r.wsd")], end: [n("r.wem"), n("r.wed")] }, baseMin: base, addonMin: add, memberLessMin: { exterior: 0, interior: n("r.mem.interior"), full: n("r.mem.full") } },
-      pricing: { launchSale: g("p.launchSale"), regular: reg, launch: lau, addons: padd, memberAddonDiscount: n("p.memAdd") / 100, zoneFees: SET.edit.pricing.zones.map(function (_, i) { return n("p.zone." + i); }) },
-      mem: { pct: { wash: n("m.pct.wash") / 100, int: n("m.pct.int") / 100, both: n("m.pct.both") / 100 }, freqDiscount: { 2: n("m.f2") / 100, 4: n("m.f4") / 100 } } };
+      pricing: { launchSale: g("p.launchSale"), regular: reg, launch: lau, addons: padd, memberAddonDiscount: pc("p.memAdd"), zoneFees: SET.edit.pricing.zones.map(function (_, i) { return n("p.zone." + i); }) },
+      mem: { pct: { wash: pc("m.pct.wash"), int: pc("m.pct.int"), both: pc("m.pct.both") }, freqDiscount: { 2: pc("m.f2"), 4: pc("m.f4") } } };
   }
   function memPrev() {
     var f = document.getElementById("setf"), el = document.getElementById("memPrev"); if (!f || !el) return;
@@ -904,6 +907,8 @@
     if (t.closest("[data-payopen]")) { S.payOpen = true; drawJob(); var pp = document.getElementById("pay"); if (pp) pp.scrollIntoView({ behavior: "smooth" }); return; }
     if (t.closest("[data-jmove]")) return openMove();
     if (t.closest("[data-jcancel]")) return openCancel();
+    if (t.closest("[data-jrefund]")) { if (!confirm("Did you already refund this in Square (Square app → Transactions → Refund)? This cancels the job and takes it out of your sales tax and income.")) return;
+      post("/jobs/" + JOB.id + "/cancel", { reason: "refunded" }).then(function () { toast("Marked refunded"); renderJob(JOB.id); }).catch(function (e2) { toast(e2.message, true); }); return; }
     if (t.closest("[data-jedit]")) return openEditJob();
     if (t.closest("[data-jdel]")) { if (!confirm("Delete this job for good? Its photos are removed too.")) return; del("/jobs/" + JOB.id).then(function () { toast("Deleted"); JOB = null; goBack(); }).catch(function (e2) { toast(e2.message, true); }); return; }
     if ((b = t.closest("[data-savejnotes]"))) { var dn3 = busy(b, "Saving…"); post("/jobs/" + JOB.id + "/edit", { ownerNotes: document.getElementById("jNotes").value }).then(function () { dn3(); toast("Notes saved"); }).catch(function (e2) { dn3(); toast(e2.message); }); return; }

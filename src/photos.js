@@ -74,7 +74,7 @@ export async function uploadPhoto(req, env) {
   let fd; try { fd = await req.formData(); } catch (e) { return json({ error: "Bad upload." }, 400); }
   let meta; try { meta = JSON.parse(String(fd.get("meta") || "")); } catch (e) { return json({ error: "Bad upload." }, 400); }
   const full = fd.get("full"), thumb = fd.get("thumb");
-  if (!meta || !ID_RE.test(String(meta.id || "")) || !["before", "after"].includes(meta.phase) || !full || !thumb || typeof full.arrayBuffer !== "function") return json({ error: "Bad upload." }, 400);
+  if (!meta || !ID_RE.test(String(meta.id || "")) || !["before", "after"].includes(meta.phase) || !full || !thumb || typeof full.arrayBuffer !== "function" || typeof thumb.arrayBuffer !== "function") return json({ error: "That upload was incomplete.", gone: true }, 400);
   const b = await env.DB.prepare("SELECT * FROM bookings WHERE id = ?").bind(String(meta.booking || "")).first();
   if (!b) return json({ error: "That job doesn't exist anymore.", gone: true }, 404);
   const a = await env.DB.prepare("SELECT * FROM job_angles WHERE id = ? AND booking_id = ?").bind(String(meta.angle || ""), b.id).first();
@@ -160,7 +160,7 @@ export async function galleryRoute(req, env, url, b, sub, H) {
   const pm = sub && sub.match(/^p\/([a-f0-9-]{16,40})$/i);
   if (pm) {
     if (!b.photos_sent_at) return new Response("Not found", { status: 404 });
-    const p = await env.DB.prepare("SELECT p.*, a.name angle FROM photos p LEFT JOIN job_angles a ON a.id = p.angle_id WHERE p.id = ? AND p.booking_id = ? AND p.deleted_at IS NULL AND p.hidden = 0").bind(pm[1], b.id).first();
+    const p = await env.DB.prepare("SELECT p.*, a.name angle FROM photos p JOIN job_angles a ON a.id = p.angle_id AND a.removed_at IS NULL WHERE p.id = ? AND p.booking_id = ? AND p.deleted_at IS NULL AND p.replaced_at IS NULL AND p.hidden = 0").bind(pm[1], b.id).first();
     if (!p) return new Response("Not found", { status: 404 });
     const dl = url.searchParams.get("dl") === "1" ? "Apex Detailing - " + (p.angle || "Photo") + " - " + (p.phase === "before" ? "Before" : "After") + ".jpg" : null;
     return photoFile(env, p, url.searchParams.get("t") === "1", dl);

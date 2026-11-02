@@ -14,6 +14,7 @@ import { photoState, setAngle, addAngle, photoFile, hidePhoto, deletePhoto, dele
 const json = (data, status) => new Response(JSON.stringify(data), { status: status || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const bad = (msg, status) => json({ error: msg }, status || 400);
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const realDay = k => { if (!DAY_RE.test(String(k || ""))) return false; const { y, m, d } = parseDay(k), t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
 const todayKey = () => utcToNy(Date.now()).key;
 const cl = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim().slice(0, n || 200);
 const NOEMAIL = /\.invalid$/i;
@@ -30,7 +31,8 @@ async function logFor(env, ref) { return ((await env.DB.prepare("SELECT at, what
 export function statusOf(b) {
   if (b.status === "cancelled") return "cancelled";
   if (b.kind === "member") return b.completed_at ? "done" : b.started_at ? "in_progress" : "scheduled";
-  if (b.paid_at) return "paid";
+  if (b.paid_at && b.completed_at) return "paid";
+  if (b.paid_at) return b.started_at ? "in_progress" : "scheduled";   // paid ahead (prepaid): still to do
   if (b.completed_at) return "done";
   if (b.started_at) return "in_progress";
   return "scheduled";
@@ -156,10 +158,11 @@ function openTimes(day, info, len) {
 const fitsAt = (day, info, start, len) => openTimes(day, info, len).times.includes(start);
 const winterDay = k => { const { y, m, d } = parseDay(k); return inWinter(y, m, d); };
 
-async function priceFor(env, c, pkg, size, adds, town) {
+async function priceFor(env, c, pkg, size, adds, town, except) {
   const pin = c && c.lat != null && c.lon != null ? [c.lat, c.lon] : townCoords(town || (c && c.town));
   const miles = pin ? Math.round(milesFromHome(pin[0], pin[1]) * 10) / 10 : null;
-  const prior = c ? (await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE (customer_id = ? OR email = ?) AND status != 'cancelled' AND kind != 'member'").bind(c.id, c.email).first()).n : 0;
+  // returning customer = an earlier detail (not the one being edited, and not ones booked after it)
+  const prior = c ? (await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE (customer_id = ? OR email = ?) AND status != 'cancelled' AND kind != 'member' AND id != ? AND created_at < ?").bind(c.id, c.email, except ? except.id : "", except ? except.created_at : Date.now() + 1).first()).n : 0;
   const member = c ? !!(await activeFor(env, c.id)) : false;
   const q = priceQuote({ pkg, size, adds, miles, returning: prior > 0, member });
   return Object.assign(q, { miles, member, returning: prior > 0, tooFar: miles != null && miles > RULES.maxMiles });
@@ -175,7 +178,7 @@ function readJob(body) {
   if (custom && !f.customName) throw new Error("Give the custom package a name.");
   if (![0, 1, 2].includes(f.size)) throw new Error("Pick Sedan, SUV or Truck.");
   f.adds = custom ? [] : [...new Set(f.adds)].filter(a => Object.hasOwn(RULES.addonPkgs, a) && RULES.addonPkgs[a].includes(f.pkg));
-  if (!DAY_RE.test(f.day)) throw new Error("Pick a date.");
+  if (!realDay(f.day)) throw new Error("Pick a date.");
   if (!(f.start >= 0 && f.start < 1440)) throw new Error("Pick a start time.");
   if (custom && f.duration == null) throw new Error("How long will it take?");
   if (f.duration != null && !(f.duration >= 15 && f.duration <= 720)) throw new Error("Length must be between 15 minutes and 12 hours.");
@@ -231,7 +234,7 @@ async function jobDetail(env, H, b) {
     startsMembership: startsMem ? { id: startsMem.id, label: planLabel(startsMem.type, startsMem.freq, startsMem.size) } : null,
     payLink: b.pay_token && !b.paid_at ? env.SITE_URL + "/pay/" + b.pay_token : null, manageLink: env.SITE_URL + "/b/" + b.token, galleryLink: env.SITE_URL + "/b/" + b.token + "/photos",
     paidAt: b.paid_at, completedAt: b.completed_at, startedAt: b.started_at, cancelledAt: b.cancelled_at, receipt: b.receipt_url || null, termsAt: b.terms_at || null,
-    canDelete: !b.paid_at && (b.status === "cancelled" || b.source === "owner") && !startsMem,
+    canDelete: !b.paid_at && b.kind !== "member" && (b.status === "cancelled" || b.source === "owner") && !startsMem,
     photos: await photoState(env, b), log: await logFor(env, "j:" + b.id) });
   return json({ job: r });
 }
@@ -267,7 +270,7 @@ async function editJob(env, H, b, body, who) {
       if (body.price != null && body.price !== "") { const p = Math.round(+body.price); if (!(p >= 0 && p <= 5000)) return bad("Enter a price between $0 and $5,000 (before tax)."); f.quote = p; f.travel_fee = 0; }
       else if (!custom && ["pkg", "size", "adds"].some(k => Object.hasOwn(body, k))) {
         const c = b.customer_id ? await env.DB.prepare("SELECT * FROM customers WHERE id = ?").bind(b.customer_id).first() : null;
-        const q = await priceFor(env, c, pkg, size, adds, f.town || b.town); f.quote = q.subtotal; f.travel_fee = q.travel;
+        const q = await priceFor(env, c, pkg, size, adds, f.town || b.town, b); f.quote = q.subtotal; f.travel_fee = q.travel;
       }
     }
   }
@@ -280,9 +283,9 @@ async function editJob(env, H, b, body, who) {
 }
 
 async function moveJob(env, H, b, body, who) {
-  if (b.status !== "confirmed" || b.paid_at || b.completed_at) return bad("Only scheduled jobs can be moved.");
+  if (b.status !== "confirmed" || b.completed_at) return bad("Only jobs that aren't done yet can be moved.");
   const day = cl(body.day, 10), start = Math.round(+body.start);
-  if (!DAY_RE.test(day) || !(start >= 0 && start < 1440)) return bad("Pick a new date and time.");
+  if (!realDay(day) || !(start >= 0 && start < 1440)) return bad("Pick a new date and time.");
   let pkg = b.pkg, len = Math.round((b.end_utc - b.start_utc) / 60000);
   if (b.kind === "member") {
     const mm = await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first(), cv = mm && coverOn(mm.type, day);
@@ -304,7 +307,15 @@ async function moveJob(env, H, b, body, who) {
 
 async function cancelJob(env, H, b, body, who) {
   if (b.status !== "confirmed") return bad("It's already cancelled.");
-  if (b.paid_at && b.kind !== "member") return bad("This job is paid. Refund it in Square first, then cancel it here.");
+  if (b.kind === "member" && b.completed_at) return bad("This visit is already done.");
+  if (body.reason === "refunded") {   // the money went back in Square: take it out of sales tax and income (records are kept)
+    if (!b.paid_at || b.kind === "member") return bad("Only a paid job can be marked refunded.");
+    await env.DB.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'refunded' WHERE id = ?").bind(Date.now(), b.id).run();
+    if (b.end_utc > Date.now()) await deleteJob(env, b.cal_href).catch(() => {});
+    await ownerLog(env, who, "Marked refunded (" + usd((b.final_cents || 0) + (b.tax_cents || 0) + (b.tip_cents || 0)) + " refunded in Square); left out of sales tax and income", "j:" + b.id);
+    return json({ ok: true, credit: 0 });
+  }
+  if (b.paid_at && b.kind !== "member") return bad("This job is paid. Refund it in Square first, then choose \"Refunded in Square\".");
   const reason = ["customer", "us", "noshow"].includes(body.reason) ? body.reason : null; if (!reason) return bad("Pick why it's cancelled.");
   const notify = body.notify !== false && !!realEmail(b.email), hoursLeft = (b.start_utc - Date.now()) / 3600e3;
   await env.DB.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = ?, cancel_reason = ? WHERE id = ?").bind(Date.now(), reason, b.id).run();
@@ -318,7 +329,7 @@ async function cancelJob(env, H, b, body, who) {
     else if (reason === "customer") tasks.push(b.kind === "member" ? H.emailSkip(env, b, credit).catch(() => {}) : H.emailCustomer(env, b, "cancel").catch(() => {}));
   }
   await Promise.all(tasks);
-  const why = { customer: "the customer asked", us: "weather or our side", noshow: "no-show" }[reason];
+  const why = { customer: "the customer asked", us: "weather or our side", noshow: "no-show" }[reason];   // refunds are handled above
   await ownerLog(env, who, "Cancelled (" + why + ")" + (credit ? ", " + usd(credit) + " membership credit" : "") + (memC ? ", its membership was cancelled too" : "") + (notify && reason !== "noshow" ? ", customer emailed" : ""), "j:" + b.id);
   return json({ ok: true, credit: credit / 100, membershipCancelled: !!memC });
 }
@@ -341,6 +352,7 @@ async function setStatus(env, b, to, who) {
 
 async function deleteJobRow(env, b, who) {
   if (b.paid_at) return bad("Paid jobs stay in your records (sales tax and income). Cancel it instead.");
+  if (b.kind === "member") return bad("Member visits stay on their membership record. Cancel it instead.");
   if (b.status === "confirmed" && b.source !== "owner") return bad("This was booked online. Cancel it first so the customer is told.");
   const m = await env.DB.prepare("SELECT id FROM memberships WHERE qualifying_booking = ? AND status != 'cancelled'").bind(b.id).first();
   if (m) return bad("An Apex Membership started from this job. Cancel the job instead.");
@@ -396,15 +408,17 @@ export async function syncSquare(env, full) {
   if (!squareOn(env)) return { skipped: "Square isn't connected" };
   const st = await env.DB.prepare("SELECT v FROM meta WHERE k = 'sq_sync'").first(), prev = st ? JSON.parse(st.v) : null;
   const begin = new Date(full || !prev ? Date.UTC(new Date().getUTCFullYear() - 1, 0, 1) : prev.at - 3 * 864e5).toISOString();
-  let cursor = null, n = 0, pages = 0;
+  let cursor = null, n = 0, pages = 0, last = 0;
   do {
     const r = await listPayments(env, begin, cursor); cursor = r.cursor; pages++;
+    for (const p of r.payments) last = Math.max(last, p.created_at);
     const stmts = r.payments.map(p => env.DB.prepare("INSERT OR REPLACE INTO square_payments (id, created_at, amount_cents, fee_cents, refunded_cents, status, source, note, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(p.id, p.created_at, p.amount_cents, p.fee_cents, p.refunded_cents, p.status, p.source, p.note, Date.now()));
     if (stmts.length) await env.DB.batch(stmts); n += stmts.length;
   } while (cursor && pages < 10);
-  await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('sq_sync', ?)").bind(JSON.stringify({ at: Date.now(), n })).run();
-  return { payments: n };
+  // more pages left: next run picks up from the newest payment fetched (minus the 3-day overlap), so nothing is skipped
+  await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('sq_sync', ?)").bind(JSON.stringify({ at: cursor ? last + 3 * 864e5 : Date.now(), n, partial: !!cursor })).run();
+  return { payments: n, more: !!cursor };
 }
 async function payouts(env, force) {
   if (!squareOn(env)) return null;
@@ -438,7 +452,8 @@ async function exportAll(env) {
     bookings: (await t("SELECT * FROM bookings")).map(b => { const o = Object.assign({}, b); delete o.token; delete o.ack_token; delete o.pay_token; return o; }),
     memberships: await t("SELECT * FROM memberships"), membership_charges: await t("SELECT * FROM membership_charges"), blockouts: await t("SELECT * FROM blockouts"),
     job_angles: await t("SELECT * FROM job_angles"), photos: await t("SELECT id, booking_id, angle_id, phase, w, h, bytes, taken_at, hidden, replaced_at, deleted_at, created_at FROM photos"),
-    owner_log: await t("SELECT * FROM owner_log ORDER BY at DESC LIMIT 5000") };
+    owner_log: await t("SELECT * FROM owner_log ORDER BY at DESC LIMIT 5000"), square_payments: await t("SELECT * FROM square_payments"),
+    meta: await t("SELECT * FROM meta WHERE k NOT LIKE 'sq_payouts'") };
   return new Response(JSON.stringify(data, null, 1), { headers: { "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="apex-backup-' + todayKey() + '.json"', "Cache-Control": "no-store" } });
 }
 
@@ -525,7 +540,7 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
     const len = body.durationMin ? Math.max(15, Math.min(720, Math.round(+body.durationMin))) : jobMin(pkg, size, adds);
     const out = { duration: len, price: custom ? null : await priceFor(env, c, pkg, size, adds, cl(body.town, 60)) };
     const day = cl(body.day, 10), except = body.exceptId ? String(body.exceptId) : undefined;
-    if (DAY_RE.test(day)) {
+    if (realDay(day)) {
       const info = (await H.days(env, day, 1, except))[day], ot = openTimes(day, info, len);
       out.day = { day, times: ot.times, reason: ot.reason, end: info.end, jobs: info.j, max: info.off ? RULES.maxJobsDayOff : RULES.maxJobs, winter: winterDay(day) };
     }
@@ -545,7 +560,7 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
     if (sub === "pay" && M === "POST") {
       const r = await jobAction(env, b, String(body.action || ""), { amount: body.amount, how: body.how, big: body.big ? "1" : "0" }, H);
       if (r.ok) await ownerLog(env, who, r.msg, "j:" + b.id);
-      return json(r, r.ok ? 200 : 400);
+      return json(r.ok ? r : Object.assign({ error: r.msg }, r), r.ok ? 200 : 400);
     }
     if (sub === "share" && M === "POST") {
       const v = body.ok === true ? 1 : body.ok === false ? 0 : null;

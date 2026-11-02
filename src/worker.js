@@ -279,6 +279,8 @@ function summaryCard(b) {
   return `<div class="card">${pageRows(b).filter(r => r[1]).map(r => `<div class="r"><span>${h(r[0])}</span><b>${h(r[1])}</b></div>`).join("")}</div>`;
 }
 
+// jobs Nick set up by hand with their own package or length can't be moved online (the slot search uses package lengths)
+const fixedLength = b => b.kind !== "member" && (!!b.custom_name || (b.source === "owner" && Math.round((b.end_utc - b.start_utc) / 60000) !== jobMin(b.pkg, b.size, JSON.parse(b.adds || "[]"))));
 // a time button on the manage page: asks before moving (audit IA-025)
 function moveForm(b, k, t) {
   const label = dayLabel(k, true) + " at " + tstr(t);
@@ -309,6 +311,7 @@ async function managePage0(env, b, msg) {
     return page("Your visit", head + `<h2>Pick a new time</h2>${pick}${skip}`);
   }
   if (hoursLeft < RULES.noticeHours) return page("Your booking", head + `<p class="note" style="margin-top:18px">It's less than 24 hours away, so changes go through us directly: text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
+  if (fixedLength(b)) return page("Your booking", head + `<p class="note" style="margin-top:18px">To change or cancel this job, text or call us at <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
   // next open times for the same job (next 21 days), excluding this booking itself
   const adds = JSON.parse(b.adds || "[]"), start = addDays(todayKey(), 1), info = await days(env, start, 21, b.id), opts = [];
   for (const k of Object.keys(info)) { const s = slotsFor(k, info[k], b.pkg, b.size, adds, Date.now()); if (s.length) opts.push([k, s]); if (opts.length >= 8) break; }
@@ -664,6 +667,7 @@ async function manage(req, env, url) {
   if (b.status !== "confirmed") return html(await managePage(env, b));
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
   if (hoursLeft < RULES.noticeHours && !(b.kind === "member" && m[2] === "cancel")) return html(await managePage(env, b, "It's too close to change online."));
+  if (fixedLength(b)) return html(await managePage(env, b, "Text us to change this one."));
   if (m[2] === "cancel") {
     await env.DB.prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?").bind(Date.now(), b.id).run();
     b.status = "cancelled";
@@ -734,7 +738,7 @@ async function handle(req, env) {
     const ownerWrite = req.method !== "GET" && req.method !== "HEAD" && (url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/job/") || url.pathname.startsWith("/ack/"));
     if (ownerWrite) { const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);
       const ct = req.headers.get("Content-Type") || "", upload = url.pathname === "/api/admin/photos" && /^multipart\/form-data/.test(ct);
-      if (url.pathname.startsWith("/api/admin/") && req.method !== "DELETE" && !upload && !/application\/json/.test(ct)) return json({ error: "Send JSON" }, 415); }
+      if (url.pathname.startsWith("/api/admin/") && req.method !== "DELETE" && !upload && !/^application\/json\b/i.test(ct)) return json({ error: "Send JSON" }, 415); }
     try {
       if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/admin/")) {
         const who = await accessUser(req, env).catch(e => { console.log("admin auth error", e.message); return null; });

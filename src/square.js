@@ -4,6 +4,7 @@
 export const squareOn = env => !!(env.SQUARE_ACCESS_TOKEN && env.SQUARE_APP_ID && env.SQUARE_LOCATION_ID);
 const base = env => (env.SQUARE_ENV === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com");
 const key = () => crypto.randomUUID();
+const okEmail = e => (e && !/\.invalid$/i.test(String(e)) ? e : undefined);   // customers Nick added without an email have a .invalid placeholder
 
 async function sq(env, method, path, body) {
   if (env.SQUARE_MOCK === "1") return mock(path, body);
@@ -38,7 +39,7 @@ export async function ensureSquareCustomer(env, c) {
   if (c.square_customer_id) return c.square_customer_id;
   const parts = (c.name || "").trim().split(/\s+/);
   const j = await sq(env, "POST", "/v2/customers", { idempotency_key: key(), given_name: parts[0] || undefined, family_name: parts.slice(1).join(" ") || undefined,
-    email_address: c.email, reference_id: c.id });   // phone left off: Square rejects some valid-looking numbers, and we keep the phone ourselves
+    email_address: okEmail(c.email), reference_id: c.id });   // phone left off: Square rejects some valid-looking numbers, and we keep the phone ourselves
   const id = j.customer.id;
   await env.DB.prepare("UPDATE customers SET square_customer_id = ? WHERE id = ?").bind(id, c.id).run();
   c.square_customer_id = id;
@@ -71,7 +72,7 @@ export async function removeCard(env, c) {
 // Charge: source is a saved card id or a one-time token. amount in cents.
 export async function charge(env, { source, amount, customerId, reference, note, email, idem }) {
   const j = await sq(env, "POST", "/v2/payments", { idempotency_key: idem || key(), source_id: source, amount_money: { amount, currency: "USD" }, customer_id: customerId || undefined,
-    location_id: env.SQUARE_LOCATION_ID, reference_id: reference, note: (note || "").slice(0, 500), buyer_email_address: email || undefined, autocomplete: true });
+    location_id: env.SQUARE_LOCATION_ID, reference_id: reference, note: (note || "").slice(0, 500), buyer_email_address: okEmail(email), autocomplete: true });
   const p = j.payment;
   return { id: p.id, status: p.status, receipt: p.receipt_url || null, brand: p.card_details && p.card_details.card ? brandName(p.card_details.card.card_brand) : null, last4: p.card_details && p.card_details.card ? p.card_details.card.last_4 : null };
 }

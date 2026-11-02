@@ -68,6 +68,7 @@ export function publicSettings() {
 
 // ---------- validation ----------
 function int(v, lo, hi, step, what) {
+  if (v === "" || v == null || (typeof v === "string" && !v.trim())) throw new Error(what + " can't be empty.");
   const n = Number(v);
   if (!Number.isFinite(n) || Math.round(n) !== n) throw new Error(what + " must be a whole number.");
   if (n < lo || n > hi) throw new Error(what + " must be between " + lo + " and " + hi + ".");
@@ -75,6 +76,7 @@ function int(v, lo, hi, step, what) {
   return n;
 }
 function rate(v, lo, hi, what) {
+  if (v === "" || v == null) throw new Error(what + " can't be empty.");
   const n = Number(v);
   if (!Number.isFinite(n) || n < lo || n > hi) throw new Error(what + " must be between " + Math.round(lo * 100) + "% and " + Math.round(hi * 100) + "%.");
   return Math.round(n * 1000) / 1000;
@@ -120,6 +122,7 @@ export function validate(input) {
   }
   for (const k of PK) for (const s of [0, 1, 2]) {
     if (p.regular[k][s] < 20) throw new Error(NAMES[k] + " " + SZ[s] + " price looks too low.");
+    if (p.launch[k][s] < 20) throw new Error("The launch price for " + NAMES[k] + " " + SZ[s] + " looks too low.");
     if (p.launch[k][s] > p.regular[k][s]) throw new Error("The launch price for " + NAMES[k] + " " + SZ[s] + " is higher than the regular price.");
   }
   const ad = g(ip, "addons", cur.pricing.addons); p.addons = {};

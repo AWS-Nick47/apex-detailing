@@ -86,6 +86,7 @@ const BUSY_MSG = "A payment for this job is going through right now. Refresh thi
 // Used by the job page (forms) and the owner dashboard (JSON). input: { amount, how, big }. Returns { ok, msg }.
 export async function jobAction(env, b, action, input, H) {
   input = input || {};
+  const doneAt = b.start_utc <= Date.now() ? Date.now() : null;   // paid before the job starts (prepay): not done yet
   const c = await customerFor(env, b), card = b.card ? JSON.parse(b.card) : null;
   let msg = "That can't be done for this job right now.", ok = false, payLink = null;
   if (action === "weather" && b.status === "confirmed" && !b.paid_at) {
@@ -107,17 +108,17 @@ export async function jobAction(env, b, action, input, H) {
     else if (action === "inperson") {
       const how = ["cash", "card", "other"].includes(String(input.how)) ? String(input.how) : "cash";
       const free = (await claimsOn(env)) ? " AND (paying_at IS NULL OR paying_at < " + (Date.now() - CLAIM_MS) + ")" : "";
-      const done = await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
-        .bind(Date.now(), cents, tax, Date.now(), "in_person:" + how, b.id).first();
+      const done = await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
+        .bind(doneAt, cents, tax, Date.now(), "in_person:" + how, b.id).first();
       if (!done) msg = BUSY_MSG; else {
-      Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
+      Object.assign(b, { paid_at: Date.now(), completed_at: b.completed_at || doneAt, final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
       // in-person customers get a receipt too (audit IA-051)
       await emailReceipt(env, b, { amount: cents, tax, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
       }
     } else if (action === "link") {
       await ensurePayToken(env, b);
-      await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ? WHERE id = ?").bind(Date.now(), cents, tax, b.id).run();
-      Object.assign(b, { final_cents: cents, tax_cents: tax, completed_at: Date.now() });
+      await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), final_cents = ?, tax_cents = ? WHERE id = ?").bind(doneAt, cents, tax, b.id).run();
+      Object.assign(b, { final_cents: cents, tax_cents: tax, completed_at: b.completed_at || doneAt });
       ok = true; payLink = env.SITE_URL + "/pay/" + b.pay_token;
       if (!b.email || /\.invalid$/i.test(b.email)) msg = "No email on file, so nothing was sent. Text them this link to pay " + money(total) + split + ": " + payLink;
       else { await emailPayLink(env, b, cents, tax); msg = "Sent " + b.email + " a link to pay " + money(total) + split + "."; }
@@ -129,8 +130,8 @@ export async function jobAction(env, b, action, input, H) {
         try {
           await ensurePayToken(env, b);
           const p = await charge(env, { source: card.id, amount: total, customerId: c.square_customer_id, reference: b.id, note: "Apex Detailing " + jobName(b) + " · " + b.id + " · " + money(cents) + " + " + money(tax) + " " + TAX.name, email: b.email, idem: "job-" + b.id + "-" + total }); jobCharged = true;
-          await env.DB.prepare("UPDATE bookings SET completed_at = ?, final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ?" + (await clearClaim(env)) + " WHERE id = ?").bind(Date.now(), cents, tax, Date.now(), p.id, p.receipt, b.id).run();
-          Object.assign(b, { paid_at: Date.now(), completed_at: Date.now(), final_cents: cents, tax_cents: tax, paid_method: "card_on_file" }); ok = true;
+          await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = 'card_on_file', payment_id = ?, receipt_url = ?" + (await clearClaim(env)) + " WHERE id = ?").bind(doneAt, cents, tax, Date.now(), p.id, p.receipt, b.id).run();
+          Object.assign(b, { paid_at: Date.now(), completed_at: b.completed_at || doneAt, final_cents: cents, tax_cents: tax, paid_method: "card_on_file" }); ok = true;
           msg = "Charged " + money(total) + split + " to " + card.brand + " ending " + card.last4 + ". Receipt sent.";
           await emailReceipt(env, b, { amount: cents, tax, method: card.brand + " ending " + card.last4, receipt: p.receipt, offerTip: true }).catch(() => {});
         } catch (e) { if (!jobCharged) await releaseBill(env, b.id); msg = jobCharged ? "The card was charged, but saving it here failed. Check Square before charging again." : "Charge failed: " + e.message + " You can send them a pay link instead."; }
@@ -167,7 +168,7 @@ export async function jobRoute(req, env, url, H) {
       ${b.status === "confirmed" && !b.completed_at ? `<div class="acts"><form method="post" action="/job/${b.ack_token}/done"><button class="btn" style="width:100%">Mark visit done</button></form></div>` : ""}${weatherBtn}`));
   }
   const B = bill(b), paidTotal = (b.final_cents || 0) + (b.tax_cents || 0);
-  const status = b.status === "cancelled" ? (b.paid_at ? "Cancelled, but paid " + money(paidTotal + (b.tip_cents || 0)) + ": refund it in Square" : "Cancelled") : b.paid_at ? "Paid " + money(paidTotal) + (b.tax_cents ? " incl. tax" : "") + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(B.total) + " link sent)" : "Not paid yet";
+  const status = b.status === "cancelled" && b.cancel_reason === "refunded" ? "Refunded in Square" : b.status === "cancelled" ? (b.paid_at ? "Cancelled, but paid " + money(paidTotal + (b.tip_cents || 0)) + ": refund it in Square" : "Cancelled") : b.paid_at ? "Paid " + money(paidTotal) + (b.tax_cents ? " incl. tax" : "") + (b.tip_cents ? " + " + money(b.tip_cents) + " tip" : "") + " · " + methodLabel(b.paid_method) : b.final_cents ? "Waiting on payment (" + money(B.total) + " link sent)" : "Not paid yet";
   const undoBtn = b.paid_at && /^in_person/.test(b.paid_method || "") && b.status === "confirmed" ? `<form method="post" action="/job/${b.ack_token}/undo" onsubmit="return confirm('Mark this job as not paid again?')" style="margin-top:18px"><button class="btn g" style="width:100%">Undo "paid in person"</button></form>` : "";
   const forms = b.paid_at || b.status !== "confirmed" ? "" : `
     <h2>Job done? Get paid</h2>
@@ -286,9 +287,9 @@ export async function payApi(req, env, url) {
     const B = bill(b), due = B.total;
     const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + jobName(b) + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) }); charged = true;
     await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tax_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?)" + (await clearClaim(env)) + " WHERE id = ?")
-      .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, Date.now(), b.id).run();
+      .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, b.start_utc <= Date.now() ? Date.now() : null, b.id).run();
     await emailReceipt(env, Object.assign(b, { tip_cents: tip }), { amount: B.sub, tax: B.tax, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt, offerTip: false }).catch(() => {});
-    return json({ ok: true, message: "We emailed your receipt to " + b.email + "." });
+    return json({ ok: true, message: b.email && !/\.invalid$/i.test(b.email) ? "We emailed your receipt to " + b.email + "." : "Thanks for choosing Apex!" });
   } catch (e) { if (!charged) await releaseBill(env, b.id); return json({ error: charged ? "Your payment went through, but we couldn't save it. Please text us at (732) 206-7084 so we can send your receipt." : e.message }, charged ? 500 : 402); }
 }
 
