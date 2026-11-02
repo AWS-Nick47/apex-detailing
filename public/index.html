@@ -1378,13 +1378,11 @@ main, footer { position: relative; z-index: 1; }
 .step p { color: var(--muted); font-size: 16px; }
 .step { border-top: 0; padding: 22px; border-radius: 22px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px var(--line); }
 .steps { gap: 16px !important; }
-/* Who's coming: the founder card under How it works (+ a small line on the booking review step) */
-.who { margin-top: 16px; max-width: 600px; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 18px; align-items: center; padding: 14px; border-radius: 20px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px var(--line); }
-.who img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; display: block; background: var(--surface); }
-.who .eyebrow { margin-bottom: 4px; }
-.who h3 { font-size: 18px; font-weight: 700; margin: 0 0 4px; }
-.who p { color: var(--muted); font-size: 14.5px; margin: 0; }
-@media (max-width: 560px) { .who { grid-template-columns: 76px minmax(0, 1fr); gap: 14px; padding: 12px; border-radius: 18px; } .who h3 { font-size: 16.5px; } .who p { font-size: 13.5px; } .who img { border-radius: 10px; } }
+/* Who's coming: one centered line under the How it works steps (+ a small line on the booking review step) */
+.who-line { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 30px; color: var(--muted); font-size: 16px; line-height: 1.4; }
+.who-line img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 1px var(--line); }
+.who-line b { color: var(--fg); font-weight: 600; }
+@media (max-width: 560px) { .who-line { justify-content: flex-start; font-size: 14.5px; margin-top: 22px; } }
 .bk-who { display: flex; align-items: center; gap: 12px; margin: 14px 0 2px; font-size: 14.5px; color: var(--muted); }
 .bk-who img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 1px var(--line); }
 .bk-who b { color: var(--fg); font-weight: 600; }
@@ -1938,10 +1936,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <div class="step reveal"><div class="step-top"><span class="step-ico"><svg><use href="#i-ext"/></svg></span><span class="step-n">02</span></div><h3>We pull up at your place</h3><p>We bring every product, tool and towel. All we need is a spot next to the car and an outlet, plus an outdoor spigot for any exterior work.</p></div>
         <div class="step reveal"><div class="step-top"><span class="step-ico"><svg><use href="#check"/></svg></span><span class="step-n">03</span></div><h3>Walk around, then pay</h3><p>We walk the car with you before we leave. Pay only once you're happy: card, cash, or a card on file we charge automatically after.</p></div>
       </div>
-      <div class="who reveal">
-        <picture><source type="image/webp" srcset="/img/nick-480.webp 480w, /img/nick-800.webp 800w" sizes="(max-width: 560px) 76px, 110px"><img src="/img/nick-800.jpg" alt="Nick, founder of Apex Detailing, holding his French Bulldog" width="800" height="1000" loading="lazy" decoding="async"></picture>
-        <div><div class="eyebrow">Who's coming</div><h3>Nick, founder</h3><p>Every Apex detail is done by Nick, our founder, start to finish. You'll know exactly who's pulling into your driveway.</p></div>
-      </div>
+      <div class="who-line reveal"><img src="/img/nick-face-192.webp" alt="" width="48" height="48" loading="lazy" decoding="async"><span>Every Apex detail is done by <b>Nick, our founder</b>, start to finish.</span></div>
     </div>
   </section>
 
