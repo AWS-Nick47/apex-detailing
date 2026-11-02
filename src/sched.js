@@ -16,7 +16,7 @@ export const RULES = {
   baseMin: { exterior: [90, 90, 150], interior: [210, 210, 210], full: [300, 300, 360] },
   addonMin: { pet: 40, stain: 40, lights: 45, engine: 30 },
   memberLessMin: { exterior: 0, interior: 60, full: 60 },   // Apex Membership upkeep visits are shorter than a first detail
-  addonPkgs: { pet: ["interior", "full"], stain: ["interior", "full"], lights: ["exterior", "interior", "full"], engine: ["exterior", "interior", "full"] },
+  addonPkgs: { pet: ["interior", "full"], stain: ["interior", "full"], lights: ["exterior", "full"], engine: ["exterior", "full"] },   // headlights + engine bay are outside work: not with an Interior (Nick, Nov 2)
   home: [40.060, -74.120],
   maxMiles: 30
 };

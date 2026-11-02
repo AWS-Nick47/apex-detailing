@@ -196,7 +196,7 @@ export async function payPage(req, env, url, H) {
   <input id="tipOther" inputmode="decimal" placeholder="Tip amount, like 25" hidden style="margin-top:10px;width:100%;min-height:48px;border-radius:12px;border:0;padding:0 14px;font-family:inherit;font-size:16px;font-weight:600;background:rgba(255,255,255,.08);color:#ededed">
   <h2>Card</h2>
   ${card ? `<label class="r" style="cursor:pointer"><span><input type="radio" name="src" value="saved" checked> ${h(card.brand)} ending ${h(card.last4)}</span></label><label class="r" style="cursor:pointer"><span><input type="radio" name="src" value="new"> Use a different card</span></label>` : ""}
-  <div id="cardBox" ${card ? "hidden" : ""} style="margin-top:10px"><div id="card-container"></div></div>
+  <style>.sq-card-iframe-container,.sq-card-component{color-scheme:light}</style><div id="cardBox" ${card ? "hidden" : ""} style="margin-top:10px"><div id="card-container"></div></div>
   ${c ? `<label class="r" id="saveRow" style="cursor:pointer;justify-content:flex-start;gap:10px" ${card ? "hidden" : ""}><input type="checkbox" id="saveCard" style="width:20px;height:20px;margin:2px 0 0;flex:none"><span style="color:#d6d6d6">Save this card for future details${card ? " (replaces your " + h(card.brand) + " ending " + h(card.last4) + ", including for Apex Membership)" : " and Apex Membership"}</span></label>` : ""}
   ${cfg.sandbox ? `<p class="note">Test mode: use card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</p>` : ""}
   <div class="acts"><button class="btn" id="payBtn">${tipMode ? "Send tip" : "Pay " + money(due)}</button></div>
