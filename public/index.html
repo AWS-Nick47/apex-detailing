@@ -751,9 +751,10 @@ body.acct-open { overflow: hidden; }
 .pay-opt input:focus-visible + span { outline: 2px solid var(--fg); }
 .sq-card { margin-top: 12px; }
 .sq-card [hidden] { display: none !important; }
-.sq-form { background: #fff; border-radius: 14px; padding: 8px 12px 10px; color: #333; }
+.sq-form { color: var(--muted); }
 .sq-form #sq-card-container { min-height: 56px; }
-.sq-note { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: #555; margin-top: 4px; }
+.sq-note { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+#sqTest, .acct-sq-test { display: block; } .sq-note[hidden] { display: none !important; } .sq-note .nw { white-space: nowrap; }
 .sq-note svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .sq-saved { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); font-size: 14.5px; }
 .sq-saved svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
@@ -2208,7 +2209,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             </div>
             <div class="sq-card" id="sqCard" hidden>
               <div class="sq-saved" id="sqSaved" hidden><svg aria-hidden="true"><use href="#i-lock"/></svg><span>We'll use your <b id="sqSavedTxt"></b> on file. <button type="button" class="link-btn" id="sqUseNew">Use a different card</button></span></div>
-              <div class="sq-form" id="sqForm"><div id="sq-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site. Nothing is charged until after your detail.</small><small class="sq-note" id="sqTest" hidden>Test mode: card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</small></div>
+              <div class="sq-form" id="sqForm"><div id="sq-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site. Nothing is charged until after your detail.</small><small class="sq-note" id="sqTest" hidden>Test mode: card <span class="nw">4111 1111 1111 1111</span>, any future date, any CVV, ZIP 12345.</small></div>
               <p class="sq-repl" id="sqReplace" hidden>This card replaces your saved <b id="sqReplTxt"></b> for everything billed to your card, including <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span>.</p>
             </div>
             <p class="bk-fine mem-pay" id="bkMemPay" hidden></p>
@@ -2414,7 +2415,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <div class="prof-sec acct-card" id="acctCardSec" hidden>
           <h4>Payment card</h4>
           <p class="dc-sub" id="acctCardTxt">No card saved</p>
-          <div class="sq-form" id="acctCardForm" hidden><div id="acct-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site.</small><small class="sq-note acct-sq-test" hidden>Test mode: card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</small></div>
+          <div class="sq-form" id="acctCardForm" hidden><div id="acct-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site.</small><small class="sq-note acct-sq-test" hidden>Test mode: card <span class="nw">4111 1111 1111 1111</span>, any future date, any CVV, ZIP 12345.</small></div>
           <div class="dc-actions"><button type="button" class="btn btn-sm" id="acctCardAdd">Add a card</button><button type="button" class="btn btn-sm btn-ghost" id="acctCardSave" hidden>Save card</button><button type="button" class="link-btn" id="acctCardRemove" hidden>Remove card</button></div>
         </div>
       </div>
@@ -2547,6 +2548,20 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   /* NJ sales tax: every price on the site is before tax. The tax is added to the customer's bill on its own line.
      Same rate and rounding as the server (src/pricing.js), so estimates match the final bill to the cent. Tips aren't taxed. */
   var TAX = { name: "NJ sales tax", rate: 0.06625, pct: "6.625%" };
+  // Square's card fields, styled like our own dark inputs (Square only lets us set these few properties).
+  // If Square ever rejects a property, fall back to the style without the font, then to Square's default.
+  window.__sqStyle = {
+    input: { backgroundColor: "#1d1d1d", color: "#f2f2f2", fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif", fontSize: "16px", fontWeight: "500" },
+    "input::placeholder": { color: "#8c8c8c" },
+    ".input-container": { borderColor: "#3a3a3a", borderRadius: "12px", borderWidth: "1px" },
+    ".input-container.is-focus": { borderColor: "#f2f2f2", borderWidth: "1px" },
+    ".input-container.is-error": { borderColor: "#ff7a7a" },
+    "input.is-error": { color: "#ff9a9a" },
+    ".message-text": { color: "#b8b8b8" }, ".message-icon": { color: "#b8b8b8" },
+    ".message-text.is-error": { color: "#ff9a9a" }, ".message-icon.is-error": { color: "#ff9a9a" }
+  };
+  window.__sqCard = function (p) { var S = window.__sqStyle, S2 = JSON.parse(JSON.stringify(S)); delete S2.input.fontFamily;
+    return p.card({ style: S }).catch(function () { return p.card({ style: S2 }); }).catch(function () { return p.card(); }); };
   function taxCents(c) { c = Math.round(c); return c > 0 ? Math.floor((c * Math.round(TAX.rate * 100000) + 50000) / 100000) : 0; }
   function taxOf(d) { return taxCents(d * 100) / 100; }                               // dollars -> the tax, in dollars
   function withTax(d) { var c = Math.round(d * 100); return (c + taxCents(c)) / 100; }  // dollars -> total with tax
@@ -3294,7 +3309,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         var cfg = j.square; if (!cfg) throw new Error("Saving cards isn't available yet.");
         $(".acct-sq-test").hidden = !cfg.sandbox;
         return new Promise(function (ok, bad) { if (window.Square) return ok(); var sc = document.createElement("script"); sc.src = cfg.script; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); })
-          .then(function () { return window.Square.payments(cfg.appId, cfg.locationId).card(); })
+          .then(function () { return window.__sqCard(window.Square.payments(cfg.appId, cfg.locationId)); })
           .then(function (c) { acCard = c; document.getElementById("acctCardForm").hidden = false; return c.attach("#acct-card-container"); })
           .then(function () { btn.hidden = true; document.getElementById("acctCardSave").hidden = false; });
       }).catch(function (e) { btn.disabled = false; toast(e.message || "The card form didn't load."); });
@@ -3577,7 +3592,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if (!cfg) throw new Error("off");
         $("sqTest").hidden = !cfg.sandbox;
         return new Promise(function (ok, bad) { if (window.Square) return ok(); var sc = document.createElement("script"); sc.src = cfg.script; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); })
-          .then(function () { return window.Square.payments(cfg.appId, cfg.locationId).card(); })
+          .then(function () { return window.__sqCard(window.Square.payments(cfg.appId, cfg.locationId)); })
           .then(function (c) { sqCard = c; return c.attach("#sq-card-container").then(function () { return c; }); });
       }).catch(function (e) { sqLoading = null; if (e && e.message !== "off") { var w = $("bkErr"); w.innerHTML = "The card form didn't load. Choose Pay in person, or refresh and try again."; w.hidden = false; } return null; });
       return sqLoading;
