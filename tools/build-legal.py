@@ -2,8 +2,8 @@ import re, os
 root = os.path.dirname(os.path.abspath(__file__))
 site = open(os.path.join(root, '..', 'apex', 'index.html')).read()
 i = site.index('<svg class="logo"'); logo = site[i:site.index('</svg>', i) + 6]
-UPDATED = "November 1, 2026"
-VERSION = "2026-11-01"
+UPDATED = "November 2, 2026"
+VERSION = "2026-11-02"
 
 def page(slug, title, intro, body):
     nav = ' · '.join(f'<a href="/{s}"{" aria-current=\"page\"" if s == slug else ""}>{t}</a>' for s, t in [("terms", "Terms of Service"), ("membership-terms", "Membership Terms"), ("privacy", "Privacy Policy")])
@@ -186,7 +186,7 @@ mem = '''
 <ul>
 <li>Before your first monthly charge, you can cancel for free.</li>
 <li><b>Finish your 3 months:</b> you keep your visits, the remaining monthly payments in your first 3 months are charged as usual, and your membership ends automatically after your third payment. No fee.</li>
-<li><b>Cancel now:</b> no more monthly charges, and you pay a one-time cancellation fee equal to <b>50% of the monthly payments left</b> in your 3-month minimum, plus New Jersey sales tax. You can still use visits you've already paid for until the end of that month. For example, if you cancel after your first payment, two payments are left, so the fee is one month's price.</li>
+<li><b>Cancel now:</b> no more monthly charges, and you pay a one-time cancellation fee equal to <b>50% of the monthly payments left</b> in your 3-month minimum. No sales tax is added to this fee. You can still use visits you've already paid for until the end of that month. For example, if you cancel after your first payment, two payments are left, so the fee is one month's price.</li>
 </ul>
 <h3>After 3 months</h3>
 <ul>

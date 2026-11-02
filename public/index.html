@@ -237,7 +237,8 @@ section.block { padding-block: clamp(72px, 10vw, 120px); }
 .price { display: flex; align-items: baseline; }
 .price .cur { margin-right: 1px; }
 .odo { display: inline-flex; height: 1em; overflow: hidden; line-height: 1; }
-.odo .col { display: inline-block; height: 1em; overflow: hidden; transition: width .5s cubic-bezier(.2,.7,.2,1), opacity .4s; width: .62em; }
+.odo .col { display: inline-block; height: 1em; overflow: hidden; transition: width .5s cubic-bezier(.2,.7,.2,1), opacity .4s; width: .64em; }
+@supports (overflow: clip) { .odo, .odo .col { overflow-x: visible; overflow-y: clip; } }   /* clip only top/bottom so a wide digit never loses its right edge */
 .odo .col.off { width: 0; opacity: 0; }
 .odo .strip { display: flex; flex-direction: column; transition: transform .9s cubic-bezier(.2,.8,.2,1); }
 .odo .strip span { height: 1em; line-height: 1; text-align: center; }
@@ -648,6 +649,16 @@ body.acct-open { overflow: hidden; }
 .bk-lede b { color: var(--fg); font-weight: 600; }
 .bk-step .field { margin-bottom: 22px; }
 .bk-pk .chip label { display: grid; gap: 2px; padding: 12px 18px; border-radius: 16px; text-align: left; }
+/* package and vehicle pickers: same size, side by side on wide screens, a clean list on phones */
+.bk .chips.bk-pk { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.bk .bk-pk .chip, .bk .bk-pk .chip label { height: 100%; }
+.bk .bk-pk .chip label { display: grid; align-content: center; min-height: 66px; }
+@media (max-width: 600px) {
+  .bk .chips.bk-pk { grid-template-columns: 1fr; gap: 6px; }
+  .bk .bk-pk .chip label { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 40px 10px 16px !important; font-size: 15px !important; }
+  .bk .bk-pk .chip label small { text-align: right; }
+  .bk .bk-pk .chip input:checked + label::after { top: 50%; margin-top: -8px; right: 14px; }
+}
 .bk-pk .chip label small { font-size: 13px; color: var(--muted); }
 .bk-pk .chip input:checked + label small { color: var(--fg); opacity: .8; }
 .bk-needs { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); padding: 12px 14px; border-radius: 14px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
@@ -827,7 +838,8 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .bk .acct-x { width: 44px; height: 44px; }
 .bk-stepl { grid-column: 1 / -1; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--muted); }
 .bk-stepl b { color: var(--fg); }
-.bk-steps { grid-column: 1 / -1; grid-row: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; justify-content: stretch; }
+.bk-steps { grid-column: 1 / -1; grid-row: auto; display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; justify-content: stretch; }
+.bk-steps li[hidden] { display: none; }
 .bk-steps li { min-width: 0; }
 .bk-steps button, .bk-steps li.cur button { width: 100%; display: grid; gap: 7px; justify-items: start; min-height: 30px; padding: 6px 0 0 !important; background: none !important; box-shadow: none !important; border-radius: 0; font-size: 12.5px; color: rgba(255,255,255,.62); }
 .bk-steps button::before { content: ""; width: 100%; height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); transition: background .3s; }
@@ -1103,23 +1115,17 @@ summary .am { font-size: .78em; letter-spacing: .14em; vertical-align: .05em; ma
 .hero-offer .ho-p s { font-size: 14px; font-weight: 500; opacity: .55; margin-right: 6px; }
 .hero-offer .ho-f { font-size: 13px; opacity: .82; }
 .hero .hero-eb { font-size: 15px; opacity: 1; }
-.hero-alt { margin: 14px 0 0; font-size: 14.5px; color: rgba(255,255,255,.86); text-shadow: 0 2px 18px rgba(0,0,0,.4); }
-.hero-alt a, .hero-alt .link-btn { color: #fff; text-decoration: underline; text-underline-offset: 3px; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-@media (max-width: 560px) { .hero-alt .ha-sep { display: none; } .hero-alt .ha-2 { display: block; margin-top: 6px; } }
-@media (min-width: 900px) { .hero-alt { display: none; } }   /* desktop: the nav has Sign in and the footer has the phone number */
 .menu-panel .menu-contact { color: var(--muted); }
 .foot-contact a { color: inherit; }
-.area-towns { margin-top: 18px; display: grid; gap: 8px; font-size: 14.5px; line-height: 1.55; color: var(--muted); max-width: 900px; }
-.area-towns b { color: var(--fg); font-weight: 600; } .area-towns a { color: var(--fg); }
-.plan-commit { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); text-align: left; }
-.plan-commit svg { width: 16px; height: 16px; flex: none; margin-top: 2px; } .plan-commit b { color: var(--fg); font-weight: 600; }
+.plan-commit { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px; font-size: 12.5px; color: var(--muted); text-align: left; }
+.plan-commit svg { width: 14px; height: 14px; flex: none; margin-top: 1px; } .plan-commit b { color: var(--fg); font-weight: 600; }
 .save.fq { display: grid; gap: 2px; }
 .fq-h { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 .fq-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 10px; border-radius: 10px; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .fq-row b { color: var(--fg); font-weight: 650; } .fq-row em { font-style: normal; font-size: 13px; color: var(--accent); margin-left: 8px; }
 .fq-row.on { background: rgba(255,255,255,.07); color: var(--fg); }
 .fq-note { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
-.plan ul.plan-terms { list-style: disc; text-align: left; padding-left: 20px; margin: 14px 4px 0; display: grid; gap: 6px; font-size: 14.5px; line-height: 1.5; color: var(--muted); opacity: 1; }
+.plan ul.plan-terms { list-style: disc; text-align: left; padding-left: 16px; margin: 12px 4px 0; display: grid; gap: 3px; font-size: 11px; line-height: 1.45; color: var(--muted); opacity: .85; }
 @media (max-width: 600px) { .hero-offer { gap: 2px 8px; padding: 7px 14px; border-radius: 16px; margin-top: 14px; } .hero-offer .ho-p { font-size: 19px; } .hero-offer .ho-l { font-size: 14px; } .hero-offer .ho-k { font-size: 10px; } }
 /* end-of-page CTA */
 .endcta { text-align: center; padding-block: clamp(56px, 8vw, 96px) clamp(64px, 9vw, 110px); }
@@ -1139,6 +1145,14 @@ summary .am { font-size: .78em; letter-spacing: .14em; vertical-align: .05em; ma
 .badge svg { width: 14px; height: 14px; }
 .plan-lede { color: var(--muted); font-size: 15px; margin-top: -6px; }
 .plan-field { display: grid; gap: 8px; }
+.plan-lock { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 0; padding: 10px 12px; border-radius: 14px; font-size: 13px; line-height: 1.45; color: var(--muted);
+  background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px var(--line); }
+.plan-lock[hidden] { display: none; }
+.plan-lock svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--fg); }
+.plan-lock b { color: var(--fg); font-weight: 600; }
+.plan-lock.pulse { animation: lockPulse .9s ease; }
+@keyframes lockPulse { 0% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.55); background: rgba(255,255,255,.14); } 100% { box-shadow: inset 0 0 0 1px var(--line); background: rgba(255,255,255,.06); } }
+@media (prefers-reduced-motion: reduce) { .plan-lock.pulse { animation: none; } }
 .plan-field > span { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 4px; border-radius: 14px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
 .seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; padding: 9px 6px; border-radius: 10px; cursor: pointer; transition: background .2s, color .2s; }
@@ -1301,7 +1315,9 @@ main, footer { position: relative; z-index: 1; }
 .hero-copy { position: relative; top: auto; left: auto; right: auto; z-index: 3;
   padding-top: calc(108px + env(safe-area-inset-top, 0px)); padding-bottom: 44px; }
 .hero .hero-socials { position: absolute; bottom: 24px; }
+@media (max-width: 700px) { .hero-copy { padding-top: calc(76px + env(safe-area-inset-top, 0px)); } }
 #path { margin-top: -8vh !important; margin-top: -8svh !important; }
+#path[hidden] + #services { margin-top: -40vh; margin-top: -40svh; }
 .hero .scroll-hint {
   position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 4;
   display: grid; justify-items: center; gap: 0; color: #f5f5f5; opacity: .6; text-transform: none; letter-spacing: 0;
@@ -1324,7 +1340,7 @@ main, footer { position: relative; z-index: 1; }
   background: rgba(255,255,255,.16); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), inset 0 0 0 1px rgba(255,255,255,.14); }
 .reveal { transition: transform 1s cubic-bezier(.16,.84,.24,1), opacity .9s ease; }
 .reveal.pre { transform: translateY(56px) scale(.98); opacity: .001; }
-@media (prefers-reduced-motion: reduce) { .reveal, .reveal.pre { transition: none; transform: none; opacity: 1; } .hero-track { height: auto; } #path { margin-top: 0 !important; } }
+@media (prefers-reduced-motion: reduce) { .reveal, .reveal.pre { transition: none; transform: none; opacity: 1; } .hero-track { height: auto; } #path, #path[hidden] + #services { margin-top: 0 !important; } }
 
 /* Membership: its own headline, card branded like the logo */
 .member-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: end; margin: clamp(110px, 14vw, 170px) 0 36px; }
@@ -1492,6 +1508,100 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   .pbar .pb-s { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pbar .btn { flex: none; padding: 12px 20px; }
 }
+
+/* ---------- booking: before tax until the last step ---------- */
+.bk .t-fin { display: none; }
+.bk.final .t-pre { display: none; } .bk.final .t-fin { display: inline; }
+.bk:not(.final) .summary .lines .ql-tax { display: none; }
+.summary .total .t-tx { font-size: .3em; font-weight: 600; letter-spacing: 0; color: var(--muted); margin-left: 8px; vertical-align: .35em; }
+.bk-tot .t-tx { font-style: normal; font-family: var(--font-body); font-size: 13px; font-weight: 600; color: var(--muted); }
+.summary .ql-mem .t-tx { font-size: 12px; }
+
+/* ---------- booking step 4: Apex Membership ---------- */
+.mx { position: relative; }
+.mx-peak { position: absolute; top: -18px; right: -14px; width: min(42%, 230px); height: 170px; color: #fff; opacity: .05; pointer-events: none; }
+.mx-brand { display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; margin-bottom: 12px; }
+.mx-brand svg { width: 20px; height: 20px; }
+.mx .mx-lede { color: var(--muted); font-size: 15.5px; max-width: 54ch; margin: 0 0 22px; }
+.mx .mx-lede b { color: var(--fg); font-weight: 600; }
+.mx-card { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "price perks" "opts opts" "act act";
+  align-items: center; gap: 22px 30px; padding: 26px; border-radius: 24px;
+  background: linear-gradient(155deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.04) 55%, rgba(255,255,255,.02) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), inset 0 0 0 1px rgba(255,255,255,.13), 0 30px 70px -40px rgba(0,0,0,.9); transition: box-shadow .3s; }
+.mx-card::before { content: ""; position: absolute; top: -45%; right: -15%; width: 70%; height: 120%; background: radial-gradient(closest-side, rgba(255,255,255,.13), transparent); pointer-events: none; }
+.mx.on .mx-card { box-shadow: inset 0 1px 0 rgba(255,255,255,.3), inset 0 0 0 1.5px rgba(255,255,255,.62), 0 30px 70px -40px rgba(0,0,0,.9); }
+.mx-card > * { position: relative; }
+.mx-price { grid-area: price; }
+.mx-big { display: flex; align-items: baseline; gap: 2px; font-family: var(--font-display); line-height: 1; }
+.mx-big b { font-size: 60px; font-weight: 700; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.mx-big span { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.mx-big small { font-family: var(--font-body); font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.mx-n { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.mx-opts { grid-area: opts; display: grid; grid-template-columns: 1fr; gap: 18px 22px; align-items: start; padding-top: 20px; border-top: 1px solid var(--line); }
+.mx-field { display: grid; gap: 8px; }
+.mx-field > span { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.mx-type button { white-space: nowrap; padding-inline: 4px; }
+.mx-opts .mx-type:not(.one) { max-width: 480px; }
+.mx-type.one { justify-self: start; grid-auto-columns: auto; }
+.mx-type.one button { padding-inline: 18px; }
+.mx-type .sw { display: none; }
+.mx-why { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.mx-why[hidden] { display: none; }
+.mx-fq { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mx-fq button { position: relative; display: grid; gap: 3px; align-content: start; text-align: left; padding: 12px 12px 13px; border: 0; border-radius: 16px; font: inherit; color: var(--fg); cursor: pointer;
+  background: var(--well); box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, box-shadow .15s; }
+.mx-fq button[aria-pressed="true"] { background: var(--sel-bg); box-shadow: var(--sel-sh); }
+.mx-fq .fn { font-size: 12.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.mx-fq button[aria-pressed="true"] .fn { color: var(--fg); }
+.mx-fq .fp { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.mx-fq .fl { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.mx-fq .sw { display: none; }
+.mx-fq button:focus-visible, .mx-cta:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.mx-perks { grid-area: perks; list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; font-size: 14.5px; }
+.mx-perks li { display: grid; grid-template-columns: 16px 1fr; gap: 10px; align-items: center; }
+.mx-perks svg { width: 16px; height: 16px; color: var(--accent); }
+.mx-perks .sw { display: none; }
+.mx-act { grid-area: act; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+.mx .mx-cta { min-width: 260px; min-height: 54px; padding-inline: 30px; font-size: 16.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.mx .mx-cta small { font-size: 12.5px; font-weight: 600; opacity: .62; }
+.mx .mx-cta svg { width: 18px; height: 18px; }
+.mx .mx-cta.on { background: rgba(255,255,255,.1); color: var(--fg); box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.62); }
+.mx .mx-cta.pop { animation: mxPop .5s cubic-bezier(.2,.8,.2,1); }
+@keyframes mxPop { 0% { transform: scale(1); } 35% { transform: scale(.96); } 100% { transform: scale(1); } }
+.mx-rm { margin-left: auto; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; padding: 4px 6px; cursor: pointer; }
+.mx-rm[hidden] { display: none; }
+.mx-commit { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12.5px; color: var(--muted); }
+.mx-commit svg { width: 14px; height: 14px; flex: none; } .mx-commit b { color: var(--fg); font-weight: 600; }
+.mx-fine { margin: 14px 6px 0; font-size: 11px; line-height: 1.45; color: var(--muted); opacity: .85; }
+.mx-fine a { color: var(--fg); }
+.bk-madd[hidden] { display: none !important; }
+.bk.memstep .bk-tot { display: none !important; }
+.bk.memstep .bk-nav { justify-content: flex-start; }
+.bk.memstep #bkNext { order: 2; margin-left: auto; }
+.bk.memstep .bk-madd { order: 3; }
+.bk-madd small { font-size: 12px; font-weight: 600; opacity: .62; margin-left: 4px; }
+@media (max-width: 420px) { .bk.memstep .bk-nav .btn { padding-inline: 16px; } .bk.memstep .bk-nav { gap: 8px; } .bk-madd small { display: none; } }
+.mem-pay { margin-top: 12px !important; font-size: 12.5px !important; line-height: 1.5; }
+.mem-pay[hidden] { display: none; }
+.mem-pay b { color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { .mx .mx-cta.pop { animation: none; } }
+@media (max-width: 760px) {
+  .mx-card { grid-template-columns: 1fr; grid-template-areas: "price" "opts" "perks" "act"; gap: 20px; padding: 20px 16px; border-radius: 22px; }
+  .mx-opts { grid-template-columns: 1fr; padding-top: 0; border-top: 0; }
+  .mx-perks { grid-template-columns: 1fr 1fr; gap: 10px 12px; font-size: 14px; line-height: 1.35; }
+  .mx-perks .lw { display: none; } .mx-perks .sw { display: inline; }
+  .mx-perks li { align-items: start; } .mx-perks svg { margin-top: 1px; }
+  .mx-act { display: grid; gap: 10px; padding-top: 0; border-top: 0; }
+  .mx .mx-cta { width: 100%; min-width: 0; }
+  .mx-commit { justify-content: center; } .mx-rm { margin: 0 auto; }
+  .mx-big b { font-size: 52px; }
+  .mx-peak { width: 150px; height: 110px; top: -10px; right: -8px; }
+}
+@media (max-width: 480px) {
+  .mx-fq button { padding: 10px 10px 11px; }
+  .mx-fq .fp { font-size: 21px; }
+  .mx-fq .lw, .mx-type .lw { display: none; } .mx-fq .sw, .mx-type .sw { display: inline; }
+}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -1524,7 +1634,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   <symbol id="i-engine" viewBox="0 0 24 24"><path d="M4 10h2V8h4V6.5h4V8h3l2 2h1.5v6H19l-2 2H8l-2-2H4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 11.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-leather" viewBox="0 0 24 24"><path d="M6 4.5c2 1 4 1.5 6 1.5s4-.5 6-1.5l-1 6.5c-.4 2.5.4 5 1 8.5-2-1-4-1.5-6-1.5s-4 .5-6 1.5c.6-3.5 1.4-6 1-8.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9.5c2 .7 4 .7 6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="1.6 1.6"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-  <symbol id="i-dash" viewBox="0 0 24 24"><path d="M6 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.1" fill="currentColor"/></symbol>
+<symbol id="i-dash" viewBox="0 0 24 24"><path d="M6 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 </svg>
 
 <a class="skip-link" href="#services">Skip to packages</a>
@@ -1560,7 +1671,6 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <a class="btn btn-ghost" href="#services">See packages</a>
       </div>
       <noscript><p class="nojs">Online booking needs JavaScript. To book, text or call <a href="sms:+17322067084">(732) 206-7084</a>.</p></noscript>
-      <p class="hero-alt">Questions? <a href="sms:+17322067084">Text</a> or <a href="tel:+17322067084">call (732) 206-7084</a><span class="ha-sep"> · </span><span class="ha-2">Been here before? <button type="button" class="link-btn" data-acct="open" data-intent="rebook">Sign in to rebook</button></span></p>
     </div>
     <div class="hero-socials" id="heroSocials" aria-label="Social media">
       <div class="socials">
@@ -1754,6 +1864,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               <button type="button" data-v="int" aria-pressed="false"><svg><use href="#i-int"/></svg>Interior</button>
               <button type="button" data-v="both" aria-pressed="true"><svg><use href="#i-full"/></svg>Wash + interior<span class="pop">Recommended</span></button>
             </div>
+            <p class="plan-lock" id="planLock" role="status" hidden></p>
           </div>
           <div class="plan-field">
             <span>Vehicle</span>
@@ -1840,7 +1951,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="res-incl"><h4>Included in this detail</h4><ul id="resIncl"></ul></div>
           <div class="res-cta">
             <div class="res-price"><span>Full Detail starts at</span><span class="res-pr"><s id="resReg">$249</s><strong id="resPrice">$179</strong><small class="res-tax">+ tax</small></span></div>
-            <a class="btn" href="#book" id="resBook">Book this detail</a>
+            <a class="btn" href="#book" id="resBook">Book a detail</a>
             <a class="res-link" href="#services">Compare packages</a>
           </div>
         </div>
@@ -1876,10 +1987,6 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <div class="map-chip" id="mapChip"><span class="mc-dot"></span><span id="mapChipText">Based in Brick · we come to you</span></div>
         <div class="map-key"><span class="ring"></span>Service area, about 12 miles</div>
         <a class="osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>
-      </div>
-      <div class="area-towns reveal">
-        <p><b>No travel fee:</b> Brick, Point Pleasant, Point Pleasant Beach, Bay Head, Mantoloking, Brielle, Manasquan, Sea Girt, Spring Lake, Belmar, Wall, Lakewood, Howell, Farmingdale, Toms River, Beachwood, Pine Beach, Ocean Gate, Island Heights, Bayville, Berkeley Township, Lavallette, Seaside Heights, Seaside Park, Lakehurst and Neptune.</p>
-        <p><b>+$15 travel:</b> Jackson, Manchester, Lacey, Forked River, Waretown, Asbury Park, Ocean Township, Long Branch, Freehold, Marlboro and Holmdel. <b>+$30 travel:</b> Barnegat, Stafford, Manahawkin, Ship Bottom, New Egypt, Red Bank and Middletown. Farther than that? Text us at <a href="sms:+17322067084">(732) 206-7084</a>.</p>
       </div>
     </div>
   </section>
@@ -1955,12 +2062,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   <div class="bk-top">
     <div class="wrap bk-top-in">
       <div class="bk-head"><span class="acct-preview" hidden>Preview · live booking coming soon</span><h2 id="bkTitle">Book your detail</h2></div>
-      <p class="bk-stepl" id="bkStepL" aria-live="polite">Step 1 of 4 · Service</p>
+      <p class="bk-stepl" id="bkStepL" aria-live="polite">Step 1 of 5 · Service</p>
       <ol class="bk-steps" id="bkSteps" aria-label="Booking steps">
         <li data-s="1"><button type="button" data-go="1"><i>1</i><span>Service</span></button></li>
         <li data-s="2"><button type="button" data-go="2"><i>2</i><span>Car &amp; place</span></button></li>
         <li data-s="3"><button type="button" data-go="3"><i>3</i><span>Date &amp; time</span></button></li>
-        <li data-s="4"><button type="button" data-go="4"><i>4</i><span>Your info</span></button></li>
+        <li data-s="4"><button type="button" data-go="4"><i>4</i><span>Membership</span></button></li>
+        <li data-s="5"><button type="button" data-go="5"><i>5</i><span>Your info</span></button></li>
       </ol>
       <button type="button" class="acct-x" data-bk="close" aria-label="Close booking"><svg><use href="#i-x"/></svg></button>
     </div>
@@ -1982,10 +2090,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             </div>
           </div>
           <div class="field"><span>Vehicle size</span>
-            <div class="chips">
-              <div class="chip"><input type="radio" name="size" id="q-size-0" value="0" checked><label for="q-size-0">Sedan / Coupe</label></div>
-              <div class="chip"><input type="radio" name="size" id="q-size-1" value="1"><label for="q-size-1">SUV / Crossover</label></div>
-              <div class="chip"><input type="radio" name="size" id="q-size-2" value="2"><label for="q-size-2">Truck / 3-row</label></div>
+            <div class="chips bk-pk bk-sz">
+              <div class="chip"><input type="radio" name="size" id="q-size-0" value="0" checked><label for="q-size-0"><b>Sedan</b><small>Civic, Camry, Model&nbsp;3</small></label></div>
+              <div class="chip"><input type="radio" name="size" id="q-size-1" value="1"><label for="q-size-1"><b>SUV</b><small>RAV4, CR&#8209;V, Model&nbsp;Y</small></label></div>
+              <div class="chip"><input type="radio" name="size" id="q-size-2" value="2"><label for="q-size-2"><b>Truck</b><small>F&#8209;150, Tahoe, Odyssey</small></label></div>
             </div>
           </div>
           <div class="field"><span>Add-ons</span>
@@ -2039,7 +2147,48 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <input type="date" id="q-date" min="" hidden><input type="hidden" id="q-time">
         </section>
 
-        <section class="bk-step" data-step="4" hidden>
+        <section class="bk-step bk-step-mem" data-step="4" hidden>
+          <div class="mx" id="bkMem">
+            <svg class="mx-peak" aria-hidden="true"><use href="#peak"/></svg>
+            <div class="mx-brand"><svg aria-hidden="true"><use href="#peak"/></svg><span>Apex Membership</span></div>
+            <h3>Keep it this clean.</h3>
+            <p class="mx-lede">Your <b data-f="pkgName">detail</b> gets your car to peak condition. Apex Membership keeps it there: we come back on a schedule, at times you pick.</p>
+            <div class="mx-card">
+              <div class="mx-price">
+                <div class="mx-big"><b id="bkMemMonthly">$95</b><span>/mo</span><small>+ tax</small></div>
+                <p class="mx-n" id="bkMemN">1 visit a month · $95 a visit</p>
+              </div>
+              <div class="mx-opts">
+                <div class="mx-field"><span>Each visit</span>
+                  <div class="seg mx-type" id="bkMemType" role="group" aria-label="Each visit"><button type="button" data-v="wash" aria-pressed="false">Wash</button><button type="button" data-v="int" aria-pressed="false">Interior</button><button type="button" data-v="both" aria-pressed="true"><span class="lw">Wash + interior</span><span class="sw">Wash + int.</span></button></div>
+                  <p class="mx-why" id="bkMemWhy" hidden></p>
+                </div>
+                <div class="mx-field"><span>How often</span>
+                  <div class="mx-fq" id="bkMemFreq" role="group" aria-label="How often">
+                    <button type="button" data-v="1" aria-pressed="true"><span class="fn">Monthly</span><b class="fp">$95</b><small class="fl">a visit</small></button>
+                    <button type="button" data-v="2" aria-pressed="false"><span class="fn"><span class="lw">Every 2 weeks</span><span class="sw">Every 2 wks</span></span><b class="fp"></b><small class="fl"></small></button>
+                    <button type="button" data-v="4" aria-pressed="false"><span class="fn">Weekly</span><b class="fp"></b><small class="fl"></small></button>
+                  </div>
+                </div>
+              </div>
+              <ul class="mx-perks">
+                <li><svg aria-hidden="true"><use href="#check"/></svg><span><span class="lw">Priority booking on weekends</span><span class="sw">Priority weekends</span></span></li>
+                <li><svg aria-hidden="true"><use href="#check"/></svg><span><span class="lw">10% off all add-ons</span><span class="sw">10% off add-ons</span></span></li>
+                <li><svg aria-hidden="true"><use href="#check"/></svg><span><span class="lw">Pick your own visit times</span><span class="sw">You pick the times</span></span></li>
+                <li><svg aria-hidden="true"><use href="#check"/></svg><span><span class="lw">No travel fee on visits</span><span class="sw">No travel fee</span></span></li>
+              </ul>
+              <div class="mx-act">
+                <button type="button" class="btn mx-cta" id="bkMemAdd" aria-pressed="false">Add to my booking</button>
+                <button type="button" class="lnk mx-rm" id="bkMemRm" hidden>Remove Apex Membership</button>
+                <p class="mx-commit"><svg aria-hidden="true"><use href="#i-cal"/></svg><span><b>3-month minimum.</b> Then pause or cancel anytime.</span></p>
+              </div>
+            </div>
+            <p class="mx-fine" id="bkMemMore"></p>
+            <input type="checkbox" id="bkMemOn" hidden>
+          </div>
+        </section>
+
+        <section class="bk-step" data-step="5" hidden>
           <h3>Your info</h3>
           <div class="bk-grid2">
             <label class="acct-field bk-wide"><span>Name</span><input id="bkName" autocomplete="name" required></label>
@@ -2062,24 +2211,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               <div class="sq-form" id="sqForm"><div id="sq-card-container"></div><small class="sq-note"><svg aria-hidden="true"><use href="#i-lock"/></svg>Secured by Square. Card numbers never touch our site. Nothing is charged until after your detail.</small><small class="sq-note" id="sqTest" hidden>Test mode: card 4111 1111 1111 1111, any future date, any CVV, ZIP 12345.</small></div>
               <p class="sq-repl" id="sqReplace" hidden>This card replaces your saved <b id="sqReplTxt"></b> for everything billed to your card, including <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span>.</p>
             </div>
+            <p class="bk-fine mem-pay" id="bkMemPay" hidden></p>
             <div class="card-ph" id="cardPh" hidden><svg aria-hidden="true"><use href="#i-lock"/></svg><div><b>Secure card entry goes here</b><small>Handled by the payment processor once it's connected. Card numbers never touch this site.</small></div></div>
           </div>
 
-          <div class="bk-box bk-mem" id="bkMem">
-            <div class="mem-glow" aria-hidden="true"></div>
-            <div class="mem-top">
-              <div class="plan-brand"><svg aria-hidden="true"><use href="#peak"/></svg><span>Apex Membership</span></div>
-              <span class="mem-save" id="bkMemSave">Save $0/mo</span>
-            </div>
-            <p class="mem-hook">After today, keep it this clean for <b id="bkMemMonthly">$0/mo</b>. That's <span id="bkMemN">1 visit a month</span> at <b id="bkMemPer">$0</b> each. 3-month minimum, then pause or cancel anytime.</p>
-            <ul class="mem-perks"><li>Up to 20% off with weekly visits</li><li>Priority weekends</li><li>10% off add-ons</li><li>Pick your own visit times</li></ul>
-            <div class="mem-pick">
-              <div class="seg" id="bkMemType" role="group" aria-label="Each visit"><button type="button" data-v="wash" aria-pressed="false">Wash</button><button type="button" data-v="int" aria-pressed="false">Interior</button><button type="button" data-v="both" aria-pressed="true">Wash + int.</button></div>
-              <div class="seg" id="bkMemFreq" role="group" aria-label="How often"><button type="button" data-v="1" aria-pressed="true">Monthly</button><button type="button" data-v="2" aria-pressed="false">Every 2 wks</button><button type="button" data-v="4" aria-pressed="false">Weekly</button></div>
-            </div>
-            <label class="mem-toggle"><input type="checkbox" id="bkMemOn"><span class="tgl" aria-hidden="true"></span><span><b>Add Apex Membership after this detail</b><small id="bkMemTxt"></small></span></label>
-            <p class="bk-fine mem-fine" id="bkMemMore"></p>
-          </div>
           <div class="bk-review" id="bkReview" aria-label="Your booking"></div>
           <div class="bk-consent">
             <label class="acct-check" id="bkMemAuthRow" hidden><input type="checkbox" id="bkMemAuth"> <span>I authorize Apex Detailing LLC to charge my card <b id="bkMemAuthAmt"></b> starting one month after this detail and on that date every month until I cancel, with a 3-month minimum, as described in the <a href="/membership-terms" target="_blank" rel="noopener">Membership Terms</a>.</span></label>
@@ -2104,6 +2239,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <div class="bk-nav">
           <button type="button" class="btn btn-ghost" id="bkBack">Back</button>
           <button type="button" class="bk-tot" id="bkTotBtn" aria-controls="bkSum" aria-expanded="false"><b id="bkTot"></b><small>Details <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12l5-5 5 5"/></svg></small></button>
+          <button type="button" class="btn bk-madd" id="bkMemAdd2" hidden>Add</button>
           <button type="submit" class="btn" id="bkNext">Continue</button>
         </div>
       </div>
@@ -2118,7 +2254,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div><svg><use href="#i-cal"/></svg><span id="bkWhen">Pick a day and time</span></div>
           <div><svg><use href="#i-ext"/></svg><span id="bkCar">Your car</span></div>
         </div>
-        <p class="fine">Includes NJ sales tax. Pay after the job. Final price depends on condition; we confirm before we start, never after.</p>
+        <p class="fine"><span class="t-pre">Plus NJ sales tax, added at the end.</span><span class="t-fin">Includes NJ sales tax.</span> Pay after the job. Final price depends on condition; we confirm before we start, never after.</p>
       </aside>
       <div class="bk-sum-scrim" data-sum="close"></div>
     </form>
@@ -2538,12 +2674,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var q = current();
     ADDONS.forEach(function (a) { var em = document.querySelector('label[for="q-add-' + a.id + '"] em'); if (em) em.textContent = "+$" + addPrice(a); });
     if (window.__pnReset) window.__pnReset();   // a price note from the server is out of date once the booking changes
-    document.getElementById("qTotal").innerHTML = usdBig(q.grand);
+    // before tax until the last booking step, then the full breakdown (CSS shows one or the other via .bk.final)
+    document.getElementById("qTotal").innerHTML = '<span class="t-pre">' + usdBig(q.total) + '<small class="t-tx">+ tax</small></span><span class="t-fin">' + usdBig(q.grand) + "</span>";
     var html = "<div><span>" + NAMES[q.pkg] + " · " + SIZES[q.size] + "</span><span>$" + q.base + "</span></div>";
     q.adds.forEach(function (a) { html += "<div><span>" + a.name + "</span><span>+$" + addPrice(a) + "</span></div>"; });
     if (q.travel) html += "<div><span>Travel fee (" + Math.round(window.__travel.miles) + " mi)</span><span>+$" + q.travel + "</span></div>";
     html += '<div class="ql-tax"><span>' + TAX.name + " (" + TAX.pct + ")</span><span>+" + usd(q.tax) + "</span></div>";
-    if (window.__plan) html += '<div class="ql-mem"><span>' + AMH + " " + window.__plan.label + "</span><span>$" + window.__plan.monthly + "/mo + tax</span></div>";
+    if (window.__plan) html += '<div class="ql-mem"><span>' + AMH + " " + window.__plan.label + "</span><span>$" + window.__plan.monthly + '/mo<small class="t-tx"> + tax</small></span></div>';
     document.getElementById("qLines").innerHTML = html;
     if (window.__bar) window.__bar(q);
     if (window.__bkSum) window.__bkSum(q);
@@ -2635,6 +2772,26 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   var PREREQ = { wash: ["exterior", "full"], int: ["interior", "full"], both: ["full"] };   // which detail unlocks each plan
   var STARTER = { wash: "exterior", int: "interior", both: "full" };                       // cheapest qualifying detail
   var PLAN_FOR_PKG = { exterior: "wash", interior: "int", full: "both" };
+  // plain-English reasons a plan needs a certain first detail (shown instead of silently switching the choice)
+  var PLAN_TXT = { wash: "The Wash plan", int: "The Interior plan", both: "The Wash + interior plan" };
+  var NEEDS_TXT = { wash: "an Exterior or Full Detail", int: "an Interior or Full Detail", both: "a Full Detail" };
+  var A_PKG = { exterior: "an Exterior", interior: "an Interior", full: "a Full Detail" };
+  var planMsg = null, planMsgT = null;
+  function planFlash(html) {
+    planMsg = html; clearTimeout(planMsgT);
+    planMsgT = setTimeout(function () { planMsg = null; planLockShow(); }, 8000);
+    planLockShow(true);
+    ["addedNote", "qAddNote"].forEach(function (id) { var el = document.getElementById(id); if (el) { el.innerHTML = html; el.classList.remove("cleared"); } });
+    clearTimeout(clearTimer); clearTimer = setTimeout(function () { ["addedNote", "qAddNote"].forEach(function (id) { var el = document.getElementById(id); if (el && el.innerHTML === html) el.innerHTML = ""; }); }, 6000);
+  }
+  function planLockShow(pulse) {
+    var el = document.getElementById("planLock"); if (!el) return;
+    var pkg = val("pkg"), t = planState.type, html = planMsg;
+    if (!html && !planState.added && PREREQ[t].indexOf(pkg) < 0)
+      html = "<b>" + PLAN_TXT[t] + " starts after " + NEEDS_TXT[t] + ".</b> You picked " + A_PKG[pkg] + " above, so starting this plan switches your detail to " + A_PKG[STARTER[t]] + ".";
+    el.hidden = !html; if (html) el.innerHTML = '<svg aria-hidden="true"><use href="#i-info"/></svg><span>' + html + "</span>";
+    if (pulse && html) { el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
+  }
   function planPrice(type, size, freq) {
     var m = PRICING.membership[type], base = round5(REG[m.of][size] * m.pct);
     var perVisit = round5(base * (1 - (PRICING.freqDiscount[freq] || 0)));
@@ -2648,6 +2805,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     document.querySelectorAll("#" + id + " button").forEach(function (b) {
       b.addEventListener("click", function () {
         planState[key] = key === "freq" ? +b.dataset.v : b.dataset.v;
+        if (key === "type" && planState.added && PREREQ[b.dataset.v].indexOf(val("pkg")) < 0) {
+          var was = val("pkg");
+          planFlash("<b>" + PLAN_TXT[b.dataset.v] + " starts after " + NEEDS_TXT[b.dataset.v] + ",</b> so we switched your detail from " + A_PKG[was].replace(/^an? /, "") + " to " + A_PKG[STARTER[b.dataset.v]].replace(/^an? /, "") + ".");
+          selectPkg(STARTER[b.dataset.v]);
+        }
         document.querySelectorAll("#" + id + " button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
         updatePlan();
       });
@@ -2679,10 +2841,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     if (window.__memText) window.__memText();
     if (window.__barPlan) window.__barPlan();
     updateQuote();
+    planLockShow();
   }
   // keep the plan valid for the package being booked
   function coercePlan(pkg) {
     if (!planState.added || PREREQ[planState.type].indexOf(pkg) > -1) return false;
+    planFlash("<b>" + PLAN_TXT[planState.type] + " starts after " + NEEDS_TXT[planState.type] + ",</b> so with " + A_PKG[pkg] + " your " + AMH + " is now " + PLAN_TXT[PLAN_FOR_PKG[pkg]].replace(/^The /, "the ") + ".");
     planState.type = PLAN_FOR_PKG[pkg];
     document.querySelectorAll("#planType button").forEach(function (x) { x.setAttribute("aria-pressed", String(x.dataset.v === planState.type)); });
     return true;
@@ -3000,7 +3164,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       ADDONS.forEach(function (a) { var cb = document.getElementById("q-add-" + a.id); if (cb) cb.checked = h.adds.indexOf(a.id) > -1; });
       updateQuote(); if (typeof syncChips === "function") syncChips();
       close(true);
-      window.__bk.open({ step: slot ? 4 : 3, slot: slot, focusBack: document.querySelector(".acct-btn"), note: "Filled in from your " + h.date + " detail on your " + h.car.replace(/^\d{4} /, "") + (slot ? ". Check your info and send it." : ". Just pick a day and time.") });
+      window.__bk.open({ step: slot ? 5 : 3, slot: slot, focusBack: document.querySelector(".acct-btn"), note: "Filled in from your " + h.date + " detail on your " + h.car.replace(/^\d{4} /, "") + (slot ? ". Check your info and send it." : ". Just pick a day and time.") });
     }
     // ---- Apex Membership (live) ----
     var PLAN_NAMES = { wash: "Wash", int: "Interior", both: "Wash + interior" }, FREQ_NAMES = { 1: "Monthly", 2: "Every 2 weeks", 4: "Weekly" };
@@ -3036,7 +3200,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           '<button type="button" class="dact" id="mlChange"><b>Change plan</b><span>Switch how often or what\'s included</span></button>' +
           '</div><div id="mlPanel"></div>';
         if (M.status !== "ending") html += '<button type="button" class="link-btn danger" id="mlCancel">Cancel Apex Membership</button>';
-        else if (M.cancelMode === "finish" && M.minLeft > 0) html += '<button type="button" class="link-btn danger" data-cancel="now">Cancel now instead · $' + M.cancelFee + ' fee + tax</button>';
+        else if (M.cancelMode === "finish" && M.minLeft > 0) html += '<button type="button" class="link-btn danger" data-cancel="now">Cancel now instead · $' + M.cancelFee + ' fee</button>';
         html += '<p class="dc-fine" style="text-align:center"><a href="/membership-terms" target="_blank" rel="noopener">Membership Terms</a></p>';
       } else if (CANSTART) {
         var C = CANSTART, t0 = C.plans[C.plans.length - 1];
@@ -3102,7 +3266,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         if (M.minLeft > 0) {
           memPanel('<div class="dcard"><div class="dc-t">Cancel during your first 3 months</div><div class="dc-sub">You have ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left in your 3-month minimum. Pick one:</div><div class="ml-opts" style="margin-top:8px">' +
             '<button type="button" class="ml-opt" data-cancel="finish"><b>Finish my 3 months</b><span>Keep your visits. The remaining payment' + (M.minLeft > 1 ? 's go' : ' goes') + ' through as usual, then it ends automatically. No fee.</span></button>' +
-            '<button type="button" class="ml-opt" data-cancel="now"><b>Cancel now · $' + M.cancelFee + ' fee + tax</b><span>Half of the ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left, charged to your card. No more monthly charges.</span></button></div></div>');
+            '<button type="button" class="ml-opt" data-cancel="now"><b>Cancel now · $' + M.cancelFee + ' fee</b><span>Half of the ' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left, charged to your card. No more monthly charges.</span></button></div></div>');
         } else {
           memPanel('<div class="dcard"><div class="dc-t">Cancel Apex Membership?</div><div class="dc-sub">No fee. No more charges. You keep it through ' + esc(M.periodEnd ? dnice(dprev(M.periodEnd)) : "today") + '.</div><div class="ml-opts" style="margin-top:8px"><button type="button" class="ml-opt" data-cancel="after"><b>Cancel my membership</b></button></div></div>');
         }
@@ -3110,7 +3274,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       }
       var cx = t.closest("[data-cancel]");
       if (cx) {
-        if (!confirm(cx.dataset.cancel === "now" && MEMBER.minLeft > 0 && MEMBER.paymentsMade > 0 ? "Cancel now and pay the $" + MEMBER.cancelFee + " fee plus " + TAX.name + " (" + usd(MEMBER.cancelFeeTotal || withTax(MEMBER.cancelFee)) + ")?" : "Cancel your membership?")) return;
+        if (!confirm(cx.dataset.cancel === "now" && MEMBER.minLeft > 0 && MEMBER.paymentsMade > 0 ? "Cancel now and pay the $" + MEMBER.cancelFee + " cancellation fee?" : "Cancel your membership?")) return;
         post("/api/member/cancel", { mode: cx.dataset.cancel }).then(function (x) { toast(x.ok ? "Done" : x.j.error); if (x.ok) memPanel('<div class="dcard"><div class="dc-sub">' + esc(x.j.message) + '</div></div>'); loadMe().then(function () { fill(); tab("plan"); if (x.ok) memPanel('<div class="dcard"><div class="dc-sub">' + esc(x.j.message) + '</div></div>'); }); });
         return;
       }
@@ -3157,6 +3321,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   (function () {
     var bk = document.getElementById("bk"), form = document.getElementById("quoteForm"), done = document.getElementById("bkDone");
     var step = 1, maxStep = 1, sel = { date: null, time: null }, viewMonth = null, lastFocus = null;
+    var LAST = 5, MEMSTEP = 4;   // 1 Service · 2 Car & place · 3 Date & time · 4 Apex Membership · 5 Your info
+    function memberNow() { return !!(window.__acct && window.__acct.isIn() && window.__acct.mode() === "member"); }
+    function hasMemStep() { return !memberNow(); }   // members already have it, so they skip the membership page
+    function order() { return hasMemStep() ? [1, 2, 3, 4, 5] : [1, 2, 3, 5]; }
+    function nextOf(n) { var o = order(), i = o.indexOf(n); return i > -1 && i < o.length - 1 ? o[i + 1] : LAST; }
+    function prevOf(n) { var o = order(), i = o.indexOf(n); return i > 0 ? o[i - 1] : 1; }
 
     // Weekly availability (minutes after midnight). Fake for now: school/work days have short windows.
     var WEEK = { 0: [600, 960], 1: [870, 1140], 2: [540, 780], 3: [870, 1140], 4: null, 5: [480, 720], 6: [480, 1020] };
@@ -3282,13 +3452,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       document.querySelectorAll("[data-pp]").forEach(function (n) { var k = n.dataset.pp, now = pkgPrice(k, q.size); n.innerHTML = (now < REG[k][q.size] ? "<s>$" + REG[k][q.size] + "</s>" : "") + "$" + now + " · " + TIMES[k][q.size]; });
       document.querySelectorAll('#bk [data-f="pkgName"]').forEach(function (n) { n.textContent = NAMES[q.pkg]; });
       document.querySelectorAll('#bk [data-f="durText"]').forEach(function (n) { n.textContent = durText(dur()); });
-      $("bkTot").textContent = usd(q.grand);
+      totRender(q);
       ["exterior", "full"].forEach(function (k) { var r = $("q-pkg-" + k); if (!r) return; var cold = winterNow(); r.disabled = cold; r.closest(".chip").classList.toggle("is-winter", cold); });
       memText();
       if (!bk.hidden && step === 3) renderCal(); else if (sel.time != null) { var p = sel.date.split("-"); if ((slots(new Date(+p[0], +p[1] - 1, +p[2])) || []).indexOf(sel.time) < 0) sel.time = null; syncWhen(); }
       if (step === 2) accessCheck();
     }
     window.__bkSum = sumRefresh;
+    function totRender(q) { q = q || current(); $("bkTot").innerHTML = '<span class="t-pre">' + usd(q.total) + '<em class="t-tx"> + tax</em></span><span class="t-fin">' + usd(q.grand) + "</span>"; }
     // phone: the total in the bottom bar opens the summary as a sheet
     function sumSheet(on) { bk.classList.toggle("sum-open", !!on); $("bkTotBtn").setAttribute("aria-expanded", String(!!on)); }
     $("bkTotBtn").addEventListener("click", function () { sumSheet(!bk.classList.contains("sum-open")); });
@@ -3304,6 +3475,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         '<div class="rv"><span>Car</span><b>' + esc((car || SIZES[q.size]) + ($("bkColor").value ? " · " + $("bkColor").value : "")) + '</b></div>' +
         '<div class="rv"><span>Where</span><b>' + esc(where || "—") + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
         '<div class="rv"><span>' + (needs().water ? "Water · outlet" : "Outlet") + '</span><b>' + esc([needs().water ? ({ yes: "Spigot yes", no: "No spigot" }[radio("water")] || "Spigot not answered") : null, { yes: "Outlet yes", no: "No outlet" }[radio("power")] || "Outlet not answered"].filter(Boolean).join(" · ")) + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
+        (window.__plan ? '<div class="rv"><span>' + AMH + '</span><b>' + esc(window.__plan.label) + " · $" + window.__plan.monthly + '/mo + tax <button type="button" class="lnk" data-rv="4">Edit</button></b></div>' : "") +
         '<div class="rv"><span>Price</span><b>' + usd(q.total) + '</b></div>' +
         '<div class="rv"><span>' + TAX.name + ' (' + TAX.pct + ')</span><b>' + usd(q.tax) + '</b></div>' +
         '<div class="rv tot"><span>Estimate</span><b>' + usd(q.grand) + '</b></div>';
@@ -3330,33 +3502,63 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var on = !!window.__plan, P = window.__planInfo, q = current(); $("bkMemOn").checked = on;
       // offer the plan that fits this package (Interior booking -> Interior plan, etc.)
       var ps = window.__planState;
-      if (ps && PREREQ[ps.type].indexOf(q.pkg) < 0) {
+      if (ps && (ps.added || !bk.hidden) && PREREQ[ps.type].indexOf(q.pkg) < 0) {
         ps.type = PLAN_FOR_PKG[q.pkg];
         document.querySelectorAll("#planType button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === ps.type)); });
         window.__updatePlan(); return;
       }
-      var memberNow = window.__acct && window.__acct.isIn() && window.__acct.mode() === "member";
-      $("bkMem").hidden = !!memberNow;
       $("bkMem").classList.toggle("on", on);
-      document.querySelectorAll("#bkMemType button").forEach(function (b) { var ok = PREREQ[b.dataset.v].indexOf(q.pkg) > -1; b.disabled = !ok; b.hidden = !ok; });
+      var nTypes = 0;
+      document.querySelectorAll("#bkMemType button").forEach(function (b) { var ok = PREREQ[b.dataset.v].indexOf(q.pkg) > -1; b.disabled = !ok; b.hidden = !ok; if (ok) nTypes++; });
+      $("bkMemType").classList.toggle("one", nTypes === 1);
+      // why some plans aren't offered for this detail
+      var why = { exterior: "Interior plans start after an Interior or Full Detail, and Wash + interior after a Full Detail.", interior: "Wash plans start after an Exterior or Full Detail, and Wash + interior after a Full Detail." }[q.pkg];
+      $("bkMemWhy").hidden = !why; $("bkMemWhy").textContent = why || "";
       if (P) {
-        $("bkMemSave").textContent = "$" + P.perVisit + " a visit";
-        $("bkMemMonthly").textContent = "$" + P.monthly + "/mo + tax";
-        $("bkMemPer").textContent = "$" + P.perVisit;
-        $("bkMemN").textContent = P.freq === 1 ? "1 visit a month" : P.freq + " visits a month";
-        $("bkMemTxt").textContent = on ? P.label + " · $" + P.monthly + "/mo + tax, starting after this detail" : P.label + " · $" + P.monthly + "/mo + tax";
+        var base1 = window.__planPrice(P.type, q.size, 1).perVisit;
+        $("bkMemMonthly").textContent = "$" + P.monthly;
+        $("bkMemN").textContent = (P.freq === 1 ? "1 visit a month" : P.freq + " visits a month") + " · $" + P.perVisit + " a visit";
+        document.querySelectorAll("#bkMemFreq button").forEach(function (b) { var pv = window.__planPrice(P.type, q.size, +b.dataset.v).perVisit, less = base1 - pv;
+          b.querySelector(".fp").textContent = "$" + pv; b.querySelector(".fl").textContent = less > 0 ? "$" + less + " less a visit" : "a visit"; });
+        $("bkMemAdd").innerHTML = on ? '<svg aria-hidden="true"><use href="#check"/></svg>Added to your booking' : "Add for $" + P.monthly + '/mo<small>+ tax</small>';
+        $("bkMemAuthAmt").textContent = usd(withTax(P.monthly)) + "/mo ($" + P.monthly + " + " + usd(taxOf(P.monthly)) + " " + TAX.name + ")";
       }
-      var cash = radio("pay") !== "card";
+      $("bkMemAdd").setAttribute("aria-pressed", String(on)); $("bkMemAdd").classList.toggle("on", on);
+      $("bkMemRm").hidden = !on;
+      $("bkMemAuthRow").hidden = !on;
       var MTL = ' <a href="/membership-terms" target="_blank" rel="noopener">Membership Terms</a>';
-      $("bkMemAuthRow").hidden = !on; if (P) $("bkMemAuthAmt").textContent = usd(withTax(P.monthly)) + "/mo ($" + P.monthly + " + " + usd(taxOf(P.monthly)) + " " + TAX.name + ")";
-      $("bkMemMore").innerHTML = (!on ? "Billing starts one month after this detail, then on that same date every month. 3-month minimum, then pause or cancel anytime. Prices may change with 30 days' notice."
-        : cash ? "<b>Paying in person today?</b> That's fine. You'll have 14 days after your detail to add a card in your Apex account, and your membership bills to it one month after the detail. 3-month minimum, then pause or cancel anytime."
-        : "We charge this detail after it's done. Your membership then bills to the same card one month later, and on that date every month. 3-month minimum, then pause or cancel anytime.") + MTL;
+      $("bkMemMore").innerHTML = "Billed to your card one month after this detail, then on that date every month, plus NJ sales tax. Visits are maintenance cleans; heavy messes are quoted first. Prices can change with 30 days' notice." + MTL;
+      var cash = radio("pay") !== "card";
+      $("bkMemPay").hidden = !on;
+      $("bkMemPay").innerHTML = !on ? "" : cash ? "<b>Paying in person today?</b> That's fine. You'll have 14 days after your detail to add a card in your Apex account. Your " + AMH + " bills to it one month after the detail."
+        : "We charge this detail after it's done. Your " + AMH + " then bills to the same card one month later, and on that date every month.";
       [["#planFreq", "#bkMemFreq"], ["#planType", "#bkMemType"]].forEach(function (pr) {
         var src = document.querySelector(pr[0] + " button[aria-pressed='true']");
         document.querySelectorAll(pr[1] + " button").forEach(function (b) { b.setAttribute("aria-pressed", String(src && b.dataset.v === src.dataset.v)); });
       });
+      if (step === MEMSTEP) navLabel();
     }
+    // the bottom button: "No thanks" (quiet) on the membership page until it's added, "Confirm" on the last page
+    function navLabel() {
+      var b = $("bkNext"), on = !!window.__plan, P = window.__planInfo, mem = step === MEMSTEP;
+      b.textContent = step === LAST ? (window.__LIVE ? "Confirm booking" : "Request booking") : mem && !on ? "No thanks" : "Continue";
+      b.classList.toggle("btn-ghost", mem && !on);
+      bk.classList.toggle("memstep", mem);
+      var a2 = $("bkMemAdd2"); a2.hidden = !(mem && !on && !ctaSeen); if (P) a2.innerHTML = "Add · $" + P.monthly + "/mo<small>+ tax</small>";
+    }
+    // the bottom bar repeats "Add" only while the big button in the card is out of view
+    var ctaSeen = false;
+    if (window.IntersectionObserver) new IntersectionObserver(function (es) { ctaSeen = es[0].isIntersecting; if (step === MEMSTEP) navLabel(); }, { root: bk, rootMargin: "0px 0px -100px 0px", threshold: 0.9 }).observe($("bkMemAdd"));
+    function addMem(btn) {
+      if (window.__plan) return;
+      var c = $("bkMemOn"); c.checked = true; c.dispatchEvent(new Event("change", { bubbles: true }));
+      var cta = $("bkMemAdd"); cta.classList.remove("pop"); void cta.offsetWidth; cta.classList.add("pop");
+      if (btn !== cta && innerWidth < 861) cta.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      setTimeout(function () { if (step === MEMSTEP && window.__plan) show(LAST); }, 700);   // added: on to the last step
+    }
+    $("bkMemAdd").addEventListener("click", function () { addMem(this); });
+    $("bkMemAdd2").addEventListener("click", function () { addMem(this); });
+    $("bkMemRm").addEventListener("click", function () { var c = $("bkMemOn"); c.checked = false; c.dispatchEvent(new Event("change", { bubbles: true })); $("bkMemAdd").focus(); });
     window.__memText = memText;
     $("bkMemOn").addEventListener("change", function () {
       var ps = window.__planState; ps.added = this.checked;
@@ -3467,7 +3669,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         return accessCheck();
       }
       if (n === 3) { if (sel.time == null) { var se = $("slotErr"); se.textContent = sel.date ? "Pick a start time below to continue." : "Pick a day, then a start time."; se.hidden = false; if (sel.date) $("slots").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); else bk.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" }); $("slots").classList.add("shake"); setTimeout(function () { $("slots").classList.remove("shake"); }, 500); if (!sel.date) { var fb = $("calGrid").querySelector("button:not([disabled])") || $("calNext"); if (fb && !fb.disabled) fb.focus(); } return false; } return true; }
-      if (n === 4) {
+      if (n === LAST) {
         var m2 = [];
         if ($("bkName").value.trim().length < 2) m2.push("bkName");   // same checks as the server (audit IA-021h)
         if ($("bkPhone").value.replace(/\D/g, "").length < 10) m2.push("bkPhone");
@@ -3481,17 +3683,20 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       return true;
     }
     function show(n) {
+      if (n === MEMSTEP && !hasMemStep()) n = LAST;
       step = n; maxStep = Math.max(maxStep, n);
       document.querySelectorAll("#bk .bk-step").forEach(function (s) { s.hidden = +s.dataset.step !== n; });
-      document.querySelectorAll("#bkSteps li").forEach(function (li) { var k = +li.dataset.s; li.className = k === n ? "cur" : k < n || k <= maxStep ? "done" : ""; li.querySelector("button").disabled = k > maxStep; });
+      document.querySelectorAll("#bkSteps li").forEach(function (li) { var k = +li.dataset.s; li.hidden = k === MEMSTEP && !hasMemStep(); li.className = k === n ? "cur" : k < n || k <= maxStep ? "done" : ""; li.querySelector("button").disabled = k > maxStep; });
       $("bkBack").hidden = n === 1;
-      var LBL = ["Service", "Car & place", "Date & time", "Your info"];
-      $("bkStepL").innerHTML = "Step " + n + " of 4 · <b>" + LBL[n - 1] + "</b>";
+      var LBL = ["Service", "Car & place", "Date & time", "Apex Membership", "Your info"], O = order();
+      $("bkStepL").innerHTML = "Step " + (O.indexOf(n) + 1) + " of " + O.length + " · <b>" + LBL[n - 1] + "</b>";
       document.querySelectorAll("#bkSteps li").forEach(function (li) { var b = li.querySelector("button"); if (+li.dataset.s === n) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); b.setAttribute("aria-label", "Step " + li.dataset.s + ": " + LBL[+li.dataset.s - 1]); });
       $("slotErr").hidden = true; sumSheet(false);
-      if (n === 4) review();
+      bk.classList.toggle("final", n === LAST); totRender();
+      if (n === LAST) review();
+      if (n === MEMSTEP) memText();
       if (window.__s3mini) window.__s3mini(n);
-      $("bkNext").textContent = n === 4 ? (window.__LIVE ? "Confirm booking" : "Request booking") : "Continue";
+      navLabel();
       if (n === 3) renderCal();
       if (n === 2) accessCheck();
       bk.scrollTop = 0;
@@ -3500,10 +3705,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (!validate(step)) return;
-      if (step < 4) { show(step + 1); return; }
+      if (step < LAST) { show(nextOf(step)); return; }
       finish();
     });
-    $("bkBack").addEventListener("click", function () { if (step > 1) show(step - 1); });
+    $("bkBack").addEventListener("click", function () { if (step > 1) show(prevOf(step)); });
     $("bkSteps").addEventListener("click", function (e) { var b = e.target.closest("[data-go]"); if (!b || b.disabled) return; var to = +b.dataset.go; if (to > step) { for (var k = step; k < to; k++) if (!validate(k)) { show(k); return; } } show(to); });
     $("calGrid").addEventListener("click", function (e) { var b = e.target.closest("[data-d]"); if (!b || b.disabled) return; sel.date = b.dataset.d; sel.time = null; renderCal(); var sg = $("slots"); if (innerWidth < 860) sg.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" }); });
     $("slots").addEventListener("click", function (e) { var b = e.target.closest("[data-t]"); if (!b) return; sel.time = +b.dataset.t; $("slotErr").hidden = true; renderSlots(); });
@@ -3745,9 +3950,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   /* ---------- Results gallery: before / after slider ---------- */
   var JOBS = [
     { id: "rav4", name: "Toyota RAV4", isNew: true, size: 1, pkg: "full", shots: [
-      { k: "rav4-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Toyota RAV4" },
-      { k: "rav4-front", label: "Front seats", alt: "Front seats and floor of a Toyota RAV4" },
       { k: "rav4-dash", label: "Dash", alt: "Steering wheel, dash and center console of a Toyota RAV4" },
+      { k: "rav4-front", label: "Front seats", alt: "Front seats and floor of a Toyota RAV4" },
+      { k: "rav4-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Toyota RAV4" },
       { k: "rav4-ext", label: "Exterior", alt: "Front of a red Toyota RAV4 in a driveway" } ] }
   ];
   if (JOBS.length < 2) document.querySelector(".res-jobs").style.display = "none";
@@ -3780,7 +3985,6 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     // this job's own package and size (audit IA-042)
     window.__resPrice = function () { var j = JOBS[cur.job], now = pkgPrice(j.pkg, j.size), reg = REG[j.pkg][j.size]; document.querySelector(".res-price > span").textContent = NAMES[j.pkg] + " · " + VEH[j.size] + " from"; document.getElementById("resPrice").textContent = "$" + now; var rg = document.getElementById("resReg"); rg.textContent = "$" + reg; rg.hidden = now >= reg; };
     window.__resPrice();
-    document.getElementById("resBook").textContent = "Book this detail";
     var INCL = { full: ["Full vacuum & trunk", "Seats & carpets shampooed", "Floor mats scrubbed", "Spot stain treatment", "Leather conditioning", "Dash & panels protected", "Glass, inside & out", "Hand wash, clay bar & sealant"],
       interior: ["Full vacuum & trunk", "Seats & carpets shampooed", "Floor mats scrubbed", "Spot stain treatment", "Leather conditioning", "Dash & panels protected", "Glass, inside"],
       exterior: ["Foam pre-wash & hand wash", "Wheels, tires & wells", "Spray sealant for gloss", "Glass, outside"] };
@@ -3798,7 +4002,6 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     b.addEventListener("click", function () { if (i !== cur.job) { show(i, 0); tweenBA(50, 300); } });
     jobsEl.appendChild(b);
   });
-  document.getElementById("resBook").addEventListener("click", function () { var j = JOBS[cur.job]; selectPkg(j.pkg); setSize(j.size); });   // runs before the booking opens
   function step(d) { var n = JOBS[cur.job].shots.length; show(cur.job, (cur.shot + d + n) % n); tweenBA(50, 300); }
   document.getElementById("baPrev").addEventListener("click", function () { step(-1); });
   document.getElementById("baNext").addEventListener("click", function () { step(1); });

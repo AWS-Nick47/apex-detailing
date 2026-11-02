@@ -11,7 +11,7 @@ export const PRICING = {
 };
 
 // NJ sales tax. Every price on the site is before tax; the tax is added to the customer's bill and shown on its own line.
-// Taxed: packages, add-ons, travel fees, membership charges and membership cancellation fees. Tips are not taxed.
+// Taxed: packages, add-ons, travel fees and membership charges. Not taxed: tips and cancellation fees (Nick's call, Nov 2).
 // The website has the same rate and rounding (taxCents in public/index.html) so estimates match to the cent.
 export const TAX = { name: "NJ sales tax", rate: 0.06625, pct: "6.625%" };
 const TAX_UNITS = Math.round(TAX.rate * 100000);   // 6625 (exact integer math, rounded half up to the cent)

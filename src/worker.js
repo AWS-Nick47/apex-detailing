@@ -10,7 +10,7 @@ import { adminApi, accessUser, blockoutBusy } from "./admin.js";
 import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
-const TERMS_VERSION = "2026-11-01";   // bump when terms.html / membership-terms.html / privacy.html change
+const TERMS_VERSION = "2026-11-02";   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
 const VISIT_NAMES = { exterior: "Wash visit", interior: "Interior visit", full: "Wash + interior visit" };
 const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : NAMES[b.pkg];
