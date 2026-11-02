@@ -740,6 +740,8 @@ const OWNER_H = { syncBusy, pkgName, emailCustomer, emailNick, calSave: (env, b)
 
 async function handle(req, env) {
     const url = new URL(req.url);
+    // one address for the site: www.apexdetailingoc.com -> apexdetailingoc.com
+    if (url.hostname.startsWith("www.")) return Response.redirect("https://" + url.hostname.slice(4) + url.pathname + url.search, 301);
     // owner actions (dashboard writes, job page, Got it) must come from this site's own pages (audit IA-037)
     const ownerWrite = req.method !== "GET" && req.method !== "HEAD" && (url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/job/") || url.pathname.startsWith("/ack/"));
     if (ownerWrite) { const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);
