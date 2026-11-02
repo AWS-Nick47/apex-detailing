@@ -1,6 +1,6 @@
 // Getting paid: Nick's "job done" page, the customer's pay / tip page, receipts.
 import { squareOn, saveCard, charge, ensureSquareCustomer } from "./square.js";
-import { send, layout, rows, button, h } from "./email.js";
+import { send, layout, rows, buttons, hero, para, note, heading, h } from "./email.js";
 import { TAX, taxCents } from "./pricing.js";
 
 const methodLabel = m => m === "card_on_file" ? "card on file" : m === "online" ? "paid online" : /^in_person/.test(m || "") ? "in person (" + (m.split(":")[1] || "") + ")" : (m || "");
@@ -30,29 +30,33 @@ async function ensurePayToken(env, b) {
 }
 
 // ---------- receipts ----------
-async function emailReceipt(env, b, opts) {
-  const site = env.SITE_URL, first = b.name.split(" ")[0];
+export async function emailReceipt(env, b, opts) {
+  const site = env.SITE_URL, first = (b.name || "").split(" ")[0] || "there";
   const tipLink = opts.offerTip ? site + "/pay/" + b.pay_token + "?tip=1" : null;
-  const tax = opts.tax || 0, tip = opts.tip || 0, total = (opts.amount || 0) + tax + tip;
+  const tax = opts.tax || 0, tip = opts.tip || 0, total = (opts.amount || 0) + tax + tip, detail = NAMES[b.pkg] + (b.car ? " · " + b.car : "");
   const subject = opts.tipOnly ? "Thanks for the tip, " + first + "!" : "Receipt: your " + NAMES[b.pkg] + " · " + money(total);
-  const body = (opts.tipOnly ? `<h1 style="font-size:24px;margin:0 0 8px">Thank you, ${h(first)}!</h1><p style="margin:0;color:#444;line-height:1.55">We got your ${money(opts.tip)} tip. It really means a lot.</p>`
-      : `<h1 style="font-size:24px;margin:0 0 8px">Thanks, ${h(first)}. You're all set.</h1><p style="margin:0;color:#444;line-height:1.55">Here's your receipt for today's detail.</p>`) +
-    rows(opts.tipOnly ? [["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Tip", money(tip)], ["Paid with", opts.method], ["Booking code", b.id]]
-      : [["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Price", money(opts.amount)], [TAX_LABEL, money(tax)], ["Tip", tip ? money(tip) : ""], ["Total paid", money(total)],
-        ["Paid with", opts.method], ["Booking code", b.id]]) +
-    (opts.receipt ? `<p style="margin:0 0 14px"><a href="${h(opts.receipt)}" style="color:#111">View the Square receipt</a></p>` : "") +
-    (tipLink ? `<p style="margin:0 0 6px;font-weight:700">Happy with it?</p><p style="margin:0 0 16px;color:#444">Tips are never expected, always appreciated.</p><p style="margin:0 0 18px">${button(tipLink, "Add a tip")}</p>` : "") +
-    (opts.tipOnly ? "" : `<p style="margin:0 0 6px;font-weight:700">How did we do?</p><p style="margin:0 0 18px;color:#444;line-height:1.55">Just reply to this email. We read every one, and if anything isn't right, we'll come back and fix it within 48 hours.</p>`) +
-    `<p style="margin:0">${button(site + "/#book", "Book your next detail", false)}</p>`;
-  return send(env, { to: b.email, subject, html: layout(subject, body, opts.tipOnly ? "Thanks for the tip" : "Receipt " + money(total), site + "/email-logo.png") });
+  let body;
+  if (opts.tipOnly) {
+    body = hero("Tip received", `Thank you, ${h(first)}!`, `We got your ${money(tip)} tip. It really means a lot.`) +
+      rows([["Detail", detail], ["Tip", money(tip), false, "total"], ["Paid with", opts.method], ["Booking code", b.id]]) +
+      buttons([opts.receipt ? [opts.receipt, "Square receipt", "secondary"] : null, [site + "/#book", "Book your next detail", "secondary"]]);
+  } else {
+    body = hero("Receipt", `Thanks, ${h(first)}. You're all set.`, "Here's your receipt for today's detail.") +
+      rows([["Detail", detail], ["Price", money(opts.amount)], [TAX_LABEL, money(tax)], ["Tip", tip ? money(tip) : ""], ["Total paid", money(total), false, "total"], ["Paid with", opts.method], ["Booking code", b.id]]) +
+      (tipLink ? heading("Happy with it?") + para("Tips are never expected, always appreciated.") + buttons([[tipLink, "Add a tip"]]) : "") +
+      heading("How did we do?") + para("Just reply to this email. We read every one, and if anything isn't right, we'll come back and fix it within 48 hours.") +
+      buttons([[site + "/#book", "Book your next detail", tipLink ? "secondary" : "primary"], opts.receipt ? [opts.receipt, "Square receipt", "secondary"] : null]);
+  }
+  return send(env, { to: b.email, subject, html: layout(subject, body, opts.tipOnly ? "Thank you for the tip." : money(total) + " paid. Thanks for choosing Apex.", site) });
 }
 
-async function emailPayLink(env, b, cents, tax) {
-  const site = env.SITE_URL, first = b.name.split(" ")[0], link = site + "/pay/" + b.pay_token, total = cents + tax;
+export async function emailPayLink(env, b, cents, tax) {
+  const site = env.SITE_URL, first = (b.name || "").split(" ")[0] || "there", link = site + "/pay/" + b.pay_token, total = cents + tax;
   const subject = "Your detail is done: " + money(total) + " due";
-  const body = `<h1 style="font-size:24px;margin:0 0 8px">All done, ${h(first)}!</h1><p style="margin:0;color:#444;line-height:1.55">Thanks for having us out. You can pay securely online below, and add a tip if you'd like.</p>` +
-    rows([["Detail", NAMES[b.pkg] + " · " + (b.car || "")], ["Price", money(cents)], [TAX_LABEL, money(tax)], ["Amount due", money(total)], ["Booking code", b.id]]) + `<p style="margin:0">${button(link, "Pay " + money(total))}</p>`;
-  return send(env, { to: b.email, subject, html: layout(subject, body, money(total) + " due", site + "/email-logo.png") });
+  const body = hero("Detail complete", `All done, ${h(first)}!`, "Thanks for having us out. You can pay securely online below, and add a tip if you'd like.") +
+    rows([["Detail", NAMES[b.pkg] + (b.car ? " · " + b.car : "")], ["Price", money(cents)], [TAX_LABEL, money(tax)], ["Amount due", money(total), false, "total"], ["Booking code", b.id]]) +
+    buttons([[link, "Pay " + money(total)]]) + note("Secured by Square. Card numbers never touch our site.");
+  return send(env, { to: b.email, subject, html: layout(subject, body, money(total) + " due. Pay securely online.", site) });
 }
 
 // ---------- one payment at a time per bill ----------

@@ -1,5 +1,5 @@
 // Customer accounts: sign in with a 6-digit code sent by email, 60-day session cookie.
-import { send, layout, h } from "./email.js";
+import { send, layout, hero, para, note, codeBox, h } from "./email.js";
 
 const COOKIE = "apex_s", SESSION_DAYS = 60, CODE_MIN = 10;
 
@@ -83,11 +83,7 @@ export async function authStart(req, env) {
   const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
   await env.DB.prepare("UPDATE login_codes SET used = 1 WHERE email = ? AND used = 0").bind(email).run();
   await env.DB.prepare("INSERT INTO login_codes (email, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?)").bind(email, await sha256(email + ":" + code), Date.now(), Date.now() + CODE_MIN * 60000).run();
-  const subject = "Your Apex sign-in code: " + code;
-  const html = layout(subject, `<h1 style="font-size:22px;margin:0 0 10px">Your sign-in code</h1>
-    <p style="font-size:38px;font-weight:700;letter-spacing:.18em;margin:18px 0;font-family:ui-monospace,Menlo,monospace">${code}</p>
-    <p style="margin:0;color:#444;line-height:1.55">Enter it on apexdetailingoc.com to sign in. It works for ${CODE_MIN} minutes. If you didn't ask for this, you can ignore this email.</p>`, "Code " + code, env.SITE_URL + "/email-logo.png");
-  await send(env, { to: email, subject, html, text: "Your Apex Detailing sign-in code is " + code + ". It works for " + CODE_MIN + " minutes." });
+  await emailCode(env, email, code);
   return ok;
 }
 
@@ -132,4 +128,12 @@ export async function me(req, env, extra) {
   const card = c.card ? JSON.parse(c.card) : null;
   return json({ signedIn: true, customer: { email: c.email, name: c.name, phone: c.phone, address: c.address, town: c.town, notes: c.notes, cars: JSON.parse(c.cars || "[]"), remind: !!c.remind,
     card: card ? { brand: card.brand, last4: card.last4 } : null }, bookings: list, member: null });
+}
+
+// the 6-digit sign-in code email
+export async function emailCode(env, email, code) {
+  const subject = "Your Apex sign-in code: " + code;
+  const html = layout(subject, hero("Sign in", "Your sign-in code", "Enter this code on apexdetailingoc.com to sign in.") + codeBox(code) +
+    para("It works for " + CODE_MIN + " minutes.") + note("Didn't ask for this? You can ignore this email. Nobody can sign in without the code."), "Your code is " + code + ". It works for " + CODE_MIN + " minutes.", env.SITE_URL);
+  return send(env, { to: email, subject, html, text: "Your Apex Detailing sign-in code is " + code + ". It works for " + CODE_MIN + " minutes. Didn't ask for this? You can ignore this email." });
 }

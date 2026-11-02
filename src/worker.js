@@ -1,13 +1,13 @@
 // Apex Detailing — website + booking backend (Cloudflare Worker)
 import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, milesBetween, parseDay, townCoords } from "./sched.js";
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
-import { send, layout, rows, button, h } from "./email.js";
-import { quote as priceQuote, travelFee, TAX, withTax, PRICING } from "./pricing.js";
-import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer } from "./accounts.js";
-import { jobRoute, payPage, payApi, publicConfig } from "./pay.js";
+import { send, layout, rows, button, buttons, hero, para, note, heading, when, checklist, am, alertBox, sub, h } from "./email.js";
+import { quote as priceQuote, travelFee, TAX, withTax, taxCents, PRICING } from "./pricing.js";
+import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, currentCustomer, emailCode } from "./accounts.js";
+import { jobRoute, payPage, payApi, publicConfig, emailReceipt, emailPayLink } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
 import { adminApi, accessUser, blockoutBusy } from "./admin.js";
-import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge } from "./membership.js";
+import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge, mailWelcome, previewMail, notifyNick } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
 const TERMS_VERSION = "2026-11-02";   // bump when terms.html / membership-terms.html / privacy.html change
@@ -156,53 +156,79 @@ function readBooking(body) {
 }
 
 // ---------- emails ----------
-function details(b) {
+// the booking's details (the date/time and address get their own block above these rows)
+function details(b, site) {
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
-  return [["When", whenText(b)], ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
-    ["Where", [b.address, b.town].filter(Boolean).join(", ")], ...priceRows(b),
-    b._mem ? ["Apex Membership", memLine(b._mem)] : null, ["Booking code", b.id]].filter(Boolean);
+  const pr = b.kind === "member" ? [["Price", "Included in your " + am(site), true]] : priceRows(b), last = pr.length - 1;
+  const m = b._mem, fa = m ? withTax(Math.round((m.firstAmount != null ? m.firstAmount : m.monthly) * 100)).total : 0;
+  return [["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+    ...pr.map((r, i) => i === last && pr.length > 1 ? [r[0], h(String(r[1]).replace(/ · pay after the job$/, "")) + (/pay after the job$/.test(r[1]) ? sub("You pay after the job") : ""), true, "total"] : r),
+    m ? [{ html: am(site) }, h(m.label) + sub("$" + m.monthly + "/mo + tax (" + usd(withTax(m.monthly * 100).total) + ")") + sub("First charge " + dayLabel(m.firstBill) + ": " + usd(fa) + (m.firstSkipped ? " (no charges during the winter pause before that)" : m.firstWinter ? " (winter months are billed at the Interior price)" : "")), true] : null,
+    ["Booking code", b.id]].filter(Boolean);
 }
 function needsText(pkg) { return pkg === "interior" ? "an outlet we can reach (an indoor one is fine if we can run a cord outside)" : "an outdoor water spigot and an outlet we can reach"; }
+function whenParts(b) { const s = utcToNy(b.start_utc), e = utcToNy(b.end_utc); return [dayLabel(s.key, true), tstr(s.min) + " – " + tstr(e.min)]; }
 
 async function emailCustomer(env, b, kind) {
-  const site = env.SITE_URL, manage = site + "/b/" + b.token, logo = site + "/email-logo.png";
+  const site = env.SITE_URL, manage = site + "/b/" + b.token;
   const ics = jobIcs(b, { summary: "Apex Detailing · " + pkgName(b), location: [b.address, b.town].filter(Boolean).join(", "), description: "Booking " + b.id + ". Manage: " + manage, url: manage });
-  const first = b.name.split(" ")[0];
-  let subject, intro;
-  if (kind === "cancel") { subject = "Cancelled: your " + pkgName(b) + " on " + dayLabel(utcToNy(b.start_utc).key); intro = `<h1 style="font-size:24px;margin:0 0 8px">Your detail is cancelled</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, we've cancelled this booking. Whenever you're ready, you can book again at <a href="${h(site)}" style="color:#111">apexdetailingoc.com</a>.</p>`; }
-  else if (kind === "move") { subject = "New time: " + pkgName(b) + " · " + whenText(b); intro = `<h1 style="font-size:24px;margin:0 0 8px">Your detail has a new time</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, you're all set for the new time below.</p>`; }
-  else if (kind === "remind") { subject = "Tomorrow: your " + pkgName(b) + " at " + tstr(utcToNy(b.start_utc).min); intro = `<h1 style="font-size:24px;margin:0 0 8px">See you tomorrow, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Just a reminder about your detail. Here are the details:</p>`; }
-  else { subject = "You're booked: " + pkgName(b) + " · " + whenText(b); intro = `<h1 style="font-size:24px;margin:0 0 8px">You're booked, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Thanks for choosing Apex. We'll come to you. Here are the details:</p>`; }
-  const after = kind === "cancel" ? "" :
-    `<p style="margin:0 0 6px;font-weight:700">Before we arrive</p><p style="margin:0 0 18px;color:#444;line-height:1.55">Please make sure we have ${needsText(b.pkg)}, and take valuables out of the car. ${b.kind === "member" ? "This visit is included in your Apex Membership." : "Final price depends on condition; we confirm before we start, never after."}</p>
-     <p style="margin:0 0 20px">${button(manage, "Reschedule or cancel")}</p>
-     <p style="margin:0;color:#666;font-size:13px;line-height:1.5">Questions? Just reply to this email or text (732) 206-7084.</p>`;
+  const first = (b.name || "").split(" ")[0] || "there", where = [b.address, b.town].filter(Boolean).join(", "), [day, time] = whenParts(b), pkg = pkgName(b);
+  const member = b.kind === "member";
+  let subject, top, pre;
+  if (kind === "cancel") {
+    subject = "Cancelled: your " + pkg + " on " + dayLabel(utcToNy(b.start_utc).key); pre = "Your booking is cancelled. Nothing was charged.";
+    top = hero("Cancelled", "Your detail is cancelled.", `Hi ${h(first)}, we've cancelled your ${h(pkg)} on ${h(day)}. Nothing was charged. Whenever you're ready, we'd love to come back.`);
+  } else if (kind === "move") {
+    subject = "New time: " + pkg + " · " + whenText(b); pre = "You're all set for " + day + ", " + time + ".";
+    top = hero("Rescheduled", "Your detail has a new time.", `Hi ${h(first)}, you're all set for the new time below. The calendar invite is updated too.`);
+  } else if (kind === "remind") {
+    subject = "Tomorrow: your " + pkg + " at " + tstr(utcToNy(b.start_utc).min); pre = "See you tomorrow at " + tstr(utcToNy(b.start_utc).min) + ".";
+    top = hero("Tomorrow", `See you tomorrow, ${h(first)}.`, `A quick reminder about your ${h(pkg)}. Here's everything you need.`);
+  } else {
+    subject = "You're booked: " + pkg + " · " + whenText(b); pre = day + ", " + time + (b.town ? " in " + b.town : "") + ". Here are your details.";
+    top = hero(member ? "Visit booked" : "Booking confirmed", `You're booked, ${h(first)}.`, member ? `Your ${h(pkg)} is on the calendar. It's included in your ${am(site)}.` : `Thanks for choosing Apex. We come to you, so there's nothing else to plan. Here's everything for your ${h(pkg)}.`);
+  }
+  let body = top + when(day, time, where ? h(where) : "");
+  if (kind === "cancel") {
+    body += rows([["Package", pkg + " · " + SIZES[b.size]], ["Booking code", b.id]]) + buttons([[site + "/#book", "Book again"]]);
+  } else {
+    body += rows(details(b, site)) +
+      heading("Before we arrive") +
+      checklist([`Make sure we have ${needsText(b.pkg)}.`, "Take valuables out of the car, and anything you don't want moved (car seats, gear in the trunk).", member ? "We'll walk the car with you when we're done." : "We confirm the final price before we start, never after. You pay when it's done and you've seen it."]) +
+      buttons([[manage, "Manage booking"], kind === "remind" ? null : [site + "/#account", "My account", "secondary"]]) +
+      note((kind === "remind" ? "Need to change it? Text us at (732) 206-7084." : "Free to reschedule or cancel up to 24 hours before. ") + (kind === "new" || kind === "move" ? "A calendar invite is attached." : "")) +
+      (kind === "new" && b._mem ? note(`About your ${am(site)}: it's billed to your card one month after this detail and on that date every month, plus NJ sales tax. ${MEM.minPayments}-month minimum, then pause or cancel anytime in your account. <a href="${h(site)}/membership-terms" style="color:#f5f5f5">Membership Terms</a>`) : "");
+  }
   return send(env, {
     to: b.email, subject,
-    html: layout(subject, intro + rows(details(b)) + after, kind === "cancel" ? "Your booking is cancelled" : whenText(b), logo),
+    html: layout(subject, body, pre, site),
     attachments: kind === "cancel" || kind === "remind" ? undefined : [{ filename: "apex-detail.ics", content: btoa(unescape(encodeURIComponent(ics))), content_type: "text/calendar" }]
   });
 }
 
 async function emailNick(env, b, kind, extra) {
   const site = env.SITE_URL, where = [b.address, b.town].filter(Boolean).join(", ");
-  const maps = "https://maps.apple.com/?daddr=" + encodeURIComponent(where), tel = b.phone.replace(/[^\d+]/g, "");
+  const maps = "https://maps.apple.com/?daddr=" + encodeURIComponent(where), tel = (b.phone || "").replace(/[^\d+]/g, "");
   const town = b.town || "", label = { new: "New booking", cancel: "Cancelled", move: "Rescheduled" }[kind];
   const subject = label + ": " + pkgName(b) + " · " + whenText(b) + (town ? " · " + town : "");
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
-  const plan = b.plan ? JSON.parse(b.plan) : null;
-  const list = [["When", whenText(b)], ["Customer", h(b.name) + `<br><a href="tel:${h(tel)}" style="color:#111">${h(b.phone)}</a> · <a href="sms:${h(tel)}" style="color:#111">Text</a><br><a href="mailto:${h(b.email)}" style="color:#111">${h(b.email)}</a>`, true],
-    ["Address", `${h(where)}<br><a href="${h(maps)}" style="color:#111">Directions</a>` + (b.miles != null ? ` · ${h(b.miles)} mi` : "") + (b._locFlag ? `<br><b style="color:#b3261e">${h(b._locFlag)}</b>` : ""), true],
+  const [day, time] = whenParts(b);
+  const list = [extra ? ["Was", extra] : null, ["Customer", `${h(b.name)}<br><a href="tel:${h(tel)}" style="color:#f5f5f5">${h(b.phone)}</a><br><a href="mailto:${h(b.email)}" style="color:#f5f5f5">${h(b.email)}</a>`, true],
     ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ["Water / power", (b.pkg === "interior" ? "" : "Spigot: " + (b.water || "?") + " · ") + "Outlet: " + (b.power || "?")],
     ["Estimate", b.quote ? (e => usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
     ["Payment", b.kind === "member" ? "Apex Membership visit (included)" : b.card ? "Card on file: " + JSON.parse(b.card).brand + " ending " + JSON.parse(b.card).last4 + " (charge after the job)" : "In person"],
-    ["Membership", b._mem ? "Signed up: " + memLine(b._mem) : b._memErr ? "Tried to sign up but: " + b._memErr : ""], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
-  if (extra) list.unshift(["Was", extra]);
-  const body = `<h1 style="font-size:22px;margin:0 0 6px">${h(label)}</h1><p style="margin:0;color:#444">${h(whenText(b))}</p>` + rows(list) +
-    (kind === "new" ? `<p style="margin:0 0 10px">${button(site + "/ack/" + b.ack_token, "Got it")} &nbsp; ${button(site + "/job/" + b.ack_token, "Job done — get paid", false)}</p><p style="margin:0;color:#777;font-size:13px">The customer is already confirmed. "Got it" just marks it seen for you. After the job, open "Job done — get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.</p>` : "");
+    [{ html: am(site) }, b._mem ? h("Signed up: " + memLine(b._mem)) : b._memErr ? h("Tried to sign up but: " + b._memErr) : "", true], ["Notes", b.notes], ["Heard about us", b.heard], ["Code", b.id]];
+  const body = hero(label, h(pkgName(b) + " · " + (b.name || "")), "") +
+    when(day, time, h(where) + (b.miles != null ? " · " + h(b.miles) + " mi" : "")) +
+    (b._locFlag ? alertBox(h(b._locFlag)) : "") +
+    buttons([kind === "cancel" ? null : [maps, "Directions", "secondary"], tel ? ["sms:" + tel, "Text", "secondary"] : null, tel ? ["tel:" + tel, "Call", "secondary"] : null], { inline: true }) +
+    rows(list) +
+    (kind === "new" ? buttons([[site + "/ack/" + b.ack_token, "Got it"], [site + "/job/" + b.ack_token, "Job done · get paid", "secondary"]]) +
+      note(`The customer is already confirmed. "Got it" just marks it seen. After the job, open "Job done · get paid" to charge their card, send a pay link, or mark it paid in person. It's in your Apex Jobs calendar.`) : "") +
+    (kind === "new" && b._photos && b._photos.length ? note(b._photos.length + " photo" + (b._photos.length > 1 ? "s" : "") + " of the areas of concern attached.") : "");
   const photos = kind === "new" && b._photos && b._photos.length ? b._photos : null;
-  return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body + (photos ? `<p style="margin:14px 0 0;color:#444">${photos.length} photo${photos.length > 1 ? "s" : ""} of the areas of concern attached.</p>` : ""), label, site + "/email-logo.png"), attachments: photos || undefined });
+  return send(env, { to: env.NICK_EMAIL, reply_to: b.email, subject, html: layout(subject, body, label + " · " + day + ", " + time, site, { who: "nick" }), attachments: photos || undefined });
 }
 
 // Two bookings saved at nearly the same moment for overlapping times: the later one steps back (audit IA-038).
@@ -283,6 +309,8 @@ async function managePage(env, b, msg) {
 // ---------- routes ----------
 async function api(req, env, url) {
   const p = url.pathname;
+  // local preview of every email with sample data (never on the real site: needs ADMIN_DEV=1 and localhost)
+  if (p === "/api/dev/emails" && env.ADMIN_DEV === "1" && /^(localhost|127\.0\.0\.1)$/.test(url.hostname)) return json(await devEmails(env));
 
   if (p === "/api/days" && req.method === "GET") {
     const fq = url.searchParams.get("from") || "", from = realDay(fq) && fq >= addDays(todayKey(), -1) ? fq : todayKey();
@@ -445,7 +473,8 @@ async function memberApi(req, env, url) {
     const q = await qualifyingFor(env, c.id, todayKey());
     if (!q) return json({ error: "Memberships start with a detail: book one, or sign up within 14 days after it." }, 400);
     try { const r = await createMembership(env, { customerId: c.id, booking: q, type: String(body.type), freq: +body.freq, auth: { version: TERMS_VERSION, at: Date.now(), ip: req.headers.get("CF-Connecting-IP") || "" } });
-      return json({ ok: true, message: "You're in! " + r.label + " at $" + r.monthly + "/mo + " + TAX.name + ". Your first charge (" + usd(withTax(r.monthly * 100).total) + ") is " + dayLabel(r.firstBill) + "." }); }
+      await mailWelcome(env, r.id, r, c.card ? JSON.parse(c.card) : null).catch(e => console.log("welcome email failed", e.message));
+      return json({ ok: true, message: "You're in! " + r.label + " at $" + r.monthly + "/mo + " + TAX.name + ". Your first charge (" + usd(withTax(Math.round((r.firstAmount != null ? r.firstAmount : r.monthly) * 100)).total) + ") is " + dayLabel(r.firstBill) + "." }); }
     catch (e) { return json({ error: e.message }, 400); }
   }
   const m = await activeFor(env, c.id); if (!m) return json({ error: "You don't have an active membership." }, 400);
@@ -488,10 +517,68 @@ async function memberApi(req, env, url) {
 
 // the member's own copy of a skip (Nick gets his "Cancelled" email)
 async function emailSkip(env, b, credit) {
-  const first = (b.name || "").split(" ")[0] || "there", subject = "Skipped: your " + pkgName(b) + " on " + dayLabel(b.day);
-  const body = `<h1 style="font-size:22px;margin:0 0 8px">Visit skipped</h1><p style="margin:0;color:#444;line-height:1.55">Hi ${h(first)}, we've skipped your ${h(pkgName(b))} on ${h(whenText(b))}. A skipped visit still counts as this month's visit. ` +
-    (credit ? `You'll get a ${usd(credit)} credit (before tax) on your next monthly charge.` : `It was less than 48 hours' notice, so there's no credit for this one.`) + `</p><p style="margin:18px 0 0">${button(env.SITE_URL + "/#account", "My membership")}</p>`;
-  return send(env, { to: b.email, subject, html: layout(subject, body, subject, env.SITE_URL + "/email-logo.png") });
+  const site = env.SITE_URL, first = (b.name || "").split(" ")[0] || "there", subject = "Skipped: your " + pkgName(b) + " on " + dayLabel(b.day);
+  const [day, time] = whenParts(b);
+  const body = hero("Visit skipped", "Your visit is skipped.", `Hi ${h(first)}, we've skipped your ${h(pkgName(b))}. A skipped visit still counts as this month's visit.`) +
+    when(day, time, "Skipped") +
+    para(credit ? `You'll get a <b style="color:#f5f5f5">${usd(credit)} credit</b> (before tax) on your next monthly charge.` : `It was less than 48 hours' notice, so there's no credit for this one.`) +
+    buttons([[site + "/#account", "My membership"]]);
+  return send(env, { to: b.email, subject, html: layout(subject, body, credit ? "A " + usd(credit) + " credit goes toward your next charge." : "Your visit is skipped.", site) });
+}
+// we had to cancel (weather or our side)
+async function emailCancelByUs(env, b, credit) {
+  const site = env.SITE_URL, first = (b.name || "").split(" ")[0] || "there", subject = "We had to cancel your " + pkgName(b) + " on " + dayLabel(b.day);
+  const [day, time] = whenParts(b);
+  const body = hero("Cancelled", `Sorry, ${h(first)}. We had to cancel.`, `Weather or something on our end means we can't make your ${h(pkgName(b))}. Nothing was charged.`) +
+    when(day, time, "Cancelled") +
+    para(credit ? `We added a <b style="color:#f5f5f5">${usd(credit)} credit</b> to your ${am(site)}. Pick a new time in your account whenever you're ready.` : `Pick a new time that works for you, or just reply and we'll find one together.`) +
+    buttons([[site + (b.kind === "member" ? "/#account" : "/#book"), "Pick a new time"]]);
+  return send(env, { to: b.email, subject, html: layout(subject, body, "Sorry about this. Let's find you a new time.", site) });
+}
+
+// every email the site can send, built with sample data (local preview only)
+async function devEmails(env) {
+  const out = [], add = async (key, label, fn) => { const cap = []; const E = Object.assign({}, env, { __capture: cap }); try { await fn(E); } catch (e) { out.push({ key, label, error: e.message }); return; } cap.forEach((m, i) => out.push({ key: key + (i ? "-" + i : ""), label, to: m.to, subject: m.subject, html: m.html, text: m.text, attachments: (m.attachments || []).map(a => a.filename) })); };
+  const day = addDays(todayKey(), 6), t0 = nyToUtc(day, 600);
+  const base = { id: "Q9FE6T", token: "a".repeat(36), ack_token: "b".repeat(36), pay_token: "c".repeat(36), status: "confirmed", name: "Jordan Rivera", email: "jordan@example.com", phone: "(732) 555-0142",
+    pkg: "full", size: 1, adds: '["pet"]', car: "2021 Toyota RAV4", color: "Red", address: "12 Shore Rd", town: "Brick", day, start_utc: t0, end_utc: t0 + 300 * 60000, quote: 209, travel_fee: 0,
+    water: "yes", power: "yes", notes: "Coffee stain on the passenger seat", heard: "Instagram", kind: "detail", miles: 3.2, card: JSON.stringify({ brand: "Visa", last4: "4242" }) };
+  const B = o => Object.assign({}, base, o || {});
+  const mem = { label: "Wash + interior, monthly (SUV)", monthly: 105, firstBill: addDays(day, 30), firstAmount: 105 };
+  const visit = B({ kind: "member", pkg: "interior", quote: 0, adds: "[]", membership_id: "m1", card: null });
+  const M = { id: "m1", customer_id: "c1", type: "both", freq: 1, size: 1, monthly_cents: 10500, email: "jordan@example.com", name: "Jordan Rivera", status: "active", payments_made: 1 };
+  const card = { brand: "Visa", last4: "4242" };
+  await add("code", "Sign-in code", E => emailCode(E, "jordan@example.com", "482917"));
+  await add("booked", "Booking confirmed (with Apex Membership)", E => emailCustomer(E, B({ _mem: mem }), "new"));
+  await add("booked-visit", "Member visit booked", E => emailCustomer(E, visit, "new"));
+  await add("moved", "Rescheduled", E => emailCustomer(E, B(), "move"));
+  await add("remind", "Day-before reminder", E => emailCustomer(E, B(), "remind"));
+  await add("cancelled", "Cancelled by the customer", E => emailCustomer(E, B(), "cancel"));
+  await add("cancel-by-us", "We had to cancel (weather)", E => emailCancelByUs(E, B(), 0));
+  await add("cancel-by-us-member", "We had to cancel a member visit (credit)", E => emailCancelByUs(E, visit, 4250));
+  await add("skip", "Member visit skipped (credit)", E => emailSkip(E, visit, 2125));
+  await add("pay-link", "Job done: pay link", E => emailPayLink(E, B(), 22900, taxCents(22900)));
+  await add("receipt-card", "Receipt: card on file (tip offer)", E => emailReceipt(E, B(), { amount: 22900, tax: taxCents(22900), method: "Visa ending 4242", receipt: "https://squareup.com/receipt/preview/sample", offerTip: true }));
+  await add("receipt-online", "Receipt: paid online with a tip", E => emailReceipt(E, B(), { amount: 22900, tax: taxCents(22900), tip: 4600, method: "Visa ending 4242", receipt: "https://squareup.com/receipt/preview/sample" }));
+  await add("receipt-person", "Receipt: paid in person", E => emailReceipt(E, B(), { amount: 20000, tax: taxCents(20000), method: "In person (cash)" }));
+  await add("tip", "Tip thank-you", E => emailReceipt(E, B(), { tipOnly: true, tip: 4000, method: "Visa ending 4242", receipt: "https://squareup.com/receipt/preview/sample" }));
+  const mk = (kind, o) => E => previewMail(E, M, kind, o);
+  await add("mem-welcome", "Membership: welcome (started from the account)", mk("welcome", { firstBill: mem.firstBill, firstAmount: 105, card }));
+  await add("mem-receipt", "Membership: monthly receipt", mk("receipt", { amount: 10500, tax: taxCents(10500), period: [day, addDays(day, 30)], cover: "both", card, receipt: "https://squareup.com/receipt/preview/sample" }));
+  await add("mem-fail", "Membership: payment failed", mk("fail", { amount: 11196, retry: addDays(todayKey(), 2) }));
+  await add("mem-fail-final", "Membership: cancelled after failed payments", mk("fail_final", { amount: 11196 }));
+  await add("mem-card-needed", "Membership: add a card", mk("card_needed", { deadline: addDays(todayKey(), 9) }));
+  await add("mem-nocard", "Membership: didn't start (no card)", mk("nocard_cancel"));
+  await add("mem-cancelled", "Membership: cancelled (after the minimum)", mk("cancelled", { ends: addDays(todayKey(), 20) }));
+  await add("mem-finishing", "Membership: ends after the 3rd month", mk("finishing", { left: 2 }));
+  await add("mem-cancelled-free", "Membership: cancelled before the first charge", mk("cancelled_free"));
+  await add("mem-detail-cancelled", "Membership: cancelled with its first detail", mk("detail_cancelled", { byUs: false }));
+  await add("mem-cancel-fee", "Membership: cancelled now (fee)", mk("cancel_fee", { fee: 10500, ends: addDays(todayKey(), 12), card }));
+  await add("nick-new", "Nick: new booking", E => emailNick(E, B({ _mem: mem, _locFlag: "The address pin is 9 mi from Brick. Check the address and the travel fee.", _photos: [{ name: "concern-1.jpg", data: "" }] }), "new"));
+  await add("nick-move", "Nick: rescheduled", E => emailNick(E, B(), "move", "Saturday, November 7, 9:00 AM – 2:00 PM"));
+  await add("nick-cancel", "Nick: cancelled", E => emailNick(E, B(), "cancel"));
+  await add("nick-mem", "Nick: membership update", E => notifyNick(E, "Membership cancelled now (fee charged): Jordan Rivera", [["Member", "Jordan Rivera · jordan@example.com"], ["Plan", "Wash + interior, monthly (SUV)"], ["Fee", "$105 (no sales tax)"], ["Visits paid through", "Sat, Nov 14"]]));
+  return out;
 }
 
 // credit for a skipped member visit (customer: 50% with 48+ hours' notice; us/weather: 100%)
@@ -509,10 +596,7 @@ export async function cancelByUs(env, b) {
   const credit = await creditVisit(env, b, 1);
   if (b.kind !== "member") await cancelWithDetail(env, b, true).catch(e => console.log("membership cancel failed", e.message));
   await deleteJob(env, b.cal_href).catch(() => {});
-  const first = b.name.split(" ")[0], subject = "We had to cancel your " + pkgName(b) + " on " + dayLabel(b.day);
-  const body = `<h1 style="font-size:22px;margin:0 0 8px">Sorry, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">We had to cancel your ${h(pkgName(b))} on ${h(whenText(b))} (weather or something on our end). ` +
-    (credit ? `We added a ${"$" + (credit / 100).toFixed(credit % 100 ? 2 : 0)} credit to your Apex Membership, and you can book a new time in your account.` : `Please pick a new time, or reply and we'll find one together.`) + `</p><p style="margin:18px 0 0">${button(env.SITE_URL + (b.kind === "member" ? "/#account" : "/#book"), "Pick a new time")}</p>`;
-  await send(env, { to: b.email, subject, html: layout(subject, body, subject, env.SITE_URL + "/email-logo.png") }).catch(() => {});
+  await emailCancelByUs(env, b, credit).catch(() => {});
   return credit;
 }
 

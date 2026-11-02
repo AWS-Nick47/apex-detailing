@@ -3,7 +3,7 @@
 import { PRICING, TAX, taxCents } from "./pricing.js";
 import { RULES, inWinter, parseDay, dayKey, addDays, utcToNy, nyToUtc, slotsFor, dayInfo, jobMin } from "./sched.js";
 import { charge } from "./square.js";
-import { send, layout, rows, button, h } from "./email.js";
+import { send, layout, rows, buttons, hero, para, note, am, h } from "./email.js";
 
 export const MEM = {
   plans: { wash: { of: "exterior", pct: 0.55, name: "Wash" }, int: { of: "interior", pct: 0.35, name: "Interior" }, both: { of: "full", pct: 0.38, name: "Wash + interior" } },
@@ -104,7 +104,8 @@ export async function cancelWithDetail(env, booking, byUs) {
 
 export async function notifyNick(env, subject, list) {
   if (!env.NICK_EMAIL) return;
-  return send(env, { to: env.NICK_EMAIL, subject, html: layout(subject, `<h1 style="font-size:20px;margin:0 0 8px">${h(subject)}</h1>` + rows(list), subject, env.SITE_URL + "/email-logo.png") }).catch(() => {});
+  const k = subject.split(":")[0], rest = subject.slice(k.length + 1).trim();
+  return send(env, { to: env.NICK_EMAIL, subject, html: layout(subject, hero("Apex Membership", h(k), rest ? h(rest) : "") + rows(list), subject, env.SITE_URL, { who: "nick" }) }).catch(() => {});
 }
 
 // ---------- summary for the account page ----------
@@ -285,25 +286,58 @@ export async function pauseMembership(env, m, months) {
 }
 
 // ---------- emails ----------
+// welcome email for a membership started from the account (at booking, the booking email covers it)
+export async function mailWelcome(env, id, info, card) {
+  const m = await env.DB.prepare("SELECT m.*, c.email, c.name FROM memberships m JOIN customers c ON c.id = m.customer_id WHERE m.id = ?").bind(id).first();
+  if (m) await mail(env, m, "welcome", { firstBill: info && info.firstBill, firstAmount: info && info.firstAmount, card });
+}
+export const previewMail = (env, m, kind, o) => mail(env, m, kind, o);   // dev preview only (/api/dev/emails)
 async function mail(env, m, kind, o) {
   o = o || {};
   const c = m.email ? m : await env.DB.prepare("SELECT email, name FROM customers WHERE id = ?").bind(m.customer_id).first();
-  const first = (c.name || "").split(" ")[0] || "there", site = env.SITE_URL, acct = site + "/#account", label = planLabel(m.type, m.freq, m.size);
+  const first = (c.name || "").split(" ")[0] || "there", site = env.SITE_URL, acct = site + "/#account", label = planLabel(m.type, m.freq, m.size), AM = am(site);
+  const b = s => `<b style="color:#f5f5f5">${s}</b>`;
   const T = {
-    receipt: () => ["Apex Membership receipt · " + money(o.amount + (o.tax || 0)), `<h1 style="font-size:22px;margin:0 0 8px">Thanks, ${h(first)}!</h1><p style="margin:0;color:#444">Your Apex Membership is paid for this month. Pick your visit times in your account.</p>` +
-      rows([["Plan", label], ["Period", niceDay(o.period[0]) + " – " + niceDay(addDays(o.period[1], -1))], ["Visits", m.freq + (o.cover !== m.type ? " (" + MEM.plans[o.cover].name + " visits for winter)" : "")], ["Membership", money(o.amount) + (o.credit ? " (" + money(o.credit) + " credit used)" : "")], [TAX_LABEL, money(o.tax || 0)], ["Charged", money(o.amount + (o.tax || 0))], ["Card", o.card ? o.card.brand + " ending " + o.card.last4 : ""], ["Last month", o.last ? "Your membership ends " + niceDay(o.last) : ""]]) +
-      (o.receipt ? `<p style="margin:0 0 14px"><a href="${h(o.receipt)}" style="color:#111">View the Square receipt</a></p>` : "") + `<p style="margin:0">${button(acct, "Pick my visit times")}</p>`],
-    fail: () => ["Action needed: your Apex Membership payment didn't go through", `<h1 style="font-size:22px;margin:0 0 8px">Your payment didn't go through</h1><p style="margin:0;color:#444;line-height:1.55">We couldn't charge ${money(o.amount)} for your Apex Membership. Please update your card in your account. We'll try again on ${niceDay(o.retry || "")}. Visits are paused until it's paid.</p><p style="margin:18px 0 0">${button(acct, "Update my card")}</p>`],
-    fail_final: () => ["Your Apex Membership was cancelled", `<h1 style="font-size:22px;margin:0 0 8px">Your membership was cancelled</h1><p style="margin:0;color:#444;line-height:1.55">We tried several times but couldn't charge ${money(o.amount)} for your Apex Membership, so it's been cancelled. That amount is still owed. Reply to this email or text (732) 206-7084 and we'll sort it out.</p>`],
-    card_needed: () => ["Add a card to start your Apex Membership", `<h1 style="font-size:22px;margin:0 0 8px">One step left, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">Your ${h(label)} membership needs a card on file. Please add one in your account by ${niceDay(o.deadline)}, or the membership won't start. Your first charge is one month after your detail.</p><p style="margin:18px 0 0">${button(acct, "Add my card")}</p>`],
-    nocard_cancel: () => ["Your Apex Membership didn't start", `<h1 style="font-size:22px;margin:0 0 8px">Your membership didn't start</h1><p style="margin:0;color:#444;line-height:1.55">We didn't get a card within 14 days of your detail, so your Apex Membership wasn't started and you won't be charged. You can start one after your next qualifying detail.</p>`],
-    cancelled: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">No more monthly charges. Your membership stays active through ${niceDay(o.ends)}, so keep using any visits you've booked. We'd love to have you back anytime.</p>`],
-    finishing: () => ["Your Apex Membership will end after your 3rd month", `<h1 style="font-size:22px;margin:0 0 8px">Got it, ${h(first)}</h1><p style="margin:0;color:#444;line-height:1.55">You'll keep your visits and the remaining ${o.left} monthly payment(s) in your first 3 months will go through as usual. Your membership ends automatically after that. No fee.</p>`],
-    cancelled_free: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">Your ${h(label)} membership is cancelled. You haven't been charged for it and you won't be. Your detail booking itself isn't affected.</p>`],
-    detail_cancelled: () => ["Your Apex Membership was cancelled with your detail", `<h1 style="font-size:22px;margin:0 0 8px">Your membership was cancelled too</h1><p style="margin:0;color:#444;line-height:1.55">Your ${h(label)} membership starts after your first detail, and that detail was cancelled${o.byUs ? " on our side" : ""}, so the membership was cancelled too. You weren't charged. ${o.byUs ? "When you book your new time, you can add the membership again from your account." : "You can add it again when you book your next detail."}</p><p style="margin:18px 0 0">${button(acct, "Go to my account")}</p>`],
-    cancel_fee: () => ["Your Apex Membership is cancelled", `<h1 style="font-size:22px;margin:0 0 8px">You're cancelled</h1><p style="margin:0;color:#444;line-height:1.55">We charged the ${money(o.fee)} early cancellation fee to your ${h((o.card || {}).brand || "card")} ending ${h((o.card || {}).last4 || "")}. No more monthly charges.${o.ends > todayNY().key ? " You can still use visits you've already paid for through " + niceDay(o.ends) + "." : ""}</p>`]
+    // new: confirms the plan, the price, when billing starts and how to cancel (sent when it's started from the account; at booking it's in the booking email)
+    welcome: () => ["You're an Apex member: " + label, "Your plan, your first charge, and how it works.",
+      hero("Welcome to Apex Membership", `You're in, ${h(first)}.`, `Your ${AM} keeps your car where your detail left it. Here's your plan.`) +
+      rows([["Plan", label], ["Monthly", money(m.monthly_cents) + " + " + money(taxCents(m.monthly_cents)) + " tax = " + money(m.monthly_cents + taxCents(m.monthly_cents))], ["First charge", o.firstBill ? niceDay(o.firstBill) + (o.firstAmount != null ? " · " + money(Math.round(o.firstAmount * 100) + taxCents(Math.round(o.firstAmount * 100))) : "") : ""],
+        ["Minimum", MEM.minPayments + " monthly payments, then pause or cancel anytime"], ["Card", o.card ? o.card.brand + " ending " + o.card.last4 : "Add one in your account within 14 days of your detail"]]) +
+      para("Once each month is paid, you pick that month's visit times in your account. Members get priority weekends, 10% off add-ons and no travel fee on visits.") +
+      buttons([[acct, "Open my account"]]) + note(`Billed to your card on the same date every month, plus NJ sales tax. Cancel in your account: free before your first charge; during the first ${MEM.minPayments} months you can finish them out or cancel early for a fee of half the payments left. <a href="${h(site)}/membership-terms" style="color:#f5f5f5">Membership Terms</a>`)],
+    receipt: () => ["Apex Membership receipt · " + money(o.amount + (o.tax || 0)), "Paid for this month. Pick your visit times anytime.",
+      hero("Receipt", `Thanks, ${h(first)}!`, `Your ${AM} is paid for this month. Pick your visit times in your account.`) +
+      rows([["Plan", label], ["Period", niceDay(o.period[0]) + " – " + niceDay(addDays(o.period[1], -1))], ["Visits", m.freq + (o.cover !== m.type ? " (" + MEM.plans[o.cover].name + " visits for winter)" : "")], ["Membership", money(o.amount) + (o.credit ? " (" + money(o.credit) + " credit used)" : "")], [TAX_LABEL, money(o.tax || 0)], ["Charged", money(o.amount + (o.tax || 0)), false, "total"], ["Card", o.card ? o.card.brand + " ending " + o.card.last4 : ""], ["Last month", o.last ? "Your membership ends " + niceDay(o.last) : ""]]) +
+      buttons([[acct, "Pick my visit times"], o.receipt ? [o.receipt, "Square receipt", "secondary"] : null])],
+    fail: () => ["Action needed: your Apex Membership payment didn't go through", "Please update your card so your visits keep going.",
+      hero("Action needed", "Your payment didn't go through.", `We couldn't charge ${b(money(o.amount))} for your ${AM}. Please update your card in your account. We'll try again on ${b(niceDay(o.retry || ""))}.`) +
+      para("Visits are paused until it's paid.") + buttons([[acct, "Update my card"]])],
+    fail_final: () => ["Your Apex Membership was cancelled", "We couldn't charge your card, so the membership was cancelled.",
+      hero("Membership cancelled", "Your membership was cancelled.", `We tried several times but couldn't charge ${b(money(o.amount))} for your ${AM}, so it's been cancelled. That amount is still owed.`) +
+      para("Reply to this email or text (732) 206-7084 and we'll sort it out together.")],
+    card_needed: () => ["Add a card to start your Apex Membership", "One step left: add a card in your account.",
+      hero("One step left", `Add your card, ${h(first)}.`, `Your ${h(label)} ${AM} needs a card on file. Add one in your account by ${b(niceDay(o.deadline))}, or the membership won't start.`) +
+      para("Your first charge is one month after your detail.") + buttons([[acct, "Add my card"]])],
+    nocard_cancel: () => ["Your Apex Membership didn't start", "No card was added, so you won't be charged.",
+      hero("Membership", "Your membership didn't start.", `We didn't get a card within 14 days of your detail, so your ${AM} wasn't started and you won't be charged.`) +
+      para("You can start one after your next qualifying detail.") + buttons([[site + "/#book", "Book a detail"]])],
+    cancelled: () => ["Your Apex Membership is cancelled", "No more monthly charges.",
+      hero("Membership cancelled", "You're cancelled.", `No more monthly charges. Your ${AM} stays active through ${b(niceDay(o.ends))}, so keep using any visits you've booked.`) +
+      para("We'd love to have you back anytime.") + buttons([[site + "/#book", "Book a detail", "secondary"]])],
+    finishing: () => ["Your Apex Membership will end after your 3rd month", "You keep your visits until then. No fee.",
+      hero("Membership", `Got it, ${h(first)}.`, `You'll keep your visits, and the remaining ${o.left} monthly payment${o.left === 1 ? "" : "s"} in your first 3 months will go through as usual. Your ${AM} ends automatically after that. No fee.`) +
+      buttons([[acct, "My membership"]])],
+    cancelled_free: () => ["Your Apex Membership is cancelled", "You weren't charged, and you won't be.",
+      hero("Membership cancelled", "You're cancelled.", `Your ${h(label)} ${AM} is cancelled. You haven't been charged for it and you won't be.`) +
+      para("Your detail booking itself isn't affected.")],
+    detail_cancelled: () => ["Your Apex Membership was cancelled with your detail", "Your detail was cancelled, so the membership was too. No charge.",
+      hero("Membership cancelled", "Your membership was cancelled too.", `Your ${h(label)} ${AM} starts after your first detail, and that detail was cancelled${o.byUs ? " on our side" : ""}, so the membership was cancelled too. You weren't charged.`) +
+      para(o.byUs ? "When you book your new time, you can add the membership again from your account." : "You can add it again when you book your next detail.") + buttons([[acct, "Go to my account"]])],
+    cancel_fee: () => ["Your Apex Membership is cancelled", "Cancelled. No more monthly charges.",
+      hero("Membership cancelled", "You're cancelled.", `We charged the ${b(money(o.fee))} early cancellation fee to your ${h((o.card || {}).brand || "card")} ending ${h((o.card || {}).last4 || "")}. No more monthly charges.`) +
+      (o.ends > todayNY().key ? para("You can still use visits you've already paid for through " + b(niceDay(o.ends)) + ".") : "") + buttons([[site + "/#book", "Book a detail", "secondary"]])]
   }[kind];
   if (!T) return;
   let R; try { R = T(); } catch (e) { console.log("membership email failed", kind, e.message); return; }
-  return send(env, { to: c.email, subject: R[0], html: layout(R[0], R[1], R[0], site + "/email-logo.png") }).catch(() => {});
+  return send(env, { to: c.email, subject: R[0], html: layout(R[0], R[2], R[1], site) }).catch(() => {});
 }

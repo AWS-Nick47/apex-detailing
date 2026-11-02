@@ -2552,6 +2552,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   /* NJ sales tax: every price on the site is before tax. The tax is added to the customer's bill on its own line.
      Same rate and rounding as the server (src/pricing.js), so estimates match the final bill to the cent. Tips aren't taxed. */
   var TAX = { name: "NJ sales tax", rate: 0.06625, pct: "6.625%" };
+  function taxCents(c) { c = Math.round(c); return c > 0 ? Math.floor((c * Math.round(TAX.rate * 100000) + 50000) / 100000) : 0; }
+  function taxOf(d) { return taxCents(d * 100) / 100; }                               // dollars -> the tax, in dollars
+  function withTax(d) { var c = Math.round(d * 100); return (c + taxCents(c)) / 100; }  // dollars -> total with tax
+  function usd(d) { var c = Math.round(d * 100); return "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); }
+  function usdBig(d) { var t = usd(d), i = t.indexOf("."); return i < 0 ? t : t.slice(0, i) + '<span class="c">' + t.slice(i) + "</span>"; }
   // Square's card fields, styled like our own dark inputs (Square only lets us set these few properties).
   // Square checks these inside its iframe (it rejects -apple-system/system-ui fonts) and then attach() fails, so if attach fails we retry with Square's default look.
   window.__sqStyle = {
@@ -2568,11 +2573,6 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function one(st) { return p.card(st ? { style: st } : undefined).then(function (c) { return c.attach(sel).then(function () { return c; }, function (e) { try { c.destroy(); } catch (x) {} throw e; }); }); }
     return one(window.__sqStyle).catch(function () { return one(null); });
   };
-  function taxCents(c) { c = Math.round(c); return c > 0 ? Math.floor((c * Math.round(TAX.rate * 100000) + 50000) / 100000) : 0; }
-  function taxOf(d) { return taxCents(d * 100) / 100; }                               // dollars -> the tax, in dollars
-  function withTax(d) { var c = Math.round(d * 100); return (c + taxCents(c)) / 100; }  // dollars -> total with tax
-  function usd(d) { var c = Math.round(d * 100); return "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); }
-  function usdBig(d) { var t = usd(d), i = t.indexOf("."); return i < 0 ? t : t.slice(0, i) + '<span class="c">' + t.slice(i) + "</span>"; }
   /* ================= SCHEDULING SETTINGS ================= */
   var SCHED = {
     winter: { start: [12, 15], end: [3, 1] },   // [month, day]: only Interior is bookable between these dates
