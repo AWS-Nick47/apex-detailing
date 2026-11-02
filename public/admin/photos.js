@@ -59,7 +59,7 @@
     }).then(function (x) {
       running = false;
       if (x.s === 200) {
-        OFF.storage = false;
+        OFF.storage = false; adopt(r);
         Q = Q.filter(function (y) { return y !== r; }); unmark(r);
         tx("readwrite", function (st) { st.delete(r.id); }).catch(function () {});
         setTimeout(function () { URL.revokeObjectURL(r.url); URL.revokeObjectURL(r.turl); }, 60000);
@@ -69,6 +69,14 @@
       if (x.j && x.j.gone) { r.failed = x.j.error || "Couldn't upload"; pill(); pump(); return; }
       later(20000);
     }).catch(function () { running = false; pill(); later(20000); });
+  }
+  // the server has it now: put it into the job object(s) the screens use, so nothing looks missing while the job reloads
+  function adopt(r) {
+    [A.job && A.job(), CAM && CAM.job].forEach(function (job) {
+      if (!job || job.id !== r.booking || !job.photos) return;
+      var a = job.photos.angles.filter(function (x) { return x.id === r.angle; })[0]; if (!a) return;
+      if (!a[r.phase] || (a[r.phase].taken || 0) <= r.taken) a[r.phase] = { id: r.id, w: r.w, h: r.h, taken: r.taken, hidden: false, meta: { lens: r.lens, zoom: r.zoom } };
+    });
   }
   function later(ms) { clearTimeout(retryT); retryT = setTimeout(pump, ms); }
   var reloadT = null;
@@ -292,12 +300,12 @@
   // ---------- single photo viewer ----------
   function viewer(aid, phase) {
     var job = A.job(), a = findAngle(job, aid), p = cur(job, a, phase); if (!p) return walk(phase, aid);
-    var el = openFs("", '<div class="fs-top"><button class="ic" data-v="close" aria-label="Close">' + I.x + '</button><div class="t">' + esc(a.name) + "<small>" + (phase === "before" ? "Before" : "After") + (p.pending ? " · on this phone, uploading" : "") + (p.hidden ? " · hidden from the customer" : "") + '</small></div><span style="width:42px"></span></div>' +
+    var el = openFs("", '<div class="fs-top"><button class="ic" data-vw="close" aria-label="Close">' + I.x + '</button><div class="t">' + esc(a.name) + "<small>" + (phase === "before" ? "Before" : "After") + (p.pending ? " · on this phone, uploading" : "") + (p.hidden ? " · hidden from the customer" : "") + '</small></div><span style="width:42px"></span></div>' +
       '<div class="vf-wrap"><img src="' + esc(p.src) + '" alt="" style="max-width:100%;max-height:100%;object-fit:contain"></div>' +
       '<div class="fs-bot"><div class="fs-row" style="justify-content:center;flex-wrap:wrap;gap:8px">' +
-      '<button class="btn" data-v="retake">Retake</button>' + (phase === "before" ? '<button class="btn g" data-v="damage">Mark damage' + (a.pins.length ? " (" + a.pins.length + ")" : "") + "</button>" : "") +
-      (cur(job, a, phase === "before" ? "after" : "before") ? '<button class="btn g" data-v="compare">Compare</button>' : "") +
-      (!p.pending ? '<button class="btn g" data-v="hide">' + (p.hidden ? "Show to customer" : "Hide from customer") + '</button><button class="btn d" data-v="delete">Delete</button>' : "") + "</div></div>");
+      '<button class="btn" data-vw="retake">Retake</button>' + (phase === "before" ? '<button class="btn g" data-vw="damage">Mark damage' + (a.pins.length ? " (" + a.pins.length + ")" : "") + "</button>" : "") +
+      (cur(job, a, phase === "before" ? "after" : "before") ? '<button class="btn g" data-vw="compare">Compare</button>' : "") +
+      (!p.pending ? '<button class="btn g" data-vw="hide">' + (p.hidden ? "Show to customer" : "Hide from customer") + '</button><button class="btn d" data-vw="delete">Delete</button>' : "") + "</div></div>");
     el.dataset.aid = aid; el.dataset.phase = phase; el.dataset.pid = p.id || "";
   }
 
@@ -333,7 +341,7 @@
   function dmSave(close) {
     var n = document.getElementById("dmNotes"); if (n) DM.notes = n.value;
     var body = { pins: DM.pins, notes: DM.notes }, job = DM.job, a = DM.a;
-    return A.post("/jobs/" + job.id + "/angles/" + a.id, body).then(function () { a.pins = DM.pins.slice(); a.notes = DM.notes; if (close) { DM.el.remove(); DM = null; if (CAM) camDraw(); if (!fsRoot.querySelector(".fs")) { document.body.classList.remove("lock"); A.reloadJob(); } } A.buzz(); })
+    return A.post("/jobs/" + job.id + "/angles/" + a.id, body).then(function () { a.pins = DM.pins.slice(); a.notes = DM.notes; if (close) { DM.el.remove(); DM = null; if (CAM) camDraw(); var vw = fsRoot.querySelector(".fs[data-aid]"); if (vw) viewer(vw.dataset.aid, vw.dataset.phase); if (!fsRoot.querySelector(".fs")) { document.body.classList.remove("lock"); A.reloadJob(); } } A.buzz(); })
       .catch(function (e) { A.toast("Couldn't save the damage marks: " + e.message, true); });
   }
 
@@ -353,10 +361,10 @@
     var a = CMP.pairs[CMP.i], b = cur(CMP.job, a, "before"), f = cur(CMP.job, a, "after"), W = document.getElementById("cmpWrap");
     document.getElementById("cmpT").innerHTML = esc(a.name) + "<small>" + (CMP.i + 1) + " of " + CMP.pairs.length + "</small>";
     [].forEach.call(document.querySelectorAll("[data-cmp-mode]"), function (x) { x.setAttribute("aria-pressed", String(x.dataset.cmpMode === CMP.mode)); });
-    var ww = W.clientWidth - 16, wh = W.clientHeight - 16, ar = (f.w && f.h ? f.w / f.h : 4 / 3);
+    var ww = W.clientWidth - 16, wh = W.clientHeight - 16, ar = (f.w && f.h ? f.w / f.h : 4 / 3), fitB = b.w && b.h && (b.w > b.h) !== (ar > 1) ? "contain" : "cover";
     if (CMP.mode === "slider") {
       var fw = ww, fh = ww / ar; if (fh > wh) { fh = wh; fw = wh * ar; }
-      W.innerHTML = '<div class="cmpv" id="cmpv" style="width:' + Math.floor(fw) + "px;height:" + Math.floor(fh) + 'px"><img src="' + esc(b.src) + '" alt="Before"><div class="aft" id="cmpA" style="clip-path:inset(0 0 0 ' + CMP.pos + '%)"><img src="' + esc(f.src) + '" alt="After"></div><div class="div" id="cmpD" style="left:' + CMP.pos + '%"><span>⇆</span></div><span class="lbl" style="left:10px">BEFORE</span><span class="lbl" style="right:10px">AFTER</span></div>';
+      W.innerHTML = '<div class="cmpv" id="cmpv" style="width:' + Math.floor(fw) + "px;height:" + Math.floor(fh) + 'px;background:#000"><img src="' + esc(b.src) + '" alt="Before" style="object-fit:' + fitB + '"><div class="aft" id="cmpA" style="clip-path:inset(0 0 0 ' + CMP.pos + '%)"><img src="' + esc(f.src) + '" alt="After"></div><div class="div" id="cmpD" style="left:' + CMP.pos + '%"><span>⇆</span></div><span class="lbl" style="left:10px">BEFORE</span><span class="lbl" style="right:10px">AFTER</span></div>';
     } else {
       var stack = ar > 1.05; // sideways photos stack so they stay big
       var cw = stack ? ww : (ww - 8) / 2, ch = cw / ar, total = stack ? ch * 2 + 8 : ch;
@@ -392,8 +400,9 @@
     return { k: k, W: Math.round(W * k), H: Math.round(H * k), cw: cw * k, ch: ch * k, gap: gap * k, stack: stack, b: b, f: f };
   }
   function cellRect(Lx, which) { return which === 0 ? { x: 0, y: 0, w: Lx.cw, h: Lx.ch } : Lx.stack ? { x: 0, y: Lx.ch + Lx.gap, w: Lx.cw, h: Lx.ch } : { x: Lx.cw + Lx.gap, y: 0, w: Lx.cw, h: Lx.ch }; }
-  function drawCover(x, img, r) {   // object-fit: cover
+  function drawCover(x, img, r) {   // object-fit: cover (contain when the photo is turned the other way, so nothing important is cut off)
     var ia = img.naturalWidth / img.naturalHeight, ra = r.w / r.h, sw = img.naturalWidth, sh = img.naturalHeight, sx = 0, sy = 0;
+    if ((ia > 1) !== (ra > 1)) { var k = Math.min(r.w / sw, r.h / sh), dw = sw * k, dh = sh * k; x.drawImage(img, 0, 0, sw, sh, r.x + (r.w - dw) / 2, r.y + (r.h - dh) / 2, dw, dh); return; }
     if (ia > ra) { sw = sh * ra; sx = (img.naturalWidth - sw) / 2; } else { sh = sw / ra; sy = (img.naturalHeight - sh) / 2; }
     x.drawImage(img, sx, sy, sw, sh, r.x, r.y, r.w, r.h);
   }
@@ -516,8 +525,8 @@
     if ((b = t.closest("[data-lens]"))) return switchLens(b.dataset.lens);
     if (t.closest("#vf") && CAM && !t.closest("button")) return tapFocus({ currentTarget: document.getElementById("vf"), clientX: e.clientX, clientY: e.clientY });
     // viewer
-    if ((b = t.closest("[data-v]"))) {
-      var fsEl = t.closest(".fs"), vaid = fsEl.dataset.aid, vph = fsEl.dataset.phase, pid = fsEl.dataset.pid, va = b.dataset.v;
+    if ((b = t.closest("[data-vw]")) && t.closest(".fs")) {
+      var fsEl = t.closest(".fs"), vaid = fsEl.dataset.aid, vph = fsEl.dataset.phase, pid = fsEl.dataset.pid, va = b.dataset.vw;
       if (va === "close") return closeFs();
       if (va === "retake") { fsRoot.innerHTML = ""; return walk(vph, vaid); }
       if (va === "damage") return damage(vaid);
@@ -577,6 +586,7 @@
   });
   document.addEventListener("contextmenu", function (e) { if (e.target.closest && e.target.closest("[data-ph-row]")) e.preventDefault(); });
 
-  window.ApexPhotos = { checklistHTML: checklistHTML, pendingCount: pendingCount, retry: function () { Q.forEach(function (r) { delete r.failed; }); pump(); } };
+  function counts(job) { var L = angles(job); return { before: L.filter(function (a) { return cur(job, a, "before"); }).length, after: L.filter(function (a) { return cur(job, a, "after"); }).length, total: L.length }; }
+  window.ApexPhotos = { counts: counts, checklistHTML: checklistHTML, pendingCount: pendingCount, retry: function () { Q.forEach(function (r) { delete r.failed; }); pump(); } };
   qLoad().then(pump);
 })();

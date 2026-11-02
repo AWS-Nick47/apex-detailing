@@ -113,13 +113,28 @@
   sheetRoot.addEventListener("change", function () { SH.dirty = true; });
   function sheetErr(msg) { var e = sheetRoot.querySelector(".err[data-err]"); if (e) { e.textContent = msg; e.hidden = !msg; if (msg) e.scrollIntoView({ block: "nearest" }); } else if (msg) toast(msg, true); }
 
+  // ---------- unsaved typing on the screen (not sheets) ----------
+  // true when something typed on the current screen hasn't been saved (search boxes don't count; the amount box only counts for app refreshes)
+  function hasUnsaved(withAmount) {
+    return [].some.call(main.querySelectorAll("input, textarea, select"), function (el) {
+      if (el.id === "pq" || el.type === "search" || el.type === "hidden" || el.disabled || (!withAmount && (el.id === "amt" || el.id === "tipAmt"))) return false;
+      if (el.type === "checkbox" || el.type === "radio") return el.checked !== el.defaultChecked;
+      if (el.tagName === "SELECT") return [].some.call(el.options, function (o) { return o.selected !== o.defaultSelected; });
+      return el.value !== el.defaultValue;
+    });
+  }
+  function markSaved(el) { if (el) { el.defaultValue = el.value; } }
+
   // ---------- routing ----------
   function setTabs(tab) {
     S.tab = tab;
     [].forEach.call(document.querySelectorAll(".tabs button"), function (b) { b.setAttribute("aria-selected", String(b.dataset.tab === tab)); b.tabIndex = b.dataset.tab === tab ? 0 : -1; });
   }
-  var RENDER = {};
+  var RENDER = {}, LAST_HASH = location.hash, SKIP_ROUTE = false;
   function route() {
+    if (SKIP_ROUTE) { SKIP_ROUTE = false; return; }
+    if (location.hash !== LAST_HASH && hasUnsaved(false) && !confirm("You have changes that aren't saved. Leave without saving?")) { SKIP_ROUTE = true; location.hash = LAST_HASH; return; }
+    LAST_HASH = location.hash;
     closeSheet(true);
     window.dispatchEvent(new CustomEvent("apex:route"));
     var h = decodeURIComponent((location.hash || "#today").slice(1)), m;
@@ -226,7 +241,7 @@
       else { label = "<b>" + esc(it.what) + "</b> · " + esc(it.name) + (it.town ? " · " + esc(it.town) : ""); dot = "job"; x = '<span class="x"><button class="lnk" data-href="#job/' + esc(it.id) + '">Open</button></span>'; }
       items += '<div class="it"><i class="dot ' + dot + '"></i><span class="t">' + esc(t) + "</span><span>" + label + "</span>" + x + "</div>";
     });
-    if (!d.past) d.free.forEach(function (f) { items += '<div class="it"><i class="dot free"></i><span class="t">' + tmin(f[0]) + "–" + tmin(f[1]) + '</span><span class="muted">' + fits(f[1] - f[0], d.winter) + '</span><span class="x"><button class="lnk" data-newjob data-day="' + d.day + '" data-start="' + f[0] + '">Book</button></span></div>'; });
+    if (!d.past) d.free.forEach(function (f) { items += '<div class="it"><i class="dot free"></i><span class="t">' + tmin(f[0]) + "–" + tmin(f[1]) + '</span><span class="muted">' + fits(f[1] - f[0], d.winter) + '</span><span class="x"><button class="lnk" data-newjob data-day="' + d.day + '" data-start="' + f[0] + '" data-pkg="' + fitPkg(f[1] - f[0], d.winter) + '">Book</button></span></div>'; });
     var meta = [];
     if (d.winter) meta.push('<span class="badge">Interior only</span>');
     if (d.jobs >= d.maxJobs) meta.push('<span class="badge">Booked</span>');
@@ -237,6 +252,7 @@
       '<div class="bar">' + segs + '</div><div class="ticks">' + ticks + "</div>" +
       (items ? '<div class="items">' + items + "</div>" : '<p class="dim small" style="margin-top:6px">Nothing scheduled.</p>') + "</div>";
   }
+  function fitPkg(len, winter) { var L = WEEK_RULES.baseMin || { exterior: [90], interior: [210], full: [300] }; return winter ? "interior" : len >= L.full[0] ? "full" : len >= L.interior[0] ? "interior" : "exterior"; }
   function fits(len, winter) {
     var L = WEEK_RULES.baseMin || { exterior: [90], interior: [210], full: [300] };
     if (winter) return len >= L.interior[0] ? "Open · fits an Interior" : "Open · too short for an Interior";
@@ -275,10 +291,11 @@
   // ---------- Jobs ----------
   RENDER.jobs = function () {
     loading();
-    api("/jobs?scope=" + S.jobScope).then(function (d) {
+    api("/jobs?scope=" + S.jobScope + "&limit=" + (S.jobLimit || 100)).then(function (d) {
       var h = '<div class="row" style="align-items:flex-start"><div><h1>Jobs</h1><p class="sub">Tap a job for photos, status and getting paid.</p></div><button class="btn sm" data-newjob>+ Book a job</button></div>';
       h += '<div class="seg">' + [["upcoming", "Upcoming"], ["past", "Past"], ["cancelled", "Cancelled"]].map(function (s) { return '<button data-scope="' + s[0] + '" aria-pressed="' + (s[0] === S.jobScope) + '">' + s[1] + "</button>"; }).join("") + "</div>";
       h += d.jobs.length ? '<div class="list">' + d.jobs.map(jobCard).join("") + "</div>" : '<div class="card empty">No ' + S.jobScope + " jobs.</div>";
+      if (d.more) h += '<div class="acts" style="justify-content:center"><button class="btn g sm" data-morejobs>Show more</button></div>';
       main.innerHTML = h;
     }).catch(fail);
   };
@@ -313,7 +330,8 @@
       nb += "</div>"; if (nb.indexOf("btn") > -1) h += nb;
     }
     // photos
-    h += '<h2 id="photos">Photos' + (j.photos.counts.total ? ' <span class="dim small" style="font-weight:500">· ' + j.photos.counts.before + "/" + j.photos.counts.total + " before · " + j.photos.counts.after + "/" + j.photos.counts.total + " after</span>" : "") + "</h2>";
+    var pc = window.ApexPhotos ? window.ApexPhotos.counts(j) : j.photos.counts;
+    h += '<h2 id="photos">Photos' + (pc.total ? ' <span class="dim small" style="font-weight:500">· ' + pc.before + "/" + pc.total + " before · " + pc.after + "/" + pc.total + " after</span>" : "") + "</h2>";
     h += window.ApexPhotos ? window.ApexPhotos.checklistHTML(j) : '<div class="card empty">Photo tools didn\'t load. Refresh.</div>';
     // get paid
     if (!member && !cancelled) h += st === "scheduled" && !j.paid && !S.payOpen ? '<div class="acts" style="margin-top:14px"><button class="btn g sm" data-payopen>Take payment now</button></div>' : payCard(j);
@@ -341,7 +359,7 @@
       if (st === "scheduled") h += '<button class="btn g" data-jobact="in_progress">Mark in progress</button>';
       if (st === "done" && !member && !j.paid) h += '<button class="btn g" data-jobact="not_done">Mark not done</button>';
       if (member ? !j.done : !j.paid) h += '<button class="btn d" data-jcancel>Cancel job</button>';
-      if (!member && j.paid) h += '<button class="btn d" data-jrefund>Refunded in Square</button>';
+      if (!member && j.paid) h += '<button class="btn d" data-jrefund>' + (/^in_person:(cash|other)/.test(j.method || "") ? "Gave the money back" : "Refunded in Square") + "</button>";
       h += "</div>";
       h += '<p class="note">Customer link: <button class="lnk" data-copy="' + esc(j.manageLink) + '">copy manage link</button>' + (j.payLink ? ' · <button class="lnk" data-copy="' + esc(j.payLink) + '">copy pay link</button>' : "") + "</p>";
     }
@@ -365,6 +383,7 @@
       '<div class="menu" style="margin-top:12px">' +
       (j.card && j.squareOn ? '<button class="btn lg" data-pay="charge">Charge ' + esc(j.card) + "</button>" : "") +
       (j.squareOn ? '<button class="btn ' + (j.card ? "g" : "lg") + '" data-pay="link">' + (j.email ? "Email them a pay link" : "Get a pay link to text them") + "</button>" : "") +
+      '<label class="f" style="margin-top:4px">Tip they handed you (cash or Venmo, optional, not taxed)<div class="money-in" style="margin:0"><span>$</span><input id="tipAmt" inputmode="decimal" placeholder="0" autocomplete="off"></div></label>' +
       '<button class="btn g" data-pay="inperson" data-how="cash">Paid in person: cash</button><button class="btn g" data-pay="inperson" data-how="card">Paid in person: card / Tap to Pay</button><button class="btn g" data-pay="inperson" data-how="other">Paid in person: Venmo / other</button></div>' +
       '<p class="note">Charging the card or the pay link adds the tax and emails a receipt (with an "Add a tip" button). Paid in person? Collect the "Customer pays" total. Tips aren\'t taxed.</p>';
     return h + "</div>";
@@ -383,7 +402,9 @@
     if (j.quote && c > 2 * j.quote) { if (!confirm("That's more than double the " + money(j.quote) + " estimate. Continue with " + tot + "?")) return; big = true; }
     var q = act === "charge" ? "Charge " + tot + " (with tax) to " + j.card + "?" : act === "link" ? (j.email ? "Email " + j.email + " a link to pay " + tot + "?" : "Make a pay link for " + tot + "?") : "Mark paid in person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[b.dataset.how]) + "): " + tot + "?";
     if (!confirm(q)) return;
-    payReq({ action: act, amount: raw, how: b.dataset.how, big: big }, b);
+    var tip = (document.getElementById("tipAmt") || {}).value || "";
+    if (act === "inperson" && tip && !/^\$?\d+(\.\d{1,2})?$/.test(tip.trim())) return toast("Enter the tip as a number, like 20.");
+    payReq({ action: act, amount: raw, how: b.dataset.how, big: big, tip: act === "inperson" ? tip : "" }, b);
   }
   function payReq(body, b) {
     var done = busy(b, "Working…");
@@ -399,11 +420,12 @@
   var BK = null;
   function openBook(pre) {
     pre = pre || {};
-    BK = { customer: null, vehicles: [], vehicleId: "", pkg: "full", size: 0, adds: [], day: pre.day || addD(todayNY(), 1), start: pre.start != null ? +pre.start : null, anyTime: false, preview: null, newCust: false, newVeh: false };
+    var pk0 = ["exterior", "interior", "full"].indexOf(pre.pkg) > -1 ? pre.pkg : "full";
+    BK = { customer: null, vehicles: [], vehicleId: "", pkg: pk0, size: 0, adds: [], day: pre.day || addD(todayNY(), 1), start: pre.start != null ? +pre.start : null, anyTime: false, preview: null, newCust: false, newVeh: false };
     var sh = openSheet("Book a job", '<form id="bkf" class="fg" autocomplete="off">' +
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Customer<div id="bkCust"></div></div>' +
       '<div id="bkVehBox" class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)" hidden>Vehicle<select id="bkVeh"></select><div id="bkNewVeh" class="fg" hidden>' + vehFields({}) + "</div></div>" +
-      '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Package<div class="pills" id="bkPkg">' + ["exterior", "interior", "full", "custom"].map(function (k) { return '<button type="button" data-v="' + k + '" aria-pressed="' + (k === "full") + '">' + PKG[k] + "</button>"; }).join("") + "</div></div>" +
+      '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Package<div class="pills" id="bkPkg">' + ["exterior", "interior", "full", "custom"].map(function (k) { return '<button type="button" data-v="' + k + '" aria-pressed="' + (k === pk0) + '">' + PKG[k] + "</button>"; }).join("") + "</div></div>" +
       '<div id="bkCustom" class="fg2" hidden><label class="f">Package name<input type="text" id="bkCname" maxlength="40" placeholder="e.g. Ceramic coating"></label><label class="f">Length<select id="bkDur">' + [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480].map(function (m) { return '<option value="' + m + '"' + (m === 120 ? " selected" : "") + ">" + hrs(m) + "</option>"; }).join("") + "</select></label></div>" +
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Size<div class="pills" id="bkSize">' + SIZES.map(function (s, i) { return '<button type="button" data-v="' + i + '" aria-pressed="' + (i === 0) + '">' + s + "</button>"; }).join("") + "</div></div>" +
       '<div id="bkAdds" class="fg" style="gap:8px"></div>' +
@@ -411,7 +433,7 @@
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Time<div id="bkTimes" class="pills"><span class="dim small">Pick a customer and package first.</span></div>' +
       '<label class="chk" style="font-size:14px;color:var(--fg)"><input type="checkbox" id="bkAny"> Any time (ignore my calendar)</label><input type="time" id="bkAt" step="900" hidden value="' + (BK.start != null ? hhmm(BK.start) : "09:00") + '"></div>' +
       '<div class="card" id="bkPrice" style="padding:10px 14px"><span class="dim small">Price shows once a customer is picked.</span></div>' +
-      '<label class="f">Price before tax (leave empty to use the estimate)<input type="number" id="bkOver" inputmode="decimal" min="0" max="5000" step="1" placeholder="Estimate"></label>' +
+      '<label class="f"><span id="bkOverL">Price before tax (leave empty to use the estimate)</span><input type="number" id="bkOver" inputmode="decimal" min="0" max="5000" step="1" placeholder="Estimate"></label>' +
       '<div id="bkPayBox" hidden class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Payment<div class="pills" id="bkPay"><button type="button" data-v="later" aria-pressed="true">Pay after the job</button><button type="button" data-v="card" aria-pressed="false" id="bkCardBtn">Card on file</button></div></div>' +
       '<label class="f">Job notes (address details, what they want)<textarea id="bkNotes" maxlength="1500"></textarea></label>' +
       '<label class="f">Your private notes<textarea id="bkOwn" maxlength="2000" style="min-height:60px"></textarea></label>' +
@@ -472,6 +494,7 @@
     BK.adds = BK.adds.filter(function (a) { return ok.indexOf(a) > -1; });
     el.innerHTML = ok.length ? '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Add-ons<div class="pills" id="bkAddP">' + ok.map(function (a) { return '<button type="button" data-v="' + a + '" aria-pressed="' + (BK.adds.indexOf(a) > -1) + '">' + ADDN[a] + "</button>"; }).join("") + "</div></div>" : "";
     document.getElementById("bkCustom").hidden = BK.pkg !== "custom";
+    var ol = document.getElementById("bkOverL"); if (ol) ol.textContent = BK.pkg === "custom" ? "Price before tax (required for a custom package)" : "Price before tax (leave empty to use the estimate)";
   }
   var prevT = null;
   function refreshPreview() {
@@ -499,7 +522,7 @@
     var body = { pkg: BK.pkg, size: BK.size, adds: BK.adds, day: document.getElementById("bkDay").value, start: start, anyTime: any, price: document.getElementById("bkOver").value,
       notes: document.getElementById("bkNotes").value, ownerNotes: document.getElementById("bkOwn").value, notify: document.getElementById("bkNotify").checked,
       pay: (sheetRoot.querySelector("#bkPay [aria-pressed=true]") || {}).dataset ? sheetRoot.querySelector("#bkPay [aria-pressed=true]").dataset.v : "later" };
-    if (BK.pkg === "custom") { body.customName = document.getElementById("bkCname").value; body.durationMin = +document.getElementById("bkDur").value; }
+    if (BK.pkg === "custom") { body.customName = document.getElementById("bkCname").value; body.durationMin = +document.getElementById("bkDur").value; if (body.price === "") return sheetErr("Enter the price for the custom package (before tax)."); }
     var vsel = document.getElementById("bkVeh").value;
     if (vsel === "new") body.newVehicle = readVeh(document.getElementById("bkNewVeh")); else if (vsel) body.vehicleId = vsel;
     var done = busy(sb, "Booking…");
@@ -561,7 +584,8 @@
       '<div id="bkCustom" class="fg2"' + (pkg === "custom" ? "" : " hidden") + '><label class="f">Package name<input type="text" id="bkCname" maxlength="40" value="' + esc(j.customName || "") + '"></label><label class="f">Length<select id="bkDur">' + [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480, len].filter(function (m, i, a) { return a.indexOf(m) === i; }).sort(function (a, b) { return a - b; }).map(function (m) { return '<option value="' + m + '"' + (m === len ? " selected" : "") + ">" + hrs(m) + "</option>"; }).join("") + "</select></label></div>" +
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Size<div class="pills" id="bkSize">' + SIZES.map(function (s, i) { return '<button type="button" data-v="' + i + '" aria-pressed="' + (i === j.size) + '">' + s + "</button>"; }).join("") + "</div></div>" +
       '<div id="bkAdds" class="fg" style="gap:8px"></div>' +
-      '<label class="f">Price before tax<input type="number" id="ejPrice" inputmode="decimal" min="0" max="5000" value="' + esc(j.quote == null ? "" : j.quote) + '"><span class="dim small">Changing the package recalculates it unless you type a price.</span></label>';
+      (j.final != null ? '<p class="note warnc">A pay link for ' + money(j.final + j.tax) + ' is out, so the package and price are locked. To change the amount, send a new pay link from Get paid.</p>' :
+      '<label class="f">Price before tax<input type="number" id="ejPrice" inputmode="decimal" min="0" max="5000" value="' + esc(j.quote == null ? "" : j.quote) + '"><span class="dim small">Changing the package recalculates it unless you type a price.</span></label>');
     h += '<label class="f">Vehicle<select id="ejVeh"><option value="">Loading…</option></select></label>' +
       '<div class="fg2"><label class="f">Address<input type="text" id="ejAddr" maxlength="160" value="' + esc(j.address || "") + '"></label><label class="f">Town<input type="text" id="ejTown" maxlength="60" value="' + esc(j.town || "") + '"></label></div>' +
       '<div class="fg2"><label class="f">Water spigot<select id="ejWater"><option value="">—</option><option value="yes"' + (j.water === "yes" ? " selected" : "") + '>Yes</option><option value="no"' + (j.water === "no" ? " selected" : "") + '>No</option></select></label><label class="f">Outlet<select id="ejPower"><option value="">—</option><option value="yes"' + (j.power === "yes" ? " selected" : "") + '>Yes</option><option value="no"' + (j.power === "no" ? " selected" : "") + ">No</option></select></label></div>" +
@@ -571,7 +595,7 @@
     if (!member) drawAdds();
     if (j.customer) api("/customers/" + j.customer.id).then(function (d) {
       var sel = document.getElementById("ejVeh"); if (!sel) return;
-      sel.innerHTML = '<option value="">' + esc(j.car || "No vehicle") + (j.vehicle ? "" : " (as booked)") + "</option>" + d.vehicles.map(function (v) { return '<option value="' + esc(v.id) + '"' + (j.vehicle && j.vehicle.id === v.id ? " selected" : "") + ">" + esc(v.name + (v.color ? " · " + v.color : "")) + "</option>"; }).join("");
+      sel.innerHTML = '<option value="">' + (j.vehicle ? "No vehicle" : esc(j.car || "No vehicle") + (j.car ? " (as booked)" : "")) + "</option>" + d.vehicles.map(function (v) { return '<option value="' + esc(v.id) + '"' + (j.vehicle && j.vehicle.id === v.id ? " selected" : "") + ">" + esc(v.name + (v.color ? " · " + v.color : "")) + "</option>"; }).join("");
     });
   }
   function submitEditJob(form) {
@@ -581,7 +605,8 @@
       var pkgChanged = BK.pkg !== (j.custom ? "custom" : j.pkg) || BK.size !== j.size || BK.adds.join() !== (j.adds || []).join();
       if (pkgChanged) { body.pkg = BK.pkg; body.size = BK.size; body.adds = BK.adds; }
       if (BK.pkg === "custom") { body.pkg = "custom"; body.customName = document.getElementById("bkCname").value; body.durationMin = +document.getElementById("bkDur").value; }
-      var pr = document.getElementById("ejPrice").value; if (pr !== "" && +pr !== j.quote) body.price = pr; else if (!pkgChanged && BK.pkg !== "custom") delete body.price;
+      var pe = document.getElementById("ejPrice"), pr = pe ? pe.value : ""; if (pe && pr !== "" && +pr !== j.quote) body.price = pr;
+      if (j.final != null) { delete body.pkg; delete body.size; delete body.adds; delete body.price; delete body.customName; delete body.durationMin; }
     }
     var sb = form.querySelector('[type="submit"]'), done = busy(sb, "Saving…");
     post("/jobs/" + j.id + "/edit", body).then(function () { closeSheet(true); toast("Saved"); renderJob(j.id); }).catch(function (e) { done(); sheetErr(e.message); });
@@ -864,7 +889,7 @@
   // ---------- events ----------
   document.addEventListener("click", function (e) {
     var t = e.target, b;
-    if ((b = t.closest(".tabs button"))) { S.depth = 0; return (location.hash = "#" + b.dataset.tab); }
+    if ((b = t.closest(".tabs button"))) { S.depth = 0; if (location.hash === "#" + b.dataset.tab) { if (!hasUnsaved(false) || confirm("You have changes that aren't saved. Leave without saving?")) RENDER[b.dataset.tab](); return; } return (location.hash = "#" + b.dataset.tab); }
     if (t.closest("[data-signin]")) return location.reload();
     if (t.closest("[data-back]")) return goBack();
     if ((b = t.closest("[data-go]"))) { if (b.dataset.people) { S.people = b.dataset.people; S.q = ""; } S.depth = 0; location.hash = "#" + b.dataset.go; if (S.tab === b.dataset.go && !S.detail) RENDER[S.tab](); return; }
@@ -877,7 +902,7 @@
     if ((b = t.closest("[data-sqsync]"))) { var dn = busy(b, "Syncing…"); post("/money/square-sync").then(function (r) { toast(r.skipped || "Synced " + (r.payments || 0) + " payments"); RENDER.money(); }).catch(function (e2) { dn(); toast(e2.message, true); }); return; }
     if ((b = t.closest("[data-week]"))) { var n = +b.dataset.week; S.weekFrom = n ? addD(S.weekFrom, n) : weekStart(todayNY()); return RENDER.schedule(); }
     if (t.closest("[data-newblock]")) return openBlockSheet();
-    if ((b = t.closest("[data-newjob]"))) return openBook({ customerId: b.dataset.cust, day: b.dataset.day, start: b.dataset.start });
+    if ((b = t.closest("[data-newjob]"))) return openBook({ customerId: b.dataset.cust, day: b.dataset.day, start: b.dataset.start, pkg: b.dataset.pkg });
     if (t.closest("[data-sheetbg]") && !t.closest(".sheet")) return closeSheet();
     if (t.closest("[data-close]")) return closeSheet();
     if ((b = t.closest("#bRep button"))) { [].forEach.call(b.parentNode.children, function (x) { x.setAttribute("aria-pressed", String(x === b)); }); var wk = b.dataset.v === "weekly"; document.getElementById("bOnce").hidden = wk; document.getElementById("bWeekly").hidden = !wk; return; }
@@ -885,7 +910,8 @@
     if ((b = t.closest("[data-delblock]"))) { if (!confirm("Delete this blocked time?")) return; del("/blockouts/" + b.dataset.delblock).then(function () { toast("Deleted"); RENDER.schedule(); }).catch(function (e2) { toast(e2.message); }); return; }
     if ((b = t.closest("[data-skip]"))) { var wkly = b.dataset.weekly === "1"; if (!confirm(wkly ? "Skip it on " + dlabel(b.dataset.day) + " only?" : "Remove this blocked time?")) return;
       post("/blockouts/" + b.dataset.skip + "/skip", { day: b.dataset.day }).then(function () { toast(wkly ? "Skipped that day" : "Removed"); RENDER.schedule(); }).catch(function (e2) { toast(e2.message); }); return; }
-    if ((b = t.closest("[data-scope]"))) { S.jobScope = b.dataset.scope; return RENDER.jobs(); }
+    if ((b = t.closest("[data-scope]"))) { S.jobScope = b.dataset.scope; S.jobLimit = 100; return RENDER.jobs(); }
+    if (t.closest("[data-morejobs]")) { S.jobLimit = (S.jobLimit || 100) + 100; var y = window.scrollY; RENDER.jobs(); setTimeout(function () { window.scrollTo(0, y); }, 400); return; }
     if ((b = t.closest("[data-people]"))) { S.people = b.dataset.people; S.archived = false; return PCACHE[S.people] ? drawPeople() : RENDER.people(); }
     if ((b = t.closest("[data-archived]"))) { S.archived = b.dataset.archived === "1"; return RENDER.people(); }
     // book sheet
@@ -907,11 +933,11 @@
     if (t.closest("[data-payopen]")) { S.payOpen = true; drawJob(); var pp = document.getElementById("pay"); if (pp) pp.scrollIntoView({ behavior: "smooth" }); return; }
     if (t.closest("[data-jmove]")) return openMove();
     if (t.closest("[data-jcancel]")) return openCancel();
-    if (t.closest("[data-jrefund]")) { if (!confirm("Did you already refund this in Square (Square app → Transactions → Refund)? This cancels the job and takes it out of your sales tax and income.")) return;
+    if (t.closest("[data-jrefund]")) { if (!confirm(/^in_person:(cash|other)/.test(JOB.method || "") ? "Did you give the money back? This cancels the job and takes it out of your sales tax and income." : "Did you already refund this in Square (Square app → Transactions → Refund)? This cancels the job and takes it out of your sales tax and income.")) return;
       post("/jobs/" + JOB.id + "/cancel", { reason: "refunded" }).then(function () { toast("Marked refunded"); renderJob(JOB.id); }).catch(function (e2) { toast(e2.message, true); }); return; }
     if (t.closest("[data-jedit]")) return openEditJob();
     if (t.closest("[data-jdel]")) { if (!confirm("Delete this job for good? Its photos are removed too.")) return; del("/jobs/" + JOB.id).then(function () { toast("Deleted"); JOB = null; goBack(); }).catch(function (e2) { toast(e2.message, true); }); return; }
-    if ((b = t.closest("[data-savejnotes]"))) { var dn3 = busy(b, "Saving…"); post("/jobs/" + JOB.id + "/edit", { ownerNotes: document.getElementById("jNotes").value }).then(function () { dn3(); toast("Notes saved"); }).catch(function (e2) { dn3(); toast(e2.message); }); return; }
+    if ((b = t.closest("[data-savejnotes]"))) { var dn3 = busy(b, "Saving…"); post("/jobs/" + JOB.id + "/edit", { ownerNotes: document.getElementById("jNotes").value }).then(function () { dn3(); markSaved(document.getElementById("jNotes")); toast("Notes saved"); }).catch(function (e2) { dn3(); toast(e2.message); }); return; }
     // customer screen
     if (t.closest("[data-newcust]")) return openCustomer();
     if (t.closest("[data-editcust]")) return openCustomer(CUST.customer);
@@ -919,7 +945,7 @@
       del("/customers/" + CUST.customer.id).then(function (r) { CUSTS = null; PCACHE = {}; toast(r.deleted ? "Deleted" : "Archived. Their records are kept.", true); go("#people"); }).catch(function (e2) { toast(e2.message, true); }); return; }
     if ((b = t.closest("[data-restore]"))) { post("/customers/" + b.dataset.restore + "/restore").then(function () { CUSTS = null; PCACHE = {}; toast("Restored"); renderCustomer(b.dataset.restore); }).catch(function (e2) { toast(e2.message); }); return; }
     if ((b = t.closest("[data-qnote]"))) { var ta = document.getElementById("cNotes"); ta.value = (ta.value ? ta.value.replace(/\s+$/, "") + "\n" : "") + b.dataset.qnote + ": "; ta.focus(); return; }
-    if ((b = t.closest("[data-savecnotes]"))) { var dn4 = busy(b, "Saving…"); post("/customers/" + CUST.customer.id, { owner_notes: document.getElementById("cNotes").value }).then(function () { dn4(); toast("Notes saved"); }).catch(function (e2) { dn4(); toast(e2.message); }); return; }
+    if ((b = t.closest("[data-savecnotes]"))) { var dn4 = busy(b, "Saving…"); post("/customers/" + CUST.customer.id, { owner_notes: document.getElementById("cNotes").value }).then(function () { dn4(); markSaved(document.getElementById("cNotes")); toast("Notes saved"); }).catch(function (e2) { dn4(); toast(e2.message); }); return; }
     if (t.closest("[data-addveh]")) return openVehicle();
     if ((b = t.closest("[data-editveh]"))) return openVehicle(CUST.vehicles.filter(function (v) { return v.id === b.dataset.editveh; })[0]);
     if ((b = t.closest("[data-delveh]"))) { if (!confirm("Delete this vehicle? Past jobs and photos stay.")) return; del("/vehicles/" + b.dataset.delveh).then(function () { CUSTS = null; closeSheet(true); toast("Deleted"); renderCustomer(CUST.customer.id); }).catch(function (e2) { sheetErr(e2.message); }); return; }
@@ -960,12 +986,13 @@
     if (id === "bkVeh") { BK.vehicleId = e.target.value; document.getElementById("bkNewVeh").hidden = e.target.value !== "new"; var v = BK.vehicles.filter(function (x) { return x.id === e.target.value; })[0]; if (v && v.size != null) { setPill("bkSize", String(v.size)); refreshPreview(); } }
     if (e.target.closest && e.target.closest("#msf")) planPrev();
     if (e.target.name === "town" && e.target.closest && e.target.closest("#bkNC")) refreshPreview();
+    if (e.target.name === "size" && e.target.closest && e.target.closest("#bkNewVeh") && e.target.value !== "") { setPill("bkSize", e.target.value); refreshPreview(); }
   });
   document.addEventListener("submit", function (e) {
     var f = e.target; e.preventDefault();
     ({ bf: saveBlock, bkf: submitBook, mvf: submitMove, cxf: submitCancel, ejf: submitEditJob, cf: submitCustomer, vf: submitVehicle, msf: submitMem, setf: saveSettings }[f.id] || function () {})(f);
   });
-  window.addEventListener("beforeunload", function (e) { if (SH.dirty && (sheetRoot.innerHTML || document.getElementById("setf"))) { e.preventDefault(); e.returnValue = ""; } });
+  window.addEventListener("beforeunload", function (e) { if ((SH.dirty && sheetRoot.innerHTML) || hasUnsaved(false)) { e.preventDefault(); e.returnValue = ""; } });
   document.querySelector(".tabs").addEventListener("keydown", function (e) {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     var bs = [].slice.call(document.querySelectorAll(".tabs button")), i = bs.findIndex(function (b) { return b.dataset.tab === S.tab; });
@@ -974,7 +1001,7 @@
   window.addEventListener("hashchange", route);
   // a cold start opens fresh: refresh the data when the app comes back to the front after a while
   var hiddenAt = 0;
-  document.addEventListener("visibilitychange", function () { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 60000 && !sheetRoot.innerHTML && !document.getElementById("fsRoot").innerHTML) refresh(); });
+  document.addEventListener("visibilitychange", function () { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 60000 && !sheetRoot.innerHTML && !document.getElementById("fsRoot").innerHTML && !hasUnsaved(true)) refresh(); });
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/admin/sw.js", { scope: "/admin/" }).catch(function () {});
   route();
   api("/home").then(function (d) { syncLine(d.sync); }).catch(function () {});

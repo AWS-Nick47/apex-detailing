@@ -181,6 +181,7 @@ function readJob(body) {
   if (!realDay(f.day)) throw new Error("Pick a date.");
   if (!(f.start >= 0 && f.start < 1440)) throw new Error("Pick a start time.");
   if (custom && f.duration == null) throw new Error("How long will it take?");
+  if (custom && f.price == null) throw new Error("Enter the price for the custom package (before tax).");
   if (f.duration != null && !(f.duration >= 15 && f.duration <= 720)) throw new Error("Length must be between 15 minutes and 12 hours.");
   if (f.price != null && !(f.price >= 0 && f.price <= 5000)) throw new Error("Enter a price between $0 and $5,000 (before tax).");
   return f;
@@ -255,6 +256,8 @@ async function editJob(env, H, b, body, who) {
       if (body.vehicleId && !v) return bad("Pick one of this customer's vehicles.");
       f.vehicle_id = v ? v.id : null; f.car = v ? vname(v) : b.car; f.color = v ? v.color || "" : b.color;
     }
+    if (b.kind !== "member" && ["pkg", "size", "adds", "price"].some(k => Object.hasOwn(body, k)) && b.final_cents != null)
+      return bad("A pay link for " + usd(b.final_cents + (b.tax_cents || 0)) + " is already out. To change the amount, send a new pay link from Get paid (it replaces the old amount).");
     if (b.kind !== "member" && ["pkg", "size", "adds", "customName", "durationMin", "price"].some(k => Object.hasOwn(body, k))) {
       const pkg = body.pkg === "custom" ? "full" : Object.hasOwn(body, "pkg") ? String(body.pkg) : b.pkg;
       if (!["exterior", "interior", "full"].includes(pkg)) return bad("Pick a package.");
@@ -558,7 +561,7 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
     if (sub === "cancel" && M === "POST") return cancelJob(env, H, b, body, who);
     if (sub === "status" && M === "POST") return setStatus(env, b, String(body.to || ""), who);
     if (sub === "pay" && M === "POST") {
-      const r = await jobAction(env, b, String(body.action || ""), { amount: body.amount, how: body.how, big: body.big ? "1" : "0" }, H);
+      const r = await jobAction(env, b, String(body.action || ""), { amount: body.amount, how: body.how, tip: body.tip, big: body.big ? "1" : "0" }, H);
       if (r.ok) await ownerLog(env, who, r.msg, "j:" + b.id);
       return json(r.ok ? r : Object.assign({ error: r.msg }, r), r.ok ? 200 : 400);
     }

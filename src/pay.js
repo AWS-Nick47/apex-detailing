@@ -97,8 +97,8 @@ export async function jobAction(env, b, action, input, H) {
     Object.assign(b, { completed_at: Date.now(), paid_at: Date.now(), paid_method: "membership" }); ok = true; msg = "Marked done. Nice work!";
   } else if (action === "undo" && b.paid_at && /^in_person/.test(b.paid_method || "") && b.status === "confirmed") {
     // undo a "paid in person" tap (mis-tap or wrong amount): back to not paid
-    await env.DB.prepare("UPDATE bookings SET paid_at = NULL, paid_method = NULL, final_cents = NULL, tax_cents = NULL WHERE id = ?").bind(b.id).run();
-    Object.assign(b, { paid_at: null, paid_method: null, final_cents: null, tax_cents: null }); ok = true; msg = "Undone. It's marked not paid again.";
+    await env.DB.prepare("UPDATE bookings SET paid_at = NULL, paid_method = NULL, final_cents = NULL, tax_cents = NULL, tip_cents = 0 WHERE id = ?").bind(b.id).run();
+    Object.assign(b, { paid_at: null, paid_method: null, final_cents: null, tax_cents: null, tip_cents: 0 }); ok = true; msg = "Undone. It's marked not paid again.";
   } else if (["charge", "link", "inperson"].includes(action) && !b.paid_at && b.status === "confirmed" && b.kind !== "member") {
     const raw = String(input.amount || "").trim(), dollars = /^\$?\d+(\.\d{1,2})?$/.test(raw.replace(/,/g, "")) ? parseFloat(raw.replace(/[$,]/g, "")) : NaN, cents = Math.round(dollars * 100);
     const tax = taxCents(cents), total = cents + tax, split = " (" + money(cents) + " + " + money(tax) + " tax)", est = (b.quote || 0) * 100;
@@ -107,13 +107,15 @@ export async function jobAction(env, b, action, input, H) {
     else if (est && cents > 2 * est && String(input.big) !== "1") msg = "That's more than double the " + money(est) + " estimate. Check the amount and confirm it when asked.";
     else if (action === "inperson") {
       const how = ["cash", "card", "other"].includes(String(input.how)) ? String(input.how) : "cash";
+      const tipC = Math.max(0, Math.round((parseFloat(String(input.tip || "").replace(/[$,]/g, "")) || 0) * 100));   // a cash / Venmo tip they handed over (not taxed)
+      if (tipC > Math.max(50000, cents)) return { ok: false, msg: "That tip looks too big. Check it (dollars, like 20)." };
       const free = (await claimsOn(env)) ? " AND (paying_at IS NULL OR paying_at < " + (Date.now() - CLAIM_MS) + ")" : "";
-      const done = await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), final_cents = ?, tax_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
-        .bind(doneAt, cents, tax, Date.now(), "in_person:" + how, b.id).first();
+      const done = await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), final_cents = ?, tax_cents = ?, tip_cents = ?, paid_at = ?, paid_method = ? WHERE id = ? AND paid_at IS NULL" + free + " RETURNING id")
+        .bind(doneAt, cents, tax, tipC, Date.now(), "in_person:" + how, b.id).first();
       if (!done) msg = BUSY_MSG; else {
-      Object.assign(b, { paid_at: Date.now(), completed_at: b.completed_at || doneAt, final_cents: cents, tax_cents: tax, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + ". Receipt emailed.";
+      Object.assign(b, { paid_at: Date.now(), completed_at: b.completed_at || doneAt, final_cents: cents, tax_cents: tax, tip_cents: tipC, paid_method: "in_person:" + how }); ok = true; msg = "Marked paid in person (" + how + "): " + money(total) + split + (tipC ? " + " + money(tipC) + " tip" : "") + "." + (b.email && !/\.invalid$/i.test(b.email) ? " Receipt emailed." : "");
       // in-person customers get a receipt too (audit IA-051)
-      await emailReceipt(env, b, { amount: cents, tax, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
+      await emailReceipt(env, b, { amount: cents, tax, tip: tipC, method: "In person (" + ({ cash: "cash", card: "card / Tap to Pay", other: "Venmo / other" }[how] || how) + ")", offerTip: false }).catch(() => {});
       }
     } else if (action === "link") {
       await ensurePayToken(env, b);

@@ -185,10 +185,10 @@ export async function adminApi(req, env, url, H, who) {
   }
 
   if (p === "/jobs" && M === "GET") {
-    const scope = url.searchParams.get("scope") || "upcoming", now = Date.now();
-    const q = scope === "past" ? "status = 'confirmed' AND end_utc <= ? ORDER BY start_utc DESC" : scope === "cancelled" ? "status = 'cancelled' AND ? > 0 ORDER BY start_utc DESC" : "status = 'confirmed' AND end_utc > ? ORDER BY start_utc";
-    const r = (await env.DB.prepare("SELECT * FROM bookings WHERE " + q + " LIMIT 100").bind(now).all()).results || [];
-    return json({ jobs: await withThumbs(env, r.map(b => jobRow(b, H, true))) });
+    const scope = url.searchParams.get("scope") || "upcoming", now = Date.now(), lim = Math.max(20, Math.min(1000, +url.searchParams.get("limit") || 100));
+    const q = scope === "past" ? "status = 'confirmed' AND end_utc <= ? ORDER BY start_utc DESC" : scope === "cancelled" ? "status = 'cancelled' AND ? > 0 ORDER BY COALESCE(cancelled_at, start_utc) DESC" : "status = 'confirmed' AND end_utc > ? ORDER BY start_utc";
+    const r = (await env.DB.prepare("SELECT * FROM bookings WHERE " + q + " LIMIT " + (lim + 1)).bind(now).all()).results || [];
+    return json({ more: r.length > lim, jobs: await withThumbs(env, r.slice(0, lim).map(b => jobRow(b, H, true))) });
   }
   mm = p.match(/^\/jobs\/([A-Z0-9]+)\/ack$/);
   if (mm && M === "POST") { await env.DB.prepare("UPDATE bookings SET acked_at = COALESCE(acked_at, ?) WHERE id = ?").bind(Date.now(), mm[1]).run(); return json({ ok: true }); }
