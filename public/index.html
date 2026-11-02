@@ -2314,7 +2314,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     <div class="acct-view" data-view="signin">
       <div class="acct-brand"><svg class="logo-mark" aria-hidden="true"><use href="#peak"/></svg></div>
       <h3 id="acctTitle">Sign in to Apex</h3>
-      <p class="acct-lede" id="acctLede">No passwords. We'll send a 6-digit code to your phone or email.</p>
+      <p class="acct-lede" id="acctLede">No passwords. We'll email you a 6-digit code.</p>
       <form class="acct-form" id="acctSignin">
         <label class="acct-field"><span>Email</span><input type="email" id="acctId" placeholder="you@email.com" autocomplete="email" required></label>
         <div class="bk-ts" id="acctTs" hidden></div>
@@ -2518,7 +2518,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var idf = document.getElementById("acctId"); if (idf) { idf.type = "text"; idf.placeholder = "(732) 555-0123 or you@email.com"; idf.autocomplete = "username"; idf.previousElementSibling.textContent = "Phone or email"; }
     var rs = document.getElementById("acctResend"); if (rs && rs.parentNode.firstChild.nodeType === 3) rs.parentNode.firstChild.textContent = "Preview: any 6 digits work. ";
   });
-  /* ---------- Cloudflare Turnstile ("are you human" check). Dormant until Nick adds the keys; then booking and sign-in codes need it (audit IA-033) ---------- */
+  /* ---------- Cloudflare Turnstile ("are you human" check). Dormant until Nick adds the keys; then booking and sign-in codes need it (audit IA-033).
+     Managed widget, shown only if Cloudflare wants a click (appearance: interaction-only). It's warmed up when the last booking step or the sign-in form opens,
+     so the check is usually done before the customer taps the button. ---------- */
   window.__ts = (function () {
     var ready = null, widgets = {};
     function load() {
@@ -2526,25 +2528,40 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       ready = fetch("/api/config").then(function (r) { return r.json(); }).then(function (j) {
         var k = j && j.turnstile; if (!k) return null;
         return new Promise(function (ok, bad) { if (window.turnstile) return ok(); var sc = document.createElement("script"); sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); }).then(function () { return k; });
-      }).catch(function () { return null; });
+      }).catch(function () { ready = null; return null; });   // a network blip: try again next time
       return ready;
     }
-    // a fresh single-use token from the widget in #host (rendered the first time it's needed)
+    function widget(host, k) {
+      var el = document.getElementById(host); if (!el || !window.turnstile) return null;
+      var w = widgets[host]; if (w) return w;
+      w = widgets[host] = { id: null, tok: null, wait: [] }; el.hidden = false;
+      w.id = window.turnstile.render(el, { sitekey: k, theme: "dark", size: "flexible", appearance: "interaction-only",
+        callback: function (t) { w.tok = t; w.err = false; var f = w.wait.shift(); if (f) f(); },
+        "expired-callback": function () { w.tok = null; },
+        // never leave a button stuck on "Booking…": answer the wait with no token; the server then asks them to try again or text us
+        "error-callback": function (code) { console.log("turnstile error", code); w.tok = null; w.err = true; w.wait.splice(0).forEach(function (f) { f(true); }); } });
+      return w;
+    }
+    // render the widget early so a token is ready by the time it's needed
+    function prime(host) { if (window.__LIVE) load().then(function (k) { if (k) widget(host, k); }); }
+    // a fresh single-use token from the widget in #host
     function token(host) {
       if (!window.__LIVE) return Promise.resolve(null);
       return load().then(function (k) {
-        var el = k && document.getElementById(host); if (!el) return null;
-        el.hidden = false;
+        var w = k && widget(host, k); if (!w) return null;
         return new Promise(function (ok) {
-          var w = widgets[host];
-          if (!w) { w = widgets[host] = { id: null, tok: null, wait: [] };
-            w.id = window.turnstile.render(el, { sitekey: k, callback: function (t) { w.tok = t; var f = w.wait.shift(); if (f) f(); }, "expired-callback": function () { w.tok = null; }, "error-callback": function () { w.tok = null; } }); }
-          function take() { var t = w.tok; w.tok = null; ok(t); try { window.turnstile.reset(w.id); } catch (e) {} }
-          if (w.tok) take(); else w.wait.push(take);
+          var tm = null;
+          function take(failed) { clearTimeout(tm); if (failed) return ok(null); var t = w.tok; w.tok = null; ok(t); try { window.turnstile.reset(w.id); } catch (e) {} }
+          if (w.tok) return take();
+          // it already failed: answer now and start a fresh check for the next tap
+          if (w.err) { w.err = false; try { window.turnstile.reset(w.id); } catch (e) {} return ok(null); }
+          w.wait.push(take);
+          // a check that never answers (blocked script, ignored checkbox): give up after 25 s rather than spin forever
+          tm = setTimeout(function () { var i = w.wait.indexOf(take); if (i >= 0) { w.wait.splice(i, 1); ok(null); } }, 25000);
         });
       });
     }
-    return { token: token };
+    return { token: token, prime: prime };
   })();
   /* ---------- Prices ---------- */
   /* ================= PRICING — change numbers here and every price on the site follows ================= */
@@ -3128,7 +3145,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         document.getElementById("acctLede").textContent = intent === "member" ? "Sign in to manage your Apex Membership. We'll send a 6-digit code, no password needed."
           : intent === "rebook" ? "Sign in and we'll fill in your car, address and last detail. We'll send a 6-digit code." : "No passwords. We'll send a 6-digit code to your phone or email.";
         if (LIVE) document.getElementById("acctLede").textContent = intent === "rebook" ? "Sign in and we'll fill in your car, address and last detail. We'll email you a 6-digit code." : "No passwords. We'll email you a 6-digit code. Use the email you booked with.";
-        view("signin");
+        view("signin"); window.__ts.prime("acctTs");
       }
     }
     function close(noFocus) { el.hidden = true; document.body.classList.remove("acct-open"); if (!noFocus && lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true }); }
@@ -3734,6 +3751,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function show(n) {
       if (n === MEMSTEP && !hasMemStep()) n = LAST;
       step = n; maxStep = Math.max(maxStep, n);
+      if (n === LAST) window.__ts.prime("bkTs");
       document.querySelectorAll("#bk .bk-step").forEach(function (s) { s.hidden = +s.dataset.step !== n; });
       document.querySelectorAll("#bkSteps li").forEach(function (li) { var k = +li.dataset.s; li.hidden = k === MEMSTEP && !hasMemStep(); li.className = k === n ? "cur" : k < n || k <= maxStep ? "done" : ""; li.querySelector("button").disabled = k > maxStep; });
       $("bkBack").hidden = n === 1;

@@ -106,14 +106,20 @@ async function overLimit(env, req, k, max, windowMs) {
   return false;
 }
 // Cloudflare Turnstile ("are you human"), only when Nick has added TURNSTILE_SITEKEY (var) and TURNSTILE_SECRET (secret)
-async function humanOk(env, token, ip) {
+async function humanOk(env, token, ip, host) {
   if (!env.TURNSTILE_SECRET || !env.TURNSTILE_SITEKEY) return true;
-  if (!token) return false;
+  if (!token || String(token).length > 2048) return false;
   const fd = new FormData(); fd.append("secret", env.TURNSTILE_SECRET); fd.append("response", String(token)); if (ip) fd.append("remoteip", ip);
-  try { const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: fd }); const j = await r.json(); return !!j.success; }
-  catch (e) { console.log("turnstile check failed", e.message); return false; }
+  try {
+    // local tests only (ADMIN_DEV is never set on the live Worker): point the check at a stand-in server
+    const at = env.ADMIN_DEV === "1" && env.TURNSTILE_VERIFY_URL || "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+    const r = await fetch(at, { method: "POST", body: fd }); const j = await r.json();
+    if (!j.success) { console.log("turnstile no", (j["error-codes"] || []).join(",")); return false; }
+    if (host && j.hostname && j.hostname !== host) { console.log("turnstile wrong host", j.hostname, host); return false; }   // a token made on another site
+    return true;
+  } catch (e) { console.log("turnstile check failed", e.message); return false; }
 }
-const HUMAN_MSG = "Please finish the quick \"are you human\" check, then try again.";
+const HUMAN_MSG = "We couldn't finish the quick \"are you human\" check. Tap the button again (if a checkbox shows up, tick it first), or text us at (732) 206-7084.";
 function readBooking(body) {
   const f = {
     pkg: clean(body.pkg, 20), size: +body.size, adds: Array.isArray(body.adds) ? body.adds.map(x => clean(x, 20)) : [],
@@ -347,7 +353,7 @@ async function api(req, env, url) {
     if (err.includes("location")) return json({ error: "We couldn't find that address. Pick it from the address suggestions, or pick your town from the list. Or text us at (732) 206-7084.", field: "q-town" }, 400);
     if (err.includes("distance")) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084 and we'll see what we can do.", field: "q-town" }, 400);
     if (err.length) return json({ error: "Please check: " + err.join(", "), fields: err }, 400);
-    if (!(await humanOk(env, body.ts, ipOf(req)))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
+    if (!(await humanOk(env, body.ts, ipOf(req), url.hostname))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
     if (limitsOn(env, req)) {   // at most 3 upcoming details per email and per phone number
       const digits = f.phone.replace(/\D/g, "").slice(-10);
       const up = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND end_utc > ? AND (email = ? OR substr(replace(replace(replace(replace(replace(phone,'(',''),')',''),' ',''),'-',''),'+',''), -10) = ?)").bind(Date.now(), normEmail(f.email), digits).first();
@@ -430,7 +436,7 @@ async function api(req, env, url) {
   if (p === "/api/auth/start" && req.method === "POST") {
     if (await overLimit(env, req, "auth:" + ipOf(req), 10, 600e3)) return json({ error: "Too many code requests from your connection. Try again in 10 minutes." }, 429);
     const pre = await req.clone().json().catch(() => null);
-    if (!(await humanOk(env, pre && pre.ts, ipOf(req)))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
+    if (!(await humanOk(env, pre && pre.ts, ipOf(req), url.hostname))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
     return authStart(req, env);
   }
   if (p === "/api/auth/verify" && req.method === "POST") {
