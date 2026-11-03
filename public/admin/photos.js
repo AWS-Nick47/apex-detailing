@@ -160,7 +160,7 @@
     h += '<div class="card" style="margin-top:12px"><div class="row"><b>Send to the customer</b>' + (P.sentAt ? '<span class="badge good">Sent ' + esc(new Date(P.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })) + "</span>" : "") + "</div>" +
       '<p class="dim small" style="margin:4px 0 0">' + (P.sentAt ? "Their gallery is open. Sending again emails the link again with any new photos." : "Emails them a link to their before & after gallery, where they can save full-size photos and say if you can post them.") + "</p>" +
       '<div class="acts"><button class="btn sm" data-ph-send' + (P.counts.after ? "" : " disabled") + ">" + (P.sentAt ? "Send again" : job.email ? "Email the photos" : "Open their gallery") + '</button><button class="btn g sm" data-copy="' + esc(job.galleryLink) + '">Copy gallery link</button></div>' +
-      '<div style="margin-top:12px"><b>OK to post on Instagram/website?</b><p class="dim small" style="margin:2px 0 8px">' + (sh.ok == null ? "Not asked yet. Your terms say only with their permission, plates and address hidden." : (sh.ok ? "Yes" : "No") + " · " + (sh.by === "customer" ? "they answered in their gallery" : "you marked it") + (sh.at ? " " + new Date(sh.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "")) + '</p><div class="pills"><button data-ph-share="1" aria-pressed="' + (sh.ok === true) + '">They said yes</button><button data-ph-share="0" aria-pressed="' + (sh.ok === false) + '">No</button>' + (sh.ok != null ? '<button data-ph-share="clear">Clear</button>' : "") + "</div></div></div>";
+      '<div style="margin-top:12px"><b>Marketing photos</b><p class="dim small" style="margin:2px 0 8px">' + (sh.ok == null ? "Not asked. They haven't agreed to your Terms for this job, so ask before posting." : sh.ok ? "OK to feature" + (sh.by === "terms" ? " (agreed when they booked; they can opt out anytime)" : sh.by === "owner" ? " (you marked it)" : " (their choice)") : "Opted out: don't post their car" + (sh.by === "owner" ? " (you marked it)" : "")) + (sh.at ? " · " + new Date(sh.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "") + '. Covers all their jobs. Always hide the plate and the house.</p><div class="pills"><button data-ph-share="1" aria-pressed="' + (sh.ok === true) + '">OK to feature</button><button data-ph-share="0" aria-pressed="' + (sh.ok === false) + '">Opted out</button>' + (sh.ok != null ? '<button data-ph-share="clear">Clear</button>' : "") + "</div></div></div>";
     return h;
   }
 
@@ -380,7 +380,7 @@
     var a = CMP.pairs[CMP.i], job = CMP.job;
     CMP.exp = { layout: "side", labels: true, pins: false, blur: [], blurMode: false, imgs: null };
     var sh = job.photos.share;
-    var el = layer("", '<div class="fs-top"><button class="ic" data-ex="close" aria-label="Back">' + I.x + '</button><div class="t">Export · ' + esc(a.name) + '<small>' + (sh.ok === true ? "OK to post" : sh.ok === false ? "Customer said NOT to post" : "Not OK'd to post yet (fine to send to them)") + '</small></div><span style="width:42px"></span></div>' +
+    var el = layer("", '<div class="fs-top"><button class="ic" data-ex="close" aria-label="Back">' + I.x + '</button><div class="t">Export · ' + esc(a.name) + '<small>' + (sh.ok === true ? "OK to feature (hide the plate and house)" : sh.ok === false ? "OPTED OUT: only send this to the customer" : "Not asked: ask before posting (fine to send to them)") + '</small></div><span style="width:42px"></span></div>' +
       '<div class="vf-wrap" style="padding:8px"><canvas id="exC" class="exp-prev" aria-label="Preview"></canvas></div>' +
       '<div class="fs-bot"><div class="optrow" style="flex-wrap:wrap"><div class="phase"><button data-ex-l="side" aria-pressed="true">Side by side</button><button data-ex-l="stack" aria-pressed="false">Stacked</button></div>' +
       '<button class="ic" data-ex="labels" aria-pressed="true" aria-label="Before/after labels" style="width:auto;padding:0 12px;border-radius:999px;font-size:12.5px">Labels</button>' +
@@ -430,6 +430,8 @@
   function roundRect(x, l, t, w, h, r) { x.beginPath(); x.moveTo(l + r, t); x.arcTo(l + w, t, l + w, t + h, r); x.arcTo(l + w, t + h, l, t + h, r); x.arcTo(l, t + h, l, t, r); x.arcTo(l, t, l + w, t, r); x.closePath(); }
   function exShare() {
     var E = CMP.exp, a = CMP.pairs[CMP.i], job = CMP.job; if (!E.imgs) return;
+    // Terms §10: an opted-out customer's car never goes in marketing (sending it to them is fine)
+    if (job.photos && job.photos.share && job.photos.share.ok === false && !confirm("This customer opted out of marketing photos. Only send this to the customer, never post it. Continue?")) return;
     var c = exRender(document.createElement("canvas"), 3200), name = [job.name, a.name, "Before & After"].join(" - ").replace(/[\/\\:*?"<>|]+/g, "") + ".jpg";
     canvasBlob(c, 0.9).then(function (blob) {
       exRender(document.getElementById("exC"), 1100);

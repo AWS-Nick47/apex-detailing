@@ -1,5 +1,5 @@
 // Apex Detailing — website + booking backend (Cloudflare Worker)
-import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, milesBetween, parseDay, townCoords } from "./sched.js";
+import { RULES, jobMin, dayInfo, slotsFor, nyToUtc, utcToNy, addDays, milesFromHome, milesBetween, parseDay, townCoords, inWinter } from "./sched.js";
 import { calConfigured, readBusy, writeJob, deleteJob, calendars, jobIcs } from "./cal.js";
 import { send, layout, rows, button, buttons, hero, para, note, heading, when, checklist, am, alertBox, sub, h } from "./email.js";
 import { quote as priceQuote, travelFee, TAX, withTax, taxCents, PRICING } from "./pricing.js";
@@ -10,10 +10,11 @@ import { adminApi, accessUser, blockoutBusy } from "./admin.js";
 import { loadSettings, publicSettings } from "./settings.js";
 import { galleryRoute, purgeTrash } from "./photos.js";
 import { syncSquare } from "./owner.js";
+import { NO_SCENT, scentApplies, scentFor, scentList, pickScent, photoStart, setPhotoPref, photoPref, photoWords } from "./prefs.js";
 import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge, mailWelcome, previewMail, notifyNick } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
-const TERMS_VERSION = "2026-11-02";   // bump when terms.html / membership-terms.html / privacy.html change
+const TERMS_VERSION = "2026-11-02b";   // b: marketing photos are opt-out (Terms §10)   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
 const VISIT_NAMES = { exterior: "Wash visit", interior: "Interior visit", full: "Wash + interior visit" };
 const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : b.custom_name || NAMES[b.pkg];   // jobs Nick adds can have a custom package name
@@ -120,6 +121,8 @@ async function humanOk(env, token, ip, host) {
   } catch (e) { console.log("turnstile check failed", e.message); return false; }
 }
 const HUMAN_MSG = "We couldn't finish the quick \"are you human\" check. Tap the button again (if a checkbox shows up, tick it first), or text us at (732) 206-7084.";
+// "Mar 1": the first day back from winter mode (Dashboard → Settings)
+function winterBackText() { const e = RULES.winter.end; return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][e[0] - 1] + " " + e[1]; }
 function readBooking(body) {
   const f = {
     pkg: clean(body.pkg, 20), size: +body.size, adds: Array.isArray(body.adds) ? body.adds.map(x => clean(x, 20)) : [],
@@ -131,7 +134,7 @@ function readBooking(body) {
     lat: body.lat == null ? null : +body.lat, lon: body.lon == null ? null : +body.lon,
     plan: body.plan && typeof body.plan === "object" && Object.hasOwn(MEM.plans, body.plan.type) ? { type: clean(body.plan.type, 10), freq: [1, 2, 4].includes(+body.plan.freq) ? +body.plan.freq : 1 } : null,
     card: body.card ? 1 : 0, remind: body.texts === false ? 0 : 1, cardToken: body.cardToken ? String(body.cardToken).slice(0, 400) : null, postal: clean(body.postal, 10),
-    agree: body.agree === true, sms: body.sms === true, memAuth: body.memAuth === true,
+    agree: body.agree === true, sms: body.sms === true, memAuth: body.memAuth === true, photosOptOut: body.photosOptOut === true || body.photosOptOut === "true" || body.photosOptOut === 1, scentIn: body.scent,
     key: /^[a-f0-9]{16,40}$/.test(String(body.key || "")) ? String(body.key) : null,
     // concern photos (already shrunk by the site): up to 4 JPEGs, emailed to Nick, not stored. Audit IA-016.
     photos: Array.isArray(body.photos) ? body.photos.slice(0, 4).map((x, i) => ({ filename: "concern-" + (i + 1) + ".jpg", data: String((x && x.data) || "") }))
@@ -150,6 +153,7 @@ function readBooking(body) {
   if (f.power === "no") err.push("outlet");
   if (!f.agree) err.push("agreement to the Terms of Service");
   if (f.plan && !f.memAuth) err.push("membership charge authorization");
+  const sc = pickScent(f.pkg, f.scentIn); if (sc.err) err.push("scent"); else f.scent = sc.scent;
   // distance comes from the address pin (or the town's center), never from the browser's number (audit IA-009)
   const pinOk = f.lat != null && f.lon != null && isFinite(f.lat) && isFinite(f.lon) && f.lat > 38 && f.lat < 42.5 && f.lon > -77 && f.lon < -72;
   const tc = townCoords(f.town), pin = pinOk ? [f.lat, f.lon] : tc;
@@ -170,7 +174,7 @@ function details(b, site) {
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
   const pr = b.kind === "member" ? [["Price", "Included in your " + am(site), true]] : priceRows(b), last = pr.length - 1;
   const m = b._mem, fa = m ? withTax(Math.round((m.firstAmount != null ? m.firstAmount : m.monthly) * 100)).total : 0;
-  return [["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+  return [["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Scent", b.scent || ""], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ...pr.map((r, i) => i === last && pr.length > 1 ? [r[0], h(String(r[1]).replace(/ · pay after the job$/, "")) + (/pay after the job$/.test(r[1]) ? sub("You pay after the job") : ""), true, "total"] : r),
     m ? [{ html: am(site) }, h(m.label) + sub("$" + m.monthly + "/mo + tax (" + usd(withTax(m.monthly * 100).total) + ")") + sub("First charge " + dayLabel(m.firstBill) + ": " + usd(fa) + (m.firstSkipped ? " (no charges during the winter pause before that)" : m.firstWinter ? " (winter months are billed at the Interior price)" : "")), true] : null,
     ["Booking code", b.id]].filter(Boolean);
@@ -206,6 +210,9 @@ async function emailCustomer(env, b, kind) {
       checklist([`Make sure we have ${needsText(b.pkg)}.`, "Take valuables out of the car, and anything you don't want moved (car seats, gear in the trunk).", member ? "We'll walk the car with you when we're done." : "We confirm the final price before we start, never after. You pay when it's done and you've seen it."]) +
       buttons([[manage, "Manage booking"], kind === "remind" ? null : [site + "/#account", "My account", "secondary"]]) +
       note((kind === "remind" ? "Need to change it? Text us at (732) 206-7084." : "Free to reschedule or cancel up to 24 hours before. ") + (kind === "new" || kind === "move" ? "A calendar invite is attached." : "")) +
+      (kind === "new" ? note(b.share_ok === 0 ? "Marketing photos: you opted out, so we won't feature your car."
+        : b.share_ok == null ? `Can we feature before and after photos of your car (plate and address hidden)? <a href="${h(manage)}#photos" style="color:#f5f5f5">Tell us on your booking page</a>.`
+        : `We may feature before and after photos of your car on our website and social media, with the plate and anything showing your address hidden. Prefer not? <a href="${h(manage)}#photos" style="color:#f5f5f5">Opt out on your booking page</a>.`) : "") +
       (kind === "new" && b._mem ? note(`About your ${am(site)}: it's billed to your card one month after this detail and on that date every month, plus NJ sales tax. ${MEM.minPayments}-month minimum, then pause or cancel anytime in your account. <a href="${h(site)}/membership-terms" style="color:#f5f5f5">Membership Terms</a>`) : "");
   }
   return send(env, {
@@ -218,12 +225,13 @@ async function emailCustomer(env, b, kind) {
 async function emailNick(env, b, kind, extra) {
   const site = env.SITE_URL, where = [b.address, b.town].filter(Boolean).join(", ");
   const maps = "https://maps.apple.com/?daddr=" + encodeURIComponent(where), tel = (b.phone || "").replace(/[^\d+]/g, "");
-  const town = b.town || "", label = { new: "New booking", cancel: "Cancelled", move: "Rescheduled" }[kind];
+  const town = b.town || "", label = { new: "New booking", cancel: "Cancelled", move: "Rescheduled", scent: "Scent changed" }[kind];
   const subject = label + ": " + pkgName(b) + " · " + whenText(b) + (town ? " · " + town : "");
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
   const [day, time] = whenParts(b);
   const list = [extra ? ["Was", extra] : null, ["Customer", `${h(b.name)}<br><a href="tel:${h(tel)}" style="color:#f5f5f5">${h(b.phone)}</a><br><a href="mailto:${h(b.email)}" style="color:#f5f5f5">${h(b.email)}</a>`, true],
-    ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+    ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Scent", b.scent || ""], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+    ["Marketing photos", kind === "cancel" ? "" : photoWords(b)],
     ["Water / power", (b.pkg === "interior" ? "" : "Spigot: " + (b.water || "?") + " · ") + "Outlet: " + (b.power || "?")],
     ["Estimate", b.quote ? (e => usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) + (b.travel_fee ? " (incl. $" + b.travel_fee + " travel)" : "") : ""],
     ["Payment", b.kind === "member" ? "Apex Membership visit (included)" : b.card ? "Card on file: " + JSON.parse(b.card).brand + " ending " + JSON.parse(b.card).last4 + " (charge after the job)" : "In person"],
@@ -255,7 +263,7 @@ async function bookedReply(env, b, f) {
   const t = withTax((b.quote || 0) * 100), m = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status != 'cancelled'").bind(b.id).first();
   const changed = !!f && (f.day !== b.day || f.start !== utcToNy(b.start_utc).min || f.pkg !== b.pkg || normEmail(f.email) !== normEmail(b.email));
   const fc = m ? firstCharge(m.type, m.size, m.freq, m.start_day) : null;
-  return { ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, day: b.day, pkg: b.pkg, manage: env.SITE_URL + "/b/" + b.token, subtotal: b.quote, tax: t.tax / 100, total: t.total / 100, priceChanged: false, repeat: true, changed,
+  return { ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, day: b.day, pkg: b.pkg, manage: env.SITE_URL + "/b/" + b.token, subtotal: b.quote, tax: t.tax / 100, total: t.total / 100, priceChanged: false, repeat: true, changed, scent: b.scent || null,
     membership: m ? { id: m.id, monthly: m.monthly_cents / 100, firstBill: fc.day, firstAmount: fc.amount, firstSkipped: fc.skipped, firstWinter: fc.winterPrice, label: planLabel(m.type, m.freq, m.size) } : null, membershipError: null };
 }
 
@@ -278,7 +286,7 @@ form{margin:0}.ts button[aria-pressed="true"]{background:#ededed;color:#0a0a0a}.
 // plain-text rows for the site's own pages (manage, job, pay, Got it). Emails use details(), which returns HTML.
 function pageRows(b) {
   const adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a).join(", ");
-  return [["When", whenText(b)], ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
+  return [["When", whenText(b)], ["Package", pkgName(b) + " · " + SIZES[b.size]], ["Add-ons", adds], ["Scent", b.scent || ""], ["Car", [b.car, b.color].filter(Boolean).join(" · ")],
     ["Where", [b.address, b.town].filter(Boolean).join(", ")], ...priceRows(b), b._mem ? ["Apex Membership", memLine(b._mem)] : null, ["Booking code", b.id]].filter(Boolean);
 }
 function summaryCard(b) {
@@ -293,12 +301,31 @@ function moveForm(b, k, t) {
   return `<form method="post" action="/b/${b.token}/move" onsubmit="return confirm(${h(JSON.stringify("Move your " + pkgName(b) + " to " + label + "?"))})"><input type="hidden" name="day" value="${k}"><input type="hidden" name="start" value="${t}"><button aria-label="${h(label)}">${tstr(t)}</button></form>`;
 }
 // after a change, send the browser back to the page (so a refresh doesn't repeat it) with a message code
-const MSGS = { moved: "Moved. We sent you a new confirmation.", cancelled: "Done.", cancelled_mem: "Done. Your Apex Membership was cancelled too. You weren't charged.", skipped: "Skipped." };
+const MSGS = { moved: "Moved. We sent you a new confirmation.", cancelled: "Done.", cancelled_mem: "Done. Your Apex Membership was cancelled too. You weren't charged.", skipped: "Skipped.",
+  scent: "Scent saved.", photos_on: "Thanks! We may feature your car (plate and address hidden).", photos_off: "Done. We won't feature photos of your car.",
+  photos_signin: "You opted out of marketing photos for all your bookings. To change that, sign in to your account (My details) or text us at (732) 206-7084.", scent_busy: "Scent saved." };
 const backTo = (b, code, extra) => new Response(null, { status: 303, headers: { Location: "/b/" + b.token + "?m=" + code + (extra || ""), "Cache-Control": "no-store" } });
 
 async function managePage(env, b, msg) {
   const pics = b.photos_sent_at ? `<p class="note" style="margin-top:14px"><a class="btn g" style="width:100%" href="/b/${b.token}/photos">See your before &amp; after photos</a></p>` : "";
-  return (await managePage0(env, b, msg)).replace("</main>", pics + "</main>");
+  return (await managePage0(env, b, msg)).replace("</main>", prefsHtml(b) + pics + "</main>");
+}
+const jobStarted = b => !!(b.started_at || b.completed_at) || Date.now() >= b.start_utc;
+const SEL = "flex:1;min-width:0;min-height:48px;border-radius:12px;border:0;background:rgba(255,255,255,.08);color:#ededed;padding:0 12px;font:inherit;font-size:15px";
+// the customer's scent and marketing-photo choices on their booking page
+function prefsHtml(b) {
+  if (b.status === "cancelled") return "";
+  let out = "";
+  if (scentFor(b) && !jobStarted(b)) {
+    const cur = b.scent || NO_SCENT, opts = [NO_SCENT, ...scentList()];
+    if (!opts.includes(cur)) opts.push(cur);
+    out += `<h2 id="scent">Scent</h2><form method="post" action="/b/${b.token}/scent" style="display:flex;gap:8px"><select name="scent" aria-label="Scent" style="${SEL}">${opts.map(o => `<option${o === cur ? " selected" : ""}>${h(o)}</option>`).join("")}</select><button class="btn g">Save</button></form>` +
+      `<p class="note">The scent we leave inside when we finish the interior. You can change it until we start.</p>`;
+  }
+  const off = b.share_ok === 0, asked = b.share_ok != null, form = (v, label, cls) => `<form method="post" action="/b/${b.token}/share" style="flex:1"><input type="hidden" name="back" value="manage"><button class="btn${cls}" name="ok" value="${v}" style="width:100%">${label}</button></form>`;
+  out += `<h2 id="photos">Marketing photos</h2><p class="note">${!asked ? "Can we feature before and after photos of your car on our website and social media? We always hide the plate and anything that shows your address." : off ? "You opted out, so we won't feature photos of your car." : "We may feature before and after photos of your car on our website and social media. We always hide the plate and anything that shows your address."}</p>` +
+    (!asked ? `<div style="display:flex;gap:8px">${form(1, "Yes, feature my car", "")}${form(0, "No thanks", " g")}</div>` : form(off ? 1 : 0, off ? "OK, you can feature my car" : "Opt out of marketing photos", " g"));
+  return out;
 }
 async function managePage0(env, b, msg) {
   if (b.status === "cancelled") return b.kind === "member" ? page("Skipped", `<h1>This visit is skipped</h1><p class="sub">${msg ? h(msg) + " " : ""}It counts as this month's visit. <a href="/#account" style="color:#ededed">Your account</a> shows your membership and next visits.</p>${summaryCard(b)}`)
@@ -312,16 +339,18 @@ async function managePage0(env, b, msg) {
     if (hoursLeft < RULES.noticeHours) return page("Your visit", head + skip + `<p class="note">To move it instead, text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
     const from = addDays(todayKey(), 1), n = Math.max(1, Math.min(35, Math.round((nyToUtc(member.period_end || from, 0) - nyToUtc(from, 0)) / 864e5)));
     const info = await days(env, from, n, b.id), opts = [];
-    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, ["_member"], Date.now()); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
-    const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)).slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
+    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, ["_member"], Date.now()).filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
+    const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
     return page("Your visit", head + `<h2>Pick a new time</h2>${pick}${skip}`);
   }
   if (hoursLeft < RULES.noticeHours) return page("Your booking", head + `<p class="note" style="margin-top:18px">It's less than 24 hours away, so changes go through us directly: text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
   if (fixedLength(b)) return page("Your booking", head + `<p class="note" style="margin-top:18px">To change or cancel this job, text or call us at <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
   // next open times for the same job (next 21 days), excluding this booking itself
   const adds = JSON.parse(b.adds || "[]"), start = addDays(todayKey(), 1), info = await days(env, start, 21, b.id), opts = [];
-  for (const k of Object.keys(info)) { const s = slotsFor(k, info[k], b.pkg, b.size, adds, Date.now()); if (s.length) opts.push([k, s]); if (opts.length >= 8) break; }
-  const pick = opts.length ? `<div class="days">${opts.map(([k, s]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${s.filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)).slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>`
+  for (const k of Object.keys(info)) { const s = slotsFor(k, info[k], b.pkg, b.size, adds, Date.now()).filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)); if (s.length) opts.push([k, s]); if (opts.length >= 8) break; }
+  const coldDays = b.pkg !== "interior" && Object.keys(info).some(k => (d => inWinter(d.y, d.m, d.d))(parseDay(k)));
+  const pick = opts.length ? `<div class="days">${opts.map(([k, s]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${s.slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>`
+    : coldDays ? `<p class="note">It's winter, so ${b.pkg === "full" ? "Full Details" : "Exterior details"} can't be moved to a new date online until ${winterBackText()} (it's too cold to wash outside: water freezes on the paint and sealant won't cure). Text us at (732) 206-7084 and we'll work it out, or switch it to an Interior.</p>`
     : `<p class="note">No other open times in the next 3 weeks. Text us at (732) 206-7084 and we'll work something out.</p>`;
   const firstOf = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status IN ('pending','active') AND payments_made = 0").bind(b.id).first();
   const memWarn = firstOf ? `<p class="note" style="color:#ffd27a">This detail starts your Apex Membership (${h(planLabel(firstOf.type, firstOf.freq, firstOf.size))}). Cancelling it cancels the membership too. You won't be charged. Moving it to a new time keeps the membership and moves its first charge.</p>` : "";
@@ -352,6 +381,7 @@ async function api(req, env, url) {
     if (f.key) { const ex = await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first(); if (ex) return json(await bookedReply(env, ex, f)); }
     if (err.includes("location")) return json({ error: "We couldn't find that address. Pick it from the address suggestions, or pick your town from the list. Or text us at (732) 206-7084.", field: "q-town" }, 400);
     if (err.includes("distance")) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084 and we'll see what we can do.", field: "q-town" }, 400);
+    if (err.includes("scent")) return json({ error: "That scent isn't offered anymore. Pick another scent.", field: "scent", scents: scentList() }, 400);
     if (err.length) return json({ error: "Please check: " + err.join(", "), fields: err }, 400);
     if (!(await humanOk(env, body.ts, ipOf(req), url.hostname))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
     if (limitsOn(env, req)) {   // at most 3 upcoming details per email and per phone number
@@ -369,6 +399,9 @@ async function api(req, env, url) {
       return json({ error: "This email already has an Apex account. Enter the code we email you to add Apex Membership or a card on file, or choose Pay in person.", needCode: true }, 403);
     const max = addDays(todayKey(), RULES.horizonDays);
     if (f.day > max) return json({ error: "That date is too far out." }, 400);
+    if (f.pkg !== "interior" && (d => inWinter(d.y, d.m, d.d))(parseDay(f.day))) {   // winter mode: say why, not "taken"
+      return json({ error: "It's winter, so we only do Interior details until " + winterBackText() + ": it's too cold to wash outside (water freezes on the paint and sealant won't cure). Pick an Interior, or check back closer to " + winterBackText() + " for an outside detail.", winter: true }, 409);
+    }
     if (!(await slotOpen(env, f.day, f.start, f.pkg, f.size, f.adds))) return json({ error: "Sorry, that time was just taken. Please pick another.", taken: true }, 409);
     // the server sets the price: launch price is for a customer's first detail only
     if (travelFee(f.miles) === null) return json({ error: "That address is too far for online booking. Text us at (732) 206-7084." }, 400);
@@ -402,11 +435,13 @@ async function api(req, env, url) {
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day: f.day, pkg: f.pkg, size: f.size, adds: JSON.stringify(f.adds),
       plan: f.plan ? JSON.stringify(f.plan) : null, quote: f.quote, travel_fee: f.travel_fee, miles: f.miles, name: f.name, phone: f.phone, email: f.email, address: f.address, town: f.town,
       car: f.car, color: f.color, water: f.water, power: f.power, concerns: null, heard: f.heard, notes: f.notes, card_on_file: f.card, remind: f.remind, cal_href: null, customer_id: customerId, card: bookingCard ? JSON.stringify(bookingCard) : null,
-      terms_version: TERMS_VERSION, terms_at: Date.now(), terms_ip: req.headers.get("CF-Connecting-IP") || "", sms_ok: f.sms ? 1 : 0, mem_auth_at: f.plan && f.memAuth ? Date.now() : null, client_key: f.key };
+      terms_version: TERMS_VERSION, terms_at: Date.now(), terms_ip: req.headers.get("CF-Connecting-IP") || "", sms_ok: f.sms ? 1 : 0, mem_auth_at: f.plan && f.memAuth ? Date.now() : null, client_key: f.key,
+      scent: f.scent || null, ...(await photoStart(env, customerId, f.email, { optOut: f.photosOptOut, agreed: true, trusted: !owner || !!(session && session.id === owner.id) })) };
     try {
-      await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card, terms_version, terms_at, terms_ip, sms_ok, mem_auth_at, client_key)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
-        b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at, b.client_key).run();
+      await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, plan, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, heard, notes, card_on_file, remind, customer_id, card, terms_version, terms_at, terms_ip, sms_ok, mem_auth_at, client_key, scent, share_ok, share_at, share_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.plan,
+        b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.heard, b.notes, b.card_on_file, b.remind, b.customer_id, b.card, b.terms_version, b.terms_at, b.terms_ip, b.sms_ok, b.mem_auth_at, b.client_key,
+        b.scent, b.share_ok, b.share_at, b.share_by).run();
     } catch (e) {   // two copies of the same request at once: the other one won, answer with it
       const ex = f.key && await env.DB.prepare("SELECT * FROM bookings WHERE client_key = ?").bind(f.key).first();
       if (ex) return json(await bookedReply(env, ex, f));
@@ -430,7 +465,7 @@ async function api(req, env, url) {
     tasks.push(emailNick(env, b, "new").catch(e => console.log("nick email failed", e.message)));
     await Promise.all(tasks);
     return json({ ok: true, id: b.id, token: b.token, start: b.start_utc, end: b.end_utc, day: b.day, pkg: b.pkg, manage: env.SITE_URL + "/b/" + b.token,
-      subtotal: q.subtotal, tax: q.tax, total: q.total, priceChanged: shownQuote !== q.subtotal, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
+      subtotal: q.subtotal, tax: q.tax, total: q.total, priceChanged: shownQuote !== q.subtotal, scent: b.scent || null, regularPricing: !q.launch && prior.n > 0, membership: b._mem || null, membershipError: b._memErr || null });
   }
 
   if (p === "/api/auth/start" && req.method === "POST") {
@@ -449,14 +484,28 @@ async function api(req, env, url) {
     const j = await r.json(); if (!j.signedIn) return json(j);   // signed out: a normal answer, not an error (audit IA-059)
     const c = await currentCustomer(env, req), m = await activeFor(env, c.id);
     j.member = await memSummary(env, m, c);
+    const pp = await photoPref(env, c.id, c.email);   // marketing photos: OK unless they opted out (Terms §10)
+    j.photos = { ok: pp ? !!pp.ok : null, by: pp ? pp.by : null };   // null: never answered
+    const ls = await env.DB.prepare("SELECT scent FROM bookings WHERE customer_id = ? AND scent IS NOT NULL ORDER BY created_at DESC LIMIT 1").bind(c.id).first();
+    j.lastScent = ls ? ls.scent : null;
     // can they start a membership from the account? (within 14 days after a qualifying detail)
     if (!m) {
       const q = await qualifyingFor(env, c.id, todayKey());   // last 14 days, or an upcoming detail (audit IA-050)
       if (q) j.canStart = { booking: q.id, pkg: q.pkg, size: q.size, day: q.day, car: q.car, deadline: addDays(q.day, MEM.signupDays),
         plans: Object.keys(MEM.plans).filter(t => MEM.prereq[t].includes(q.pkg)), upcoming: q.day > todayKey(), firstBill: addMonths(q.day, 1) };
       if (j.canStart && !j.canStart.plans.length) delete j.canStart;
+      // the first charge exactly as billing will make it, per plan and frequency (the Terms' winter can skip months or change the price)
+      if (j.canStart) j.canStart.first = Object.fromEntries(j.canStart.plans.map(t => [t, Object.fromEntries([1, 2, 4].map(fq => [fq, (x => ({ day: x.day, amount: x.amount, skipped: x.skipped, winterPrice: x.winterPrice }))(firstCharge(t, q.size, fq, q.day))]))]));
     }
     return json(j);
+  }
+  if (p === "/api/me/photos" && req.method === "POST") {   // the account's marketing-photo switch (all their bookings)
+    const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);
+    const c = await currentCustomer(env, req); if (!c) return json({ error: "Sign in first." }, 401);
+    let body; try { body = await req.json(); } catch (e) { return json({ error: "Bad request" }, 400); }
+    if (typeof body.ok !== "boolean") return json({ error: "Bad request" }, 400);
+    await setPhotoPref(env, { id: "", customer_id: c.id, email: c.email }, body.ok, "account");
+    return json({ ok: true, photos: { ok: body.ok, by: "customer" } });
   }
   if (p === "/api/me") return me(req, env);
   if (p.startsWith("/api/member/")) return memberApi(req, env, url);
@@ -507,16 +556,18 @@ async function memberApi(req, env, url) {
     const d = (sl.days || []).find(x => x.day === day);
     if (!d || !d.slots.includes(start)) return json({ error: sl.reason || "That time isn't available anymore. Pick another." }, 409);
     const pkg = MEM.visitPkg[coverOn(m.type, day)];
+    const sc = pickScent(pkg, body.scent); if (sc.err) return json({ error: sc.err, field: "scent", scents: scentList() }, 400);
     if (!(await slotOpen(env, day, start, pkg, m.size, ["_member"]))) return json({ error: "That time was just taken. Pick another." }, 409);
     const last = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1").bind(c.id).first() || {};
     const cars = JSON.parse(c.cars || "[]"), car = m.car || (cars[0] && cars[0].name) || last.car || "";
     const start_utc = nyToUtc(day, start), end_utc = start_utc + jobMin(pkg, m.size, ["_member"]) * 60000;
     const b = { id: code(6), token: secret(), ack_token: secret(), status: "confirmed", created_at: Date.now(), start_utc, end_utc, day, pkg, size: m.size, adds: "[]", quote: 0, travel_fee: 0,
       name: c.name || last.name || "", phone: c.phone || last.phone || "", email: c.email, address: c.address || last.address || "", town: c.town || last.town || "", car, color: (cars[0] && cars[0].color) || last.color || "",
-      water: last.water || null, power: last.power || null, notes: c.notes || null, remind: c.remind, customer_id: c.id, kind: "member", membership_id: m.id, visit_value_cents: m.period_visit_cents || 0 };
-    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, quote, travel_fee, name, phone, email, address, town, car, color, water, power, notes, remind, customer_id, kind, membership_id, visit_value_cents, terms_version, terms_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.quote, b.travel_fee,
-      b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.notes, b.remind, b.customer_id, b.kind, b.membership_id, b.visit_value_cents, m.terms_version, Date.now()).run();
+      water: last.water || null, power: last.power || null, notes: c.notes || null, remind: c.remind, customer_id: c.id, kind: "member", membership_id: m.id, visit_value_cents: m.period_visit_cents || 0,
+      scent: sc.scent, ...(await photoStart(env, c.id, c.email, { optOut: false, agreed: true, trusted: true })) };
+    await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, quote, travel_fee, name, phone, email, address, town, car, color, water, power, notes, remind, customer_id, kind, membership_id, visit_value_cents, terms_version, terms_at, scent, share_ok, share_at, share_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.quote, b.travel_fee,
+      b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.notes, b.remind, b.customer_id, b.kind, b.membership_id, b.visit_value_cents, m.terms_version, Date.now(), b.scent, b.share_ok, b.share_at, b.share_by).run();
     if (await lostRace(env, b)) { await env.DB.prepare("DELETE FROM bookings WHERE id = ?").bind(b.id).run(); return json({ error: "That time was just taken. Pick another." }, 409); }
     const tasks = [];
     if (calConfigured(env)) tasks.push(calSave(env, b).catch(e => console.log("calendar save failed", e.message)));
@@ -646,7 +697,7 @@ async function cleanup(env) {
 
 async function calSave(env, b) {
   const where = [b.address, b.town].filter(Boolean).join(", "), adds = JSON.parse(b.adds || "[]").map(a => ADDON_NAMES[a] || a);
-  const desc = [b.name + " · " + b.phone, b.email, pkgName(b) + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), [b.car, b.color].filter(Boolean).join(" · "),
+  const desc = [b.name + " · " + b.phone, b.email, pkgName(b) + " · " + SIZES[b.size] + (adds.length ? " + " + adds.join(", ") : ""), b.scent ? "Scent: " + b.scent : "", [b.car, b.color].filter(Boolean).join(" · "),
     b.quote ? (e => "Estimate " + usd(e.sub) + " + " + usd(e.tax) + " tax = " + usd(e.total))(withTax(b.quote * 100)) : "", b.pkg === "interior" ? "Outlet: " + b.power : "Spigot: " + b.water + " · Outlet: " + b.power, b.notes ? "Notes: " + b.notes : "", "Code " + b.id, "Photos / get paid: " + env.SITE_URL + "/admin/#job/" + b.id].filter(Boolean).join("\n");
   const href = await writeJob(env, b, { summary: pkgName(b) + " · " + b.name.split(" ")[0] + (b.town ? " · " + b.town : ""), location: where, description: desc, url: env.SITE_URL + "/admin/#job/" + b.id });
   if (href) await env.DB.prepare("UPDATE bookings SET cal_href = ? WHERE id = ?").bind(href, b.id).run();
@@ -661,7 +712,7 @@ async function manage(req, env, url) {
     const r = await galleryRoute(req, env, url, gb, g[2], { page, html, pkgName, whenText });
     return r || html(page("Not found", "<h1>Link not found</h1>"), 404);
   }
-  const m = url.pathname.match(/^\/b\/([a-f0-9]{36})(?:\/(cancel|move))?$/);
+  const m = url.pathname.match(/^\/b\/([a-f0-9]{36})(?:\/(cancel|move|scent))?$/);
   if (!m) return html(page("Not found", "<h1>Link not found</h1>"), 404);
   const b = await env.DB.prepare("SELECT * FROM bookings WHERE token = ?").bind(m[1]).first();
   if (!b) return html(page("Not found", `<h1>We couldn't find that booking</h1><p class="sub">Text us at (732) 206-7084 and we'll sort it out.</p>`), 404);
@@ -669,6 +720,19 @@ async function manage(req, env, url) {
     const code = url.searchParams.get("m"), cr = +url.searchParams.get("c") || 0;
     const msg = code === "skipped" && cr ? "Skipped. A " + usd(cr) + " credit goes toward your next monthly charge." : MSGS[code] || "";
     return html(await managePage(env, b, msg));
+  }
+  if (m[2] === "scent") {   // change the scent until the job starts (Nick gets a heads-up)
+    const o = req.headers.get("Origin"); if (o && o !== url.origin) return html(page("Not allowed", "<h1>Not allowed</h1>"), 403);
+    if (b.status !== "confirmed" || !scentFor(b) || jobStarted(b)) return html(await managePage(env, b, "The scent can't be changed online anymore. Text us at (732) 206-7084."));
+    const fd = await req.formData().catch(() => null), sc = pickScent(b.pkg, fd && fd.get("scent"), b.scent);
+    if (sc.err) return html(await managePage(env, b, sc.err));
+    if (sc.scent !== b.scent) {
+      const was = b.scent || NO_SCENT;
+      await env.DB.prepare("UPDATE bookings SET scent = ? WHERE id = ?").bind(sc.scent, b.id).run(); b.scent = sc.scent;
+      const quiet = await overLimit(env, req, "scentmail:" + b.id, 3, 3600e3);   // at most 3 heads-ups an hour per booking
+      await Promise.all([calConfigured(env) ? calSave(env, b).catch(() => {}) : null, quiet ? null : emailNick(env, b, "scent", was).catch(() => {})]);
+    }
+    return backTo(b, "scent", "#scent");
   }
   if (b.status !== "confirmed") return html(await managePage(env, b));
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
@@ -741,8 +805,7 @@ const OWNER_H = { syncBusy, pkgName, emailCustomer, emailNick, calSave: (env, b)
 async function handle(req, env) {
     const url = new URL(req.url);
     // one address for the site, always https: www.apexdetailingoc.com or http:// -> https://apexdetailingoc.com
-    const local = /^(localhost|127\.0\.0\.1)$/.test(url.hostname);
-    if (url.hostname.startsWith("www.") || (url.protocol === "http:" && !local)) return Response.redirect("https://" + url.hostname.replace(/^www\./, "") + url.pathname + url.search, 301);
+    if (/(^|\.)apexdetailingoc\.com$/.test(url.hostname) && (url.hostname.startsWith("www.") || url.protocol === "http:")) return Response.redirect("https://apexdetailingoc.com" + url.pathname + url.search, 301);
     // owner actions (dashboard writes, job page, Got it) must come from this site's own pages (audit IA-037)
     const ownerWrite = req.method !== "GET" && req.method !== "HEAD" && (url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/job/") || url.pathname.startsWith("/ack/"));
     if (ownerWrite) { const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);

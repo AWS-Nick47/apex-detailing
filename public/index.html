@@ -549,6 +549,9 @@ section.block { padding-block: clamp(72px, 10vw, 120px); }
 .dash-demo button[aria-pressed="true"] { background: var(--sel-bg); color: var(--fg); box-shadow: var(--sel-sh); }
 .dash-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
 .dash-tabs button { flex: 1 0 auto; border: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); background: transparent; padding: 9px 12px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+.dash-tabs .am { letter-spacing: .07em; gap: 4px; font-size: .74em; }
+.dash-tabs .am svg { width: 1.15em; height: 1.15em; }
+@media (max-width: 420px) { .dash-tabs { gap: 2px; } .dash-tabs button { padding-left: 4px; padding-right: 4px; } }
 .dash-tabs button[aria-selected="true"] { background: var(--sel-bg); color: var(--fg); box-shadow: var(--sel-sh); }
 .dash-pane { display: grid; gap: 12px; }
 .dash-pane[hidden] { display: none; }
@@ -911,6 +914,7 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .bk-review .rv span { color: var(--muted); } .bk-review .rv b { text-align: right; font-weight: 600; }
 .bk-review .rv.tot b { font-size: 17px; }
 .bk-ts { margin-top: 12px; min-height: 0; } .bk-ts:empty { display: none; }
+.ml-scent { width: 100%; min-height: 44px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); color: var(--fg); padding: 0 12px; font: inherit; font-size: 15px; margin-bottom: 4px; }
 .bk-pnote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); background: rgba(255,210,122,.08); box-shadow: inset 0 0 0 1px rgba(255,210,122,.35); }
 .bk-pnote b { color: var(--fg); } .bk-pnote p { margin: 6px 0 0; }
 .bk-code { display: grid; gap: 12px; justify-items: start; margin-top: 14px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
@@ -1101,9 +1105,14 @@ summary .am { font-size: .78em; letter-spacing: .14em; vertical-align: .05em; ma
 .next-slots .ns { display: grid; gap: 0; text-align: left; border: 0; font: inherit; color: var(--fg); padding: 7px 10px; border-radius: 12px; background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
 .next-slots .ns b { font-size: 12.5px; } .next-slots .ns span { font-size: 12px; color: var(--muted); }
 .next-slots .ns:hover { background: var(--sel-bg); box-shadow: var(--sel-sh); }
-.pk-tabs button.is-winter::after { content: "Spring"; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.6); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.pk-tabs button.is-winter::after { content: attr(data-back); white-space: nowrap; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.6); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .chip.is-winter label { opacity: .45; cursor: not-allowed; }
-.chip.is-winter label small::after { content: " · Back in spring"; }
+.chip.is-winter label small::after { content: " · Back " attr(data-back); }
+.winter-note { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; background: rgba(140, 190, 255, .08); box-shadow: inset 0 0 0 1px rgba(140, 190, 255, .28); color: var(--fg); font-size: 14.5px; line-height: 1.45; }
+.winter-note svg { width: 18px; height: 18px; flex: none; margin-top: 2px; opacity: .85; }
+.winter-note b { font-weight: 650; }
+.plan-tabs button.is-winter, .mx-type button.is-winter { opacity: .55; }
+#planType button.is-winter .pop, .pk-tabs button.is-winter .pop { display: none; }   /* no "Recommended" on something that can't be booked yet */
 #pkAddHint[hidden], #bkAddHint[hidden], .chip[hidden], .achip[hidden] { display: none !important; }
 
 @media (max-width: 400px) {
@@ -1678,7 +1687,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <div class="eyebrow hero-eb">Mobile car detailing<span class="eb-sep"> · </span><span class="eb-2">Ocean County, NJ</span></div>
       <h1>Peak condition.</h1>
       <p class="sub">We detail your car in your driveway, anywhere in Ocean County. You get it back looking better than the day you bought it.</p>
-      <div class="hero-offer" id="heroOffer"><span class="ho-k" id="hoK">Launch pricing</span><span class="ho-p"><s id="hoReg">$249</s><span id="hoNow">$179</span></span><span class="ho-l">Full Detail</span><span class="ho-f" id="hoF">first detail only · sedan · plus tax</span></div>
+      <div class="hero-offer" id="heroOffer"><span class="ho-k" id="hoK">Launch pricing</span><span class="ho-p"><s id="hoReg">$249</s><span id="hoNow">$179</span></span><span class="ho-l" id="hoL">Full Detail</span><span class="ho-f" id="hoF">first detail only · sedan · plus tax</span></div>
       <div class="hero-actions">
         <a class="btn" href="#book" id="heroBook">Book my first detail</a>
         <a class="btn btn-ghost" href="#services">See packages</a>
@@ -1740,6 +1749,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         <h2>Three packages. No upsell games.</h2>
         <p>Every detail is done by hand, in your driveway, with the right products for your paint and interior. Pick your vehicle size to see your price.</p>
       </div>
+      <p class="winter-note" id="svcWinter" hidden><svg aria-hidden="true"><use href="#i-info"/></svg><span></span></p>
 
       <div class="picker panel reveal" id="picker">
         <div class="pk-top">
@@ -1760,6 +1770,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <div class="price" data-p="179,199,229" id="pkPrice"><span class="cur">$</span><span class="odo" aria-hidden="true">179</span><span class="sr-only">$179</span><small>starting + tax</small></div>
             <div class="pk-reg" id="pkReg"><span class="launch">Launch price</span><s id="pkRegAmt">$249</s><span class="pk-reg-n">first detail only</span></div>
           <p class="pk-blurb" id="pkBlurb">Inside and out. The full reset for a car that needs it.</p>
+          <p class="winter-note" id="pkWinter" hidden style="margin:12px 0 0"><svg aria-hidden="true"><use href="#i-info"/></svg><span></span></p>
           <ul class="specs" id="pkSpecs">
             <li><svg><use href="#i-clock"/></svg><span id="pkTime">~5 hrs</span></li>
             <li><svg><use href="#i-drop" id="pkNeedIcon"/></svg><span id="pkNeed">Water + outlet</span></li>
@@ -1870,6 +1881,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="plan-left">
           <div class="plan-brand"><svg aria-hidden="true"><use href="#peak"/></svg><span>Apex Membership</span></div>
           <p class="plan-lede">Pick what each visit covers and how often. Each plan starts after a qualifying detail.</p>
+          <p class="winter-note" id="planWinter" hidden><svg aria-hidden="true"><use href="#i-info"/></svg><span></span></p>
           <div class="plan-field">
             <span>Each visit</span>
             <div class="pk-tabs plan-tabs" id="planType" role="group" aria-label="Each visit" style="--n:3">
@@ -2030,7 +2042,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               </div>
             </div></details>
           <details><summary>How long does it take?</summary><p>Every detail is done by hand by one person, so we take our time. Approximate times:</p><ul class="faq-list"><li><b>Exterior:</b> ~1.5 hours for sedans and SUVs, ~2.5 hours for trucks and 3-row SUVs.</li><li><b>Interior:</b> ~3.5 hours for any vehicle.</li><li><b>Full Detail:</b> ~5 hours for sedans and SUVs, ~6 hours for trucks and 3-row SUVs.</li><li><b>Heavy add-ons:</b> heavy pet hair or heavy stain/odor removal adds about 30–45 minutes each.</li><li><b>Apex Membership visits:</b> about 1 hour for a wash, about 1–1.5 hours for an interior refresh, and about 2 hours for a wash + interior refresh.</li></ul><p>These are estimates. A car in rough shape can take longer, and one that's kept up can take less. When you book, we'll give you an expected finish time. You don't need to stay outside with us.</p></details>
-          <details><summary>What if it rains or it's freezing?</summary><p>We'll reschedule exterior work for free. From December 15 to March 1 we only do Interior details, since exterior work isn't safe for your paint in the cold. During that time Wash plans pause with no charge, Wash + interior members get interior-only visits billed at the Interior plan price, and Interior plans carry on as normal. Exterior and Full Details are back in spring.</p></details>
+          <details><summary>What if it rains or it's freezing?</summary><p>We'll reschedule exterior work for free. In winter (<span data-wspan>December 15 to March 1</span>) we only do Interior details: it's too cold to wash outside, since water freezes on the paint and sealant won't cure. Exterior and Full Details are back <span data-wback>March 1</span>. For <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span>, from December 15 to March 1 Wash plans pause with no charge, Wash + interior members get interior-only visits billed at the Interior plan price, and Interior plans carry on as normal.</p></details>
           <details><summary><span class="faq-q">How does <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span> work?</span></summary>
             <div class="faq-a">
               <ol class="faq-steps">
@@ -2101,6 +2113,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               <div class="chip"><input type="radio" name="pkg" id="q-pkg-interior" value="interior"><label for="q-pkg-interior"><b>Interior</b><small data-pp="interior"></small></label></div>
               <div class="chip"><input type="radio" name="pkg" id="q-pkg-full" value="full" checked><label for="q-pkg-full"><b>Full Detail</b><small data-pp="full"></small></label></div>
             </div>
+            <p class="winter-note" id="bkWinter" hidden style="margin:10px 0 0"><svg aria-hidden="true"><use href="#i-info"/></svg><span></span></p>
           </div>
           <div class="field"><span>Vehicle size</span>
             <div class="chips bk-pk bk-sz">
@@ -2113,6 +2126,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
             <div class="chips" id="addonChips"></div>
             <p class="bk-fine" id="bkAddHint" style="margin-top:8px">Light pet hair, everyday spills and leather conditioning are included. Pick a "heavy" add-on if your car needs extra work so your price is right from the start.</p>
             <div class="added" id="qAddNote" role="status"></div>
+          </div>
+          <div class="field" id="bkScentF"><span>Scent</span>
+            <div class="chips bk-scent" id="scentChips" role="radiogroup" aria-label="Scent"></div>
+            <p class="bk-fine" style="margin-top:8px">The scent we leave inside when we finish the interior. You can change it later from your confirmation email.</p>
           </div>
         </section>
 
@@ -2233,6 +2250,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="bk-consent">
             <label class="acct-check" id="bkMemAuthRow" hidden><input type="checkbox" id="bkMemAuth"> <span>I authorize Apex Detailing LLC to charge my card <b id="bkMemAuthAmt"></b> starting one month after this detail and on that date every month until I cancel, with a 3-month minimum, as described in the <a href="/membership-terms" target="_blank" rel="noopener">Membership Terms</a>.</span></label>
             <label class="acct-check"><input type="checkbox" id="bkSms"> <span>Text me about my booking: confirmations, reminders and updates. Optional. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.</span></label>
+            <label class="acct-check"><input type="checkbox" id="bkNoPhotos"> <span>Keep my car out of Apex marketing photos. Otherwise we may feature before and after photos of your car, with the plate and address hidden. You can change this anytime.</span></label>
             <label class="acct-check" id="bkAgreeRow"><input type="checkbox" id="bkAgree"> <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, including the cancellation policy.</span></label>
           </div>
           <div class="bk-ts" id="bkTs" hidden></div>
@@ -2267,6 +2285,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div><svg><use href="#i-clock"/></svg><span id="bkDur"></span></div>
           <div><svg><use href="#i-cal"/></svg><span id="bkWhen">Pick a day and time</span></div>
           <div><svg><use href="#i-ext"/></svg><span id="bkCar">Your car</span></div>
+          <div id="bkScentRow" hidden><svg><use href="#i-int"/></svg><span id="bkScentTxt"></span></div>
         </div>
         <p class="fine"><span class="t-pre">Plus NJ sales tax, added at the end.</span><span class="t-fin">Includes NJ sales tax.</span> Pay after the job. Final price depends on condition; we confirm before we start, never after.</p>
       </aside>
@@ -2344,7 +2363,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       </div>
       <nav class="dash-tabs" role="tablist">
         <button type="button" role="tab" data-tab="overview" aria-selected="true">Overview</button>
-        <button type="button" role="tab" data-tab="plan" aria-selected="false">Apex Membership</button>
+        <button type="button" role="tab" data-tab="plan" aria-selected="false" aria-label="Apex Membership"><span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span></button>
         <button type="button" role="tab" data-tab="history" aria-selected="false">History</button>
         <button type="button" role="tab" data-tab="profile" aria-selected="false">My details</button>
       </nav>
@@ -2362,6 +2381,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           <div class="next-slots" id="nextSlots" aria-label="Next open times"></div>
           <button type="button" class="btn" data-rebook="0">Book this again · <span data-f="lastPrice"></span></button>
           <p class="dc-fine">Tap a time to grab it, or pick another day. Your car, address and add-ons get filled in.</p>
+        </div>
+        <div class="dcard first-card" hidden>
+          <div class="dc-k">Your first detail</div>
+          <div class="dc-big">Nothing booked yet.</div>
+          <div class="dc-sub">Book a detail and it shows up here, with a one-tap "Book again" next time.</div>
+          <div class="dc-actions"><button type="button" class="btn btn-sm" data-histbook>Book a detail</button></div>
         </div>
         <div class="dcard plan-mini" data-if="member">
           <div class="dc-k"><span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span></div>
@@ -2425,6 +2450,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           </div>
           <button class="btn" type="submit">Save changes</button>
         </form>
+        <div class="prof-sec" id="acctPhotosSec" hidden>
+          <h4>Marketing photos</h4>
+          <label class="acct-check"><input type="checkbox" id="acctPhotos"> <span>Feature my car in Apex marketing photos. We always hide the plate and anything that shows your address.</span></label>
+          <small class="acct-hint">Covers all your bookings. Uncheck to opt out anytime.</small>
+        </div>
         <div class="prof-sec acct-card" id="acctCardSec" hidden>
           <h4>Payment card</h4>
           <p class="dc-sub" id="acctCardTxt">No card saved</p>
@@ -2616,6 +2646,23 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   }
   var TODAY0 = new Date(); TODAY0.setHours(0, 0, 0, 0);
   function winterNow() { return inWinter(TODAY0); }
+  // winter mode (Dashboard → Settings): what's off, until when, and why, said the same way everywhere
+  var MON3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function winterBack() { var e = SCHED.winter.end; return MON3[e[0] - 1] + " " + e[1]; }
+  var WINTER_WHY = "It's too cold to wash outside: water freezes on the paint and sealant won't cure.";
+  function winterNote(id, html) { var el = document.getElementById(id); if (!el) return; el.hidden = !html; if (html) el.querySelector("span").innerHTML = html; }
+  // the first day back, and whether it's past the end of the booking window (then outside details can't be booked at all yet)
+  function winterOpenDate() { var e = SCHED.winter.end, d = new Date(TODAY0.getFullYear(), e[0] - 1, e[1]); if (d <= TODAY0) d.setFullYear(d.getFullYear() + 1); return d; }
+  function winterLocked() { if (!winterNow()) return false; var L = window.__bkLast ? window.__bkLast() : null; if (!L) { L = new Date(TODAY0); L.setDate(L.getDate() + 59); } return winterOpenDate() > L; }
+  window.__winter = { now: winterNow, back: winterBack, why: WINTER_WHY, note: winterNote, locked: winterLocked };
+  if (winterNow()) document.documentElement.classList.add("winter-on");
+  // the FAQ says the winter dates from the dashboard setting
+  document.addEventListener("DOMContentLoaded", function () {
+    var LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], w = SCHED.winter, off = w.start[0] === w.end[0] && w.start[1] === w.end[1];
+    var fmt = function (md) { return LONG[md[0] - 1] + " " + md[1]; };
+    document.querySelectorAll("[data-wspan]").forEach(function (n) { n.textContent = off ? "the coldest months" : fmt(w.start) + " to " + fmt(w.end); });
+    document.querySelectorAll("[data-wback]").forEach(function (n) { n.textContent = off ? "in spring" : fmt(w.end); });
+  });
   function jobMin(pkg, size, addIds) { var m = SCHED.baseMin[pkg][size] + (addIds || []).reduce(function (t, id) { return t + (SCHED.addonMin[id] || 20); }, 0); return Math.round(m / 15) * 15; }
   function durLabel(m) { var h = Math.round(m / 30) / 2; return (h % 1 ? Math.floor(h) + "½" : h) + (h === 1 ? " hr" : " hrs"); }
   // sunset in minutes after local midnight (America/New_York) for Brick, NJ
@@ -2722,6 +2769,22 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     chipWrap.appendChild(d);
   });
 
+  // ---- scent (interior work only): Nick's list from the dashboard settings, plus No scent ----
+  var NO_SCENT = "No scent";
+  var SCENTS = (window.__APEX_SETTINGS && window.__APEX_SETTINGS.sched && Array.isArray(window.__APEX_SETTINGS.sched.scents)) ? window.__APEX_SETTINGS.sched.scents : ["New Car", "Black Ice", "Fresh Linen", "Vanilla"];
+  function scentEsc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  window.__scentChips = function (list, keep) {
+    if (Array.isArray(list)) SCENTS = list;
+    var wrap = document.getElementById("scentChips"); if (!wrap) return;
+    var cur = keep || window.__scentVal && window.__scentVal(true) || NO_SCENT;
+    if ([NO_SCENT].concat(SCENTS).indexOf(cur) < 0) cur = NO_SCENT;
+    wrap.innerHTML = [NO_SCENT].concat(SCENTS).map(function (n, i) { return '<div class="chip"><input type="radio" name="scent" id="q-scent-' + i + '" value="' + scentEsc(n) + '"' + (n === cur ? " checked" : "") + '><label for="q-scent-' + i + '"><b>' + scentEsc(n) + "</b></label></div>"; }).join("");
+  };
+  window.__scentApplies = function (pkg) { return pkg === "interior" || pkg === "full"; };
+  // the picked scent, or null when the package has no interior work (raw: ignore the package)
+  window.__scentVal = function (raw) { var r = document.querySelector('#scentChips input[name="scent"]:checked'), v = r ? r.value : NO_SCENT; if (raw) return v; var pk = document.querySelector('#quoteForm input[name="pkg"]:checked'); return pk && window.__scentApplies(pk.value) ? v : null; };
+  window.__scentChips();
+
   var form = document.getElementById("quoteForm");
   function val(name) { var el = form.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : null; }
 
@@ -2737,6 +2800,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
   function updateQuote() {
     var q = current();
+    var sf = document.getElementById("bkScentF"); if (sf) sf.hidden = !window.__scentApplies(q.pkg);
     ADDONS.forEach(function (a) { var em = document.querySelector('label[for="q-add-' + a.id + '"] em'); if (em) em.textContent = "+$" + addPrice(a); });
     if (window.__pnReset) window.__pnReset();   // a price note from the server is out of date once the booking changes
     // before tax until the last booking step, then the full breakdown (CSS shows one or the other via .bk.final)
@@ -2792,9 +2856,11 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     blurb.textContent = d.blurb; blurb.classList.remove("pk-swap"); void blurb.offsetWidth; blurb.classList.add("pk-swap");
     document.querySelectorAll("#pkFeat li").forEach(function (li) { li.classList.toggle("off", d.on.indexOf(li.dataset.f) < 0); });
     var book = document.getElementById("pkBook"); book.dataset.pick = key;
-    var cold = winterNow() && key !== "interior";
-    book.textContent = cold ? "Back in spring · Book an Interior" : "Book " + NAMES[key]; book.classList.toggle("btn-ghost", cold); book.dataset.winter = cold ? "1" : "";
-    document.querySelectorAll(".pk-tabs button[data-pkg]").forEach(function (b) { b.classList.toggle("is-winter", winterNow() && b.dataset.pkg !== "interior"); });
+    var cold = winterLocked() && key !== "interior", later = !cold && winterNow() && key !== "interior";
+    book.textContent = cold ? "Back " + winterBack() + " · Book an Interior" : "Book " + NAMES[key] + (later ? " · from " + winterBack() : ""); book.classList.toggle("btn-ghost", cold); book.dataset.winter = cold ? "1" : "";
+    document.querySelectorAll(".pk-tabs button[data-pkg]").forEach(function (b) { var w = winterNow() && b.dataset.pkg !== "interior"; b.classList.toggle("is-winter", w); if (w) b.dataset.back = "Back " + winterBack(); });
+    winterNote("pkWinter", winterNow() && key !== "interior" ? "<b>" + (key === "full" ? "Full Details are" : "Exterior details are") + " back " + winterBack() + ".</b> " + WINTER_WHY + (cold ? " Interior details run all winter." : " You can book one for " + winterBack() + " or later now.") : "");
+    winterNote("svcWinter", winterNow() ? "<b>Winter: interior details only until " + winterBack() + ".</b> " + WINTER_WHY + " Exterior and Full Details are back " + winterBack() + "." : "");
     covArt.dataset.show = key;
     document.querySelectorAll(".legend li").forEach(function (li) { li.classList.toggle("on", ZONES[key].indexOf(li.dataset.zone) > -1); });
     if (!fromQuote) { var r = document.getElementById("q-pkg-" + key); if (r) r.checked = true; }
@@ -2829,6 +2895,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   document.querySelectorAll(".pk-tabs button[data-pkg]").forEach(function (b) { b.addEventListener("click", function () { selectPkg(b.dataset.pkg); }); });
   form.addEventListener("change", function (e) { if (e.target.name === "pkg") selectPkg(e.target.value, true); });
   selectPkg("full", true);
+  if (winterNow()) selectPkg("interior");   // winter: open on what can be booked
 
 
   /* ---------- Membership builder ---------- */
@@ -2849,9 +2916,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     ["addedNote", "qAddNote"].forEach(function (id) { var el = document.getElementById(id); if (el) { el.innerHTML = html; el.classList.remove("cleared"); } });
     clearTimeout(clearTimer); clearTimer = setTimeout(function () { ["addedNote", "qAddNote"].forEach(function (id) { var el = document.getElementById(id); if (el && el.innerHTML === html) el.innerHTML = ""; }); }, 6000);
   }
+  function planWinterOff(t) { return winterLocked() && PREREQ[t].indexOf("interior") < 0; }   // Wash plans start with an outside detail
+  function planWinterMsg(t) { return "<b>" + PLAN_TXT[t] + " starts again " + winterBack() + ".</b> It begins with " + NEEDS_TXT[t] + ", and we only do interiors until then (" + WINTER_WHY.replace(/^It's /, "it's ").replace(/\.$/, "") + "). The Interior plan can start now."; }
   function planLockShow(pulse) {
     var el = document.getElementById("planLock"); if (!el) return;
     var pkg = val("pkg"), t = planState.type, html = planMsg;
+    if (!html && planWinterOff(t)) html = planWinterMsg(t);
     if (!html && !planState.added && PREREQ[t].indexOf(pkg) < 0)
       html = "<b>" + PLAN_TXT[t] + " starts after " + NEEDS_TXT[t] + ".</b> You picked " + A_PKG[pkg] + " above, so starting this plan switches your detail to " + A_PKG[STARTER[t]] + ".";
     el.hidden = !html; if (html) el.innerHTML = '<svg aria-hidden="true"><use href="#i-info"/></svg><span>' + html + "</span>";
@@ -2870,6 +2940,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     document.querySelectorAll("#" + id + " button").forEach(function (b) {
       b.addEventListener("click", function () {
         planState[key] = key === "freq" ? +b.dataset.v : b.dataset.v;
+        if (key === "type" && planState.added && planWinterOff(b.dataset.v)) { planFlash(planWinterMsg(b.dataset.v)); return; }
         if (key === "type" && planState.added && PREREQ[b.dataset.v].indexOf(val("pkg")) < 0) {
           var was = val("pkg");
           planFlash("<b>" + PLAN_TXT[b.dataset.v] + " starts after " + NEEDS_TXT[b.dataset.v] + ",</b> so we switched your detail from " + A_PKG[was].replace(/^an? /, "") + " to " + A_PKG[STARTER[b.dataset.v]].replace(/^an? /, "") + ".");
@@ -2898,7 +2969,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     window.__planInfo = { label: label, monthly: monthly, perVisit: perVisit, oneoffVisit: P.oneoffVisit, save: save, freq: planState.freq, type: planState.type, visits: planState.freq, of: P.of };
     var btn = document.getElementById("planAdd"), st = STARTER[planState.type];
     btn.setAttribute("aria-pressed", String(planState.added));
-    btn.innerHTML = planState.added ? "Added to your booking · $" + monthly + "/mo + tax"
+    var wOff = planWinterOff(planState.type); btn.classList.toggle("btn-ghost", wOff);
+    document.querySelectorAll("#planType button, #bkMemType button").forEach(function (b) { var w = planWinterOff(b.dataset.v); b.classList.toggle("is-winter", w); if (w) b.dataset.back = "Back " + winterBack(); });
+    winterNote("planWinter", winterNow() ? "<b>Winter: only the Interior plan can start until " + winterBack() + ".</b> Wash plans begin with an Exterior or Full Detail, and those are back " + winterBack() + ". Current members' Wash visits pause Dec 15 – Mar 1 (Membership Terms)." : "");
+    btn.innerHTML = wOff ? "Starts again " + winterBack() + " · pick Interior to start now" : planState.added ? "Added to your booking · $" + monthly + "/mo + tax"
       : "<span class=\"pb-part\">Start with " + (st === "exterior" ? "an Exterior" : st === "interior" ? "an Interior" : "a Full Detail") + " · $" + pkgPrice(st, size) + "</span> <span class=\"pb-part\"><span class=\"pb-arrow\">→</span> then $" + monthly + "/mo</span>";
     document.getElementById("planWhy").textContent = st === "full" ? "Wash + interior starts after a Full Detail, so every visit starts from a clean slate."
       : st === "exterior" ? "Wash plans start after an Exterior or Full Detail, so every visit starts from a clean slate."
@@ -2919,8 +2993,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   window.__coercePlan = function (pkg) { if (coercePlan(pkg)) updatePlan(); };
   window.__planState = planState; window.__updatePlan = updatePlan;
   seg("planFreq", "freq"); seg("planType", "type");
+  if (winterNow()) { planState.type = "int"; document.querySelectorAll("#planType button").forEach(function (x) { x.setAttribute("aria-pressed", String(x.dataset.v === "int")); }); }
   document.getElementById("planAdd").addEventListener("click", function () {
     if (planState.added) { planState.added = false; updatePlan(); return; }
+    if (planWinterOff(planState.type)) { planFlash(planWinterMsg(planState.type)); return; }
     planState.added = true;
     selectPkg(STARTER[planState.type]);
     updatePlan();
@@ -3020,7 +3096,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     window.__bar = function (q, quiet) {
       lastQ = q; if (memZone() && !quiet) { paint(); return; }
       tot.innerHTML = "$" + q.total + '<small class="pb-tax">+ tax</small>';
-      sub.textContent = NAMES[q.pkg] + " · " + SHORT[q.size] + (q.adds.length ? " · " + q.adds.length + (q.adds.length === 1 ? " add-on" : " add-ons") : "");
+      sub.textContent = NAMES[q.pkg] + " · " + SHORT[q.size] + (window.__winter && window.__winter.now() && q.pkg !== "interior" ? " · back " + window.__winter.back() : q.adds.length ? " · " + q.adds.length + (q.adds.length === 1 ? " add-on" : " add-ons") : "");
       if (lastTotal !== null && lastTotal !== q.total && !reduce) { tot.animate && tot.animate([{ transform: "scale(1.08)" }, { transform: "none" }], { duration: 260, easing: "ease-out" }); }
       lastTotal = q.total;
     };
@@ -3058,12 +3134,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     };
     var mode = window.__LIVE ? "guest" : "member", signedIn = false, intent = null, lastFocus = null, LIVE = window.__LIVE, signEmail = "", upcoming = [];
     // Live site: turn the API answer into the same shape the demo used
+    var PHOTOS = null, LAST_SCENT = null;
     function fromApi(j) {
       var c = j.customer, cars = (c.cars || []).map(function (x) { return { name: x.name, color: x.color, size: x.size }; });
       var fmt = function (ms, o) { return new Date(ms).toLocaleDateString("en-US", Object.assign({ timeZone: "America/New_York" }, o)); };
       var tm = function (ms) { return new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }); };
       var hist = j.bookings.filter(function (b) { return b.status !== "cancelled"; }).map(function (b) {
-        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, img: null, price: b.quote, paid: b.paid, water: b.water, power: b.power, manage: b.manage, start: b.start,
+        return { id: b.id, status: b.status, date: fmt(b.start, { month: "short", day: "numeric", year: "numeric" }), pkg: b.pkg, size: b.size, car: b.car || SIZES[b.size], color: b.color, adds: b.adds, scent: b.scent || null, img: null, price: b.quote, paid: b.paid, water: b.water, power: b.power, manage: b.manage, start: b.start,
           when: fmt(b.start, { weekday: "long", month: "short", day: "numeric" }), time: tm(b.start) + "–" + tm(b.end) };
       });
       upcoming = hist.filter(function (h) { return h.status === "upcoming"; }).sort(function (a, b) { return a.start - b.start; });
@@ -3071,7 +3148,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       DEMO = { first: parts[0] || "there", name: c.name || "", phone: c.phone || "", email: c.email, address: c.address || "", town: c.town || "", notes: c.notes || "",
         cars: cars.length ? cars : [{ name: "Your car", size: 1 }], color: (cars[0] || {}).color || "", card: c.card ? c.card.brand + " ending " + c.card.last4 : "No card saved", remind: c.remind,
         history: hist, next: upcoming[0] ? { date: upcoming[0].when, time: upcoming[0].time, what: NAMES[upcoming[0].pkg] + " · " + upcoming[0].car.replace(/^\d{4} /, "") } : null };
-      MEMBER = j.member || null; CANSTART = j.canStart || null;
+      MEMBER = j.member || null; CANSTART = j.canStart || null; PHOTOS = j.photos || null; LAST_SCENT = j.lastScent || null;
       mode = MEMBER && MEMBER.status !== "cancelled" ? "member" : "guest";
       if (window.__acct) window.__acct.data = DEMO;
     }
@@ -3115,11 +3192,17 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!LIVE) { var nx0 = $(".dcard.next"); if (nx0) nx0.hidden = mode !== "member"; }
       if (LIVE) {
         var dd = $(".dash-demo"); if (dd) dd.style.display = "none";
+        // no past or upcoming detail: no made-up "Book again" card (review Nov 2)
+        var ag = $(".dcard.again"), fc = $(".dcard.first-card"), none = !DEMO.history.length; if (ag) ag.hidden = none; if (fc) fc.hidden = !none;
+        var coldAgain = !none && winterNow() && last.pkg !== "interior";   // winter: an outside detail can't be booked again yet
+        if (ag && coldAgain) { $("#nextSlots").innerHTML = ""; ag.querySelector("[data-rebook]").textContent = "Back " + winterBack() + " · Book an Interior"; ag.querySelector(".dc-fine").textContent = "It's winter, so " + NAMES[last.pkg] + "s are back " + winterBack() + " (too cold to wash outside). You can book an Interior now."; }
+        else if (ag && !none) { ag.querySelector("[data-rebook]").innerHTML = 'Book this again · <span data-f="lastPrice">' + F.lastPrice + "</span>"; ag.querySelector(".dc-fine").textContent = "Tap a time to grab it, or pick another day. Your car, address and add-ons get filled in."; }
         var li = $('[data-src="lastImg"]'); if (li && !li.dataset.live) { li.dataset.live = "1"; var ph = document.createElement("div"); ph.className = "ph"; ph.innerHTML = '<svg><use href="#v-' + ["sedan", "suv", "truck"][last.size] + '"/></svg>'; ph.style.cssText = "width:64px;height:64px;border-radius:14px;display:grid;place-items:center;background:var(--well);flex:none"; ph.firstChild.style.cssText = "width:40px;height:40px"; li.replaceWith(ph); }
         var nx = $(".dcard.next"); nx.hidden = !DEMO.next;   // members and non-members alike (audit IA-022)
         if (DEMO.next) { nx.querySelector(".dc-k").textContent = "Next detail"; nx.querySelector(".dc-actions").innerHTML = '<a class="btn btn-sm btn-ghost" href="' + upcoming[0].manage + '">Reschedule or cancel</a>'; }
         var rc = $("#acctProfile .acct-check"); if (rc) { rc.lastChild.textContent = " Email me a reminder the day before"; rc.querySelector("input").checked = DEMO.remind !== false; }
         if (typeof cardUI === "function") cardUI();
+        var ps = document.getElementById("acctPhotosSec"); if (ps) { ps.hidden = !PHOTOS; if (PHOTOS) document.getElementById("acctPhotos").checked = !!PHOTOS.ok; }
         if (MEMBER && MEMBER.status !== "cancelled") { var PPm = window.__planPrice(MEMBER.type, MEMBER.size, MEMBER.freq);
           $$('[data-f="planName"]').forEach(function (n) { n.textContent = MEMBER.label; }); $$('[data-f="planPrice"]').forEach(function (n) { n.textContent = "$" + MEMBER.monthly + "/mo + tax"; });
           $$('[data-f="planSave"]').forEach(function (n) { n.textContent = "$" + Math.max(0, (PPm.oneoffVisit * MEMBER.freq - MEMBER.monthly) * 12).toLocaleString(); }); }
@@ -3127,9 +3210,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         memRender();
       }
       $$(".dash-demo button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.demo === mode)); });
-      document.getElementById("acctHist").innerHTML = DEMO.history.map(function (h, i) {
+      document.getElementById("acctHist").innerHTML = !DEMO.history.length ? '<div class="dcard"><div class="dc-k">No history yet</div><div class="dc-big">Your details will show up here.</div><div class="dc-sub">After we\'ve been out, you\'ll see each detail with its price and photos, and you can book the same one again in one tap.</div><div class="dc-actions"><button type="button" class="btn btn-sm" data-histbook>Book a detail</button></div></div>' : DEMO.history.map(function (h, i) {
         return '<div class="hist-item">' + (h.img ? '<img src="' + h.img + '" alt="">' : '<div class="ph"><svg><use href="#i-ext"/></svg></div>') +
-          '<div><div class="hi-top"><b>' + NAMES[h.pkg] + (h.status === "upcoming" ? ' <span class="badge">Upcoming</span>' : "") + '</b><span>' + (h.paid != null ? usd(h.paid) + ' paid' : '$' + (h.price != null ? h.price : priceOf(h)) + ' + tax') + '</span></div><div class="dc-sub">' + h.date + " · " + h.car + (h.adds.length ? " · + " + addNames(h).join(", ") : "") + "</div>" +
+          '<div><div class="hi-top"><b>' + NAMES[h.pkg] + (h.status === "upcoming" ? ' <span class="badge">Upcoming</span>' : "") + '</b><span>' + (h.paid != null ? usd(h.paid) + ' paid' : '$' + (h.price != null ? h.price : priceOf(h)) + ' + tax') + '</span></div><div class="dc-sub">' + h.date + " · " + h.car + (h.adds.length ? " · + " + addNames(h).join(", ") : "") + (h.scent && h.scent !== "No scent" ? " · " + h.scent + " scent" : "") + "</div>" +
           '<div class="hi-acts"><button type="button" class="link-btn" data-rebook="' + i + '">Book again</button>' + (h.manage ? '<a class="link-btn" href="' + h.manage + '">Reschedule or cancel</a>' : "") + (h.job != null ? '<button type="button" class="link-btn" data-photos="' + h.job + '">See photos</button>' : "") + "</div></div></div>";
       }).join("");
       document.getElementById("acctCars").innerHTML = DEMO.cars.map(function (c) { return '<div class="car-row"><svg><use href="#v-' + ["sedan", "suv", "truck"][c.size] + '"/></svg><div><b>' + c.name + "</b><span>" + SIZES[c.size] + "</span></div></div>"; }).join("");
@@ -3202,7 +3285,15 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var ph = e.target.closest("[data-ph]"); if (ph) toast(ph.dataset.ph + " opens here once accounts are live");
       var ns = e.target.closest("[data-slot]"); if (ns) { var sp = ns.dataset.slot.split("|"); rebook(DEMO.history[0], { date: sp[0], time: +sp[1] }); return; }
       var rb = e.target.closest("[data-rebook]"); if (rb) rebook(DEMO.history[+rb.dataset.rebook]);
+      if (e.target.closest("[data-histbook]")) { close(true); window.__bk.open({ step: 1, focusBack: document.querySelector(".acct-btn") }); }
       var pt = e.target.closest("[data-photos]"); if (pt) { close(); var jb = document.querySelectorAll(".res-jobs button")[+pt.dataset.photos]; if (jb) jb.click(); document.getElementById("results").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
+    });
+    document.getElementById("acctPhotos").addEventListener("change", function () {
+      var cb = this, on = cb.checked; if (!LIVE) return;
+      cb.disabled = true;
+      fetch("/api/me/photos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: on }) }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (x) { cb.disabled = false; if (!x.ok) { cb.checked = !on; toast(x.j.error || "Couldn't save. Try again."); return; } PHOTOS = x.j.photos; toast(on ? "Saved. We may feature your car." : "Saved. We won't feature your car."); })
+        .catch(function () { cb.disabled = false; cb.checked = !on; toast("Couldn't save. Check your connection."); });
     });
     document.getElementById("acctProfile").addEventListener("submit", function (e) {
       e.preventDefault(); $$("[data-in]").forEach(function (n) { DEMO[n.dataset.in] = n.value; });
@@ -3225,10 +3316,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     });
     document.getElementById("acctOut").addEventListener("click", function () { if (LIVE) fetch("/api/auth/logout", { method: "POST" }); signedIn = false; if (window.__bk) window.__bk.reset(); setTimeout(function () { window.__repriceAll && window.__repriceAll(); }, 0); document.getElementById("acctBtnText").textContent = "Sign in"; document.getElementById("acctId").value = ""; close(); });
     function rebook(h, slot) {
-      setSize(h.size); selectPkg(h.pkg);
+      if (!h) return;
+      var cold = winterNow() && h.pkg !== "interior";   // winter: switch an outside detail to an Interior, and say so
+      setSize(h.size); selectPkg(cold ? "interior" : h.pkg);
       ADDONS.forEach(function (a) { var cb = document.getElementById("q-add-" + a.id); if (cb) cb.checked = h.adds.indexOf(a.id) > -1; });
+      if (h.scent && window.__scentChips) window.__scentChips(null, h.scent);
       updateQuote(); if (typeof syncChips === "function") syncChips();
       close(true);
+      if (cold) { window.__bk.open({ step: 1, focusBack: document.querySelector(".acct-btn"), note: "It's winter, so we only do Interior details until " + winterBack() + " (too cold to wash outside). We filled in an Interior for your " + h.car.replace(/^\d{4} /, "") + ". Check it and pick a time." }); return; }
       window.__bk.open({ step: slot ? 5 : 3, slot: slot, focusBack: document.querySelector(".acct-btn"), note: "Filled in from your " + h.date + " detail on your " + h.car.replace(/^\d{4} /, "") + (slot ? ". Check your info and send it." : ". Just pick a day and time.") });
     }
     // ---- Apex Membership (live) ----
@@ -3285,6 +3380,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function msUpdate() {
       var t = $("#msType [aria-pressed=true]"), f = $("#msFreq [aria-pressed=true]"); if (!t || !f) return;
       var P = window.__planPrice(t.dataset.v, CANSTART.size, +f.dataset.v), first = CANSTART.firstBill ? dnice(CANSTART.firstBill) : (function () { var p = CANSTART.day.split("-"); var d = new Date(Date.UTC(+p[0], +p[1], +p[2], 12)); return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" }); })();
+      var FC = CANSTART.first && CANSTART.first[t.dataset.v] && CANSTART.first[t.dataset.v][f.dataset.v];   // the server's real first charge (Terms winter)
+      if (FC) first = dnice(FC.day) + (FC.skipped ? " (no charges during the winter pause before that)" : FC.winterPrice ? " (winter months are billed at the Interior price: " + usd(withTax(FC.amount)) + ")" : "");
       $("#msPrice").textContent = "$" + P.monthly + "/mo + tax"; $("#msSub").textContent = (+f.dataset.v === 1 ? "1 visit" : f.dataset.v + " visits") + " a month at $" + P.perVisit + " each, instead of $" + P.oneoffVisit;
       $("#msAuthTxt").innerHTML = "I authorize Apex Detailing LLC to charge my card <b>" + usd(withTax(P.monthly)) + "/mo</b> ($" + P.monthly + " + " + usd(taxOf(P.monthly)) + " " + TAX.name + ") starting " + first + " and on that date every month until I cancel, with a 3-month minimum, as described in the <a href=\"membership-terms.html\" target=\"_blank\" rel=\"noopener\">Membership Terms</a>.";
     }
@@ -3304,7 +3401,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         fetch("/api/member/slots").then(function (r) { return r.json(); }).then(function (j) {
           if (!j.days || !j.days.length) { sb.innerHTML = '<p class="dc-sub">' + esc(j.reason || "No open times left this month. Text us at (732) 206-7084.") + '</p>'; return; }
           window.__mlDays = j.days;
-          sb.innerHTML = '<div class="ml-days" style="margin-top:12px"><div class="dc-k">Pick a day</div><div class="ml-seg" id="mlDayPick">' + j.days.map(function (d, i) { return '<button type="button" data-mday="' + i + '" aria-pressed="' + (i === 0) + '">' + esc(d.label) + '</button>'; }).join("") + '</div><div class="dc-k">Start time</div><div class="ml-ts" id="mlTimes"></div></div>';
+          var scentPick = MEMBER && MEMBER.type !== "wash" && window.__scentApplies ? '<div class="dc-k">Scent</div><select id="mlScent" class="ml-scent" aria-label="Scent">' + ["No scent"].concat((window.__APEX_SETTINGS && window.__APEX_SETTINGS.sched && window.__APEX_SETTINGS.sched.scents) || []).map(function (n) { return '<option' + (n === (LAST_SCENT || "No scent") ? " selected" : "") + ">" + esc(n) + "</option>"; }).join("") + "</select>" : "";
+          sb.innerHTML = '<div class="ml-days" style="margin-top:12px"><div class="dc-k">Pick a day</div><div class="ml-seg" id="mlDayPick">' + j.days.map(function (d, i) { return '<button type="button" data-mday="' + i + '" aria-pressed="' + (i === 0) + '">' + esc(d.label) + '</button>'; }).join("") + '</div>' + scentPick + '<div class="dc-k">Start time</div><div class="ml-ts" id="mlTimes"></div></div>';
           mlTimes(0);
         }).catch(function () { sb.innerHTML = '<p class="dc-sub">Couldn\'t load times. Try again.</p>'; });
         return;
@@ -3314,7 +3412,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var mv = t.closest("[data-mv]");
       if (mv) {
         var sp = mv.dataset.mv.split("|"); mv.disabled = true;
-        post("/api/member/visit", { day: sp[0], start: +sp[1] }).then(function (x) { toast(x.ok ? "Booked: " + x.j.when : x.j.error); if (x.ok) loadMe().then(function () { fill(); tab("plan"); }); else mv.disabled = false; });
+        var msc = document.getElementById("mlScent");
+        post("/api/member/visit", { day: sp[0], start: +sp[1], scent: msc ? msc.value : null }).then(function (x) { toast(x.ok ? "Booked: " + x.j.when : x.j.error); if (x.ok) loadMe().then(function () { fill(); tab("plan"); }); else mv.disabled = false; });
         return;
       }
       if (t.closest("#mlRetry")) { post("/api/member/retry").then(function (x) { toast(x.j.message || x.j.error); loadMe().then(function () { fill(); tab("plan"); }); }); return; }
@@ -3378,7 +3477,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!confirm("Remove your saved card?")) return;
       fetch("/api/me/card", { method: "DELETE" }).then(function (r) { return r.json().then(function (j) { if (r.ok) { DEMO.card = "No card saved"; cardUI(); toast("Card removed"); loadMe().then(function () { fill(); }); } else toast(j.error || "Couldn't remove the card."); }); });
     });
-    window.__acct = { isIn: function () { return signedIn; }, data: DEMO, mode: function () { return mode; } };
+    window.__acct = { isIn: function () { return signedIn; }, data: DEMO, mode: function () { return mode; }, photos: function () { return PHOTOS; } };
     if (LIVE) loadMe();
   })();
 
@@ -3404,6 +3503,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var today = new Date(); today.setHours(0, 0, 0, 0);
     var first = new Date(today); first.setDate(first.getDate() + 1);
     var last = new Date(today); last.setDate(last.getDate() + 42);
+    window.__bkLast = function () { return AV ? last : null; };
     // ---- real availability (live site): day summaries from /api/days, same rules as the server ----
     var AV = null, avAt = 0, avLoading = null;
     function nyOff(ms) { var p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(ms)).reduce(function (o, x) { o[x.type] = x.value; return o; }, {});
@@ -3478,7 +3578,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       }
       if (!anyOpen) {
         var cold = current().pkg !== "interior" && inWinter(new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 15));
-        $("calEmpty").innerHTML = (cold ? "We only do Interior details from Dec 15 to Mar 1, so there are no openings for this package this month." : "No openings in " + viewMonth.toLocaleDateString("en-US", { month: "long" }) + ".") +
+        $("calEmpty").innerHTML = (cold ? "It's winter, so " + NAMES[current().pkg] + "s are back " + winterBack() + " (too cold to wash outside). No openings for this package this month." : "No openings in " + viewMonth.toLocaleDateString("en-US", { month: "long" }) + ".") +
           ($("calNext").disabled ? "" : ' <button type="button" class="link-btn" id="calEmptyNext">See next month</button>');
         var en = $("calEmptyNext"); if (en) en.addEventListener("click", function () { $("calNext").click(); });
       }
@@ -3514,11 +3614,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       $("bkDur").textContent = "About " + durText(dur()) + " in your driveway";
       var car = [$("bkYear").value, $("bkMake").value, $("bkModel").value].join(" ").trim();
       $("bkCar").textContent = car ? car + ($("bkColor").value ? " · " + $("bkColor").value : "") : SIZES[q.size];
+      var scv = window.__scentVal(); $("bkScentRow").hidden = !scv; if (scv) $("bkScentTxt").textContent = "Scent: " + scv;
       document.querySelectorAll("[data-pp]").forEach(function (n) { var k = n.dataset.pp, now = pkgPrice(k, q.size); n.innerHTML = (now < REG[k][q.size] ? "<s>$" + REG[k][q.size] + "</s>" : "") + "$" + now + " · " + TIMES[k][q.size]; });
       document.querySelectorAll('#bk [data-f="pkgName"]').forEach(function (n) { n.textContent = NAMES[q.pkg]; });
       document.querySelectorAll('#bk [data-f="durText"]').forEach(function (n) { n.textContent = durText(dur()); });
       totRender(q);
-      ["exterior", "full"].forEach(function (k) { var r = $("q-pkg-" + k); if (!r) return; var cold = winterNow(); r.disabled = cold; r.closest(".chip").classList.toggle("is-winter", cold); });
+      ["exterior", "full"].forEach(function (k) { var r = $("q-pkg-" + k); if (!r) return; var cold = winterLocked(); r.disabled = cold; r.closest(".chip").classList.toggle("is-winter", cold); var sm = r.closest(".chip").querySelector("small"); if (sm) sm.dataset.back = winterBack(); });
+      window.__winter.note("bkWinter", winterNow() ? "<b>Exterior and Full Detail are back " + winterBack() + ".</b> " + WINTER_WHY + (winterLocked() ? " Interior details are available all winter." : " Pick one and choose a date from " + winterBack() + " on, or book an Interior now.") : "");
       memText();
       if (!bk.hidden && step === 3) renderCal(); else if (sel.time != null) { var p = sel.date.split("-"); if ((slots(new Date(+p[0], +p[1] - 1, +p[2])) || []).indexOf(sel.time) < 0) sel.time = null; syncWhen(); }
       if (step === 2) accessCheck();
@@ -3536,6 +3638,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var adds = q.adds.length ? " + " + q.adds.map(function (x) { return x.short || x.name; }).join(", ") : "";
       $("bkReview").innerHTML = '<h4>Your booking</h4>' +
         '<div class="rv"><span>What</span><b>' + esc(NAMES[q.pkg] + " · " + SIZES[q.size] + adds) + ' <button type="button" class="lnk" data-rv="1">Edit</button></b></div>' +
+        (window.__scentVal() ? '<div class="rv"><span>Scent</span><b>' + esc(window.__scentVal()) + ' <button type="button" class="lnk" data-rv="1">Edit</button></b></div>' : "") +
         '<div class="rv"><span>When</span><b>' + esc(window.__bkWhenText || "—") + ' <button type="button" class="lnk" data-rv="3">Edit</button></b></div>' +
         '<div class="rv"><span>Car</span><b>' + esc((car || SIZES[q.size]) + ($("bkColor").value ? " · " + $("bkColor").value : "")) + '</b></div>' +
         '<div class="rv"><span>Where</span><b>' + esc(where || "—") + ' <button type="button" class="lnk" data-rv="2">Edit</button></b></div>' +
@@ -3554,7 +3657,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     window.__openChip = function () {
       var q = current(), L = $("pkOpenL"), S = $("pkOpenS"); if (!L) return;
       var chip = $("pkOpen"); if (chip) chip.hidden = !!(window.__LIVE && !AV); if (window.__LIVE && !AV) return;   // no data yet (or it failed): show nothing rather than guess
-      if (winterNow() && q.pkg !== "interior") { L.textContent = S.textContent = "Back in spring"; return; }
+      if (winterNow() && q.pkg !== "interior") { L.textContent = S.textContent = "Back " + winterBack(); return; }
       var n = nextSlots(q.pkg, q.size, q.adds.map(function (a) { return a.id; }), 1)[0];
       var wk = new Date(first); wk.setDate(wk.getDate() + 6);
       if (!n) { L.textContent = S.textContent = "Fully booked"; return; }
@@ -3577,7 +3680,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       document.querySelectorAll("#bkMemType button").forEach(function (b) { var ok = PREREQ[b.dataset.v].indexOf(q.pkg) > -1; b.disabled = !ok; b.hidden = !ok; if (ok) nTypes++; });
       $("bkMemType").classList.toggle("one", nTypes === 1);
       // why some plans aren't offered for this detail
-      var why = { exterior: "Interior plans start after an Interior or Full Detail, and Wash + interior after a Full Detail.", interior: "Wash plans start after an Exterior or Full Detail, and Wash + interior after a Full Detail." }[q.pkg];
+      var why = { exterior: "Interior plans start after an Interior or Full Detail, and Wash + interior after a Full Detail.", interior: winterNow() ? "Wash plans start after an Exterior or Full Detail, and those are back " + winterBack() + " (it's too cold to wash outside right now). The Interior plan can start now." : "Wash plans start after an Exterior or Full Detail, and Wash + interior after a Full Detail." }[q.pkg];
       $("bkMemWhy").hidden = !why; $("bkMemWhy").textContent = why || "";
       if (P) {
         var base1 = window.__planPrice(P.type, q.size, 1).perVisit;
@@ -3830,7 +3933,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         quote: q.total, travel_fee: q.travel || 0, lat: T.lat, lon: T.lon, acceptPrice: priceAccept, key: bookKey,
         photos: photos.filter(function (x) { return x.data && x.data.length < 1400000; }).map(function (x, i) { return { name: "concern-" + (i + 1) + ".jpg", data: x.data }; }),
         plan: window.__plan ? { label: window.__plan.label, monthly: window.__plan.monthly, type: window.__plan.type, freq: (window.__planInfo || {}).freq || 1 } : null,
-        card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "" };
+        card: radio("pay") === "card", texts: $("bkTexts").checked, agree: $("bkAgree").checked, sms: $("bkSms").checked, memAuth: !!(window.__plan && $("bkMemAuth").checked), website: (form.querySelector('input[name="website"]') || {}).value || "",
+        scent: window.__scentVal(), photosOptOut: $("bkNoPhotos").checked };
     }
     // ---- an email that already has an account: Apex Membership or a card on file needs that account's sign-in code (the server enforces it) ----
     var codeFor = null, codeOk = false;
@@ -3912,12 +4016,12 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!j || !j.start || !j.end) return;
       var o = { timeZone: "America/New_York" }, a = new Date(j.start), z = new Date(j.end), t = function (d) { return d.toLocaleTimeString("en-US", Object.assign({ hour: "numeric", minute: "2-digit" }, o)); };
       $("dnWhen").textContent = a.toLocaleDateString("en-US", Object.assign({ weekday: "short", month: "short", day: "numeric" }, o)) + " · " + t(a) + "–" + t(z);
-      if (j.pkg && NAMES[j.pkg]) $("dnWhat").textContent = NAMES[j.pkg] + " · " + $("bkCar").textContent;
+      if (j.pkg && NAMES[j.pkg]) $("dnWhat").textContent = NAMES[j.pkg] + " · " + $("bkCar").textContent + (j.scent && j.scent !== NO_SCENT ? " · " + j.scent + " scent" : "");
       var cn = $("dnChanged"); if (cn) cn.hidden = !j.changed;
     }
     function showDone(ref) {
       var q = current();
-      $("dnRef").textContent = ref; $("dnWhen").textContent = window.__bkWhenText; $("dnWhat").textContent = NAMES[q.pkg] + " · " + $("bkCar").textContent;
+      $("dnRef").textContent = ref; $("dnWhen").textContent = window.__bkWhenText; $("dnWhat").textContent = NAMES[q.pkg] + " · " + $("bkCar").textContent + (window.__scentVal() && window.__scentVal() !== NO_SCENT ? " · " + window.__scentVal() + " scent" : "");
       $("dnWhere").textContent = [$("bkAddr").value.trim(), $("q-town").value.trim()].filter(Boolean).join(", ");
       $("dnTotal").textContent = usd(q.grand) + " with tax · pay after"; $("dnPhone").textContent = $("bkPhone").value.trim();
       $("dnMemRow").hidden = !window.__plan; if (window.__plan) $("dnMem").textContent = window.__plan.label + " · $" + window.__plan.monthly + "/mo + tax, billed from one month after this detail";
@@ -3959,11 +4063,13 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       loadAvail(); var be = $("bkErr"); if (be) be.hidden = true;
       var nav = document.querySelector(".nav"); if (nav && nav.classList.contains("open")) $("menuBtn").click();
       if (!done.hidden) { done.hidden = true; form.hidden = false; document.querySelector("#bk .bk-steps").hidden = false; sel = { date: null, time: null }; maxStep = 1; syncWhen();
-        ["bkAgree", "bkSms", "bkMemAuth"].forEach(function (id) { var c = $(id); if (c) c.checked = false; }); photos.length = 0; $("bkThumbs").innerHTML = ""; $("bkPriceNote").hidden = true; }
-      if (winterNow() && current().pkg !== "interior") { selectPkg("interior"); o.note = o.note || "We only do Interior details from Dec 15 to Mar 1, so we switched you to Interior. Exterior and Full Details are back in spring."; }
+        ["bkAgree", "bkSms", "bkMemAuth", "bkNoPhotos"].forEach(function (id) { var c = $(id); if (c) c.checked = false; }); photos.length = 0; $("bkThumbs").innerHTML = ""; $("bkPriceNote").hidden = true; }
+      if (winterLocked() && current().pkg !== "interior") selectPkg("interior");   // the step-1 winter note says why
       if (o.slot) { sel = { date: o.slot.date, time: o.slot.time }; var sp = o.slot.date.split("-"); viewMonth = new Date(+sp[0], +sp[1] - 1, 1); syncWhen(); }
       lastFocus = o.focusBack || lastFocus;
       prefill();
+      var pp = window.__acct && window.__acct.isIn() && window.__acct.photos && window.__acct.photos(), np = $("bkNoPhotos");   // they opted out on their account: show it ticked
+      if (np && pp && pp.ok === false) np.checked = true;
       if (window.__acct && window.__acct.isIn() && window.__acct.mode() === "member" && window.__planState.added) { window.__planState.added = false; window.__updatePlan(); }
       var note = $("rebookNote"); note.hidden = !o.note; if (o.note) note.innerHTML = '<svg><use href="#i-repeat"/></svg><span>' + o.note + "</span>";
       var target = o.step || 1;
@@ -3988,7 +4094,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   })();
 
   function heroOffer() {
-    var now = pkgPrice("full", 0), reg = REG.full[0], sale = now < reg;
+    var hk = winterNow() ? "interior" : "full";   // winter: we only do interiors, so the hero shows that price
+    var now = pkgPrice(hk, 0), reg = REG[hk][0], sale = now < reg;
+    document.getElementById("hoL").textContent = NAMES[hk];
     document.getElementById("hoNow").textContent = "$" + now; document.getElementById("hoReg").textContent = "$" + reg;
     document.getElementById("hoReg").hidden = !sale; document.getElementById("hoK").textContent = sale ? "Launch pricing" : "From";
     document.getElementById("hoF").textContent = sale ? "first detail only · sedan · plus tax" : "sedan · plus tax";

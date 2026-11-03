@@ -16,6 +16,7 @@ export const RULES = {
   baseMin: { exterior: [90, 90, 150], interior: [210, 210, 210], full: [300, 300, 360] },
   addonMin: { pet: 40, stain: 40, lights: 45, engine: 30 },
   memberLessMin: { exterior: 0, interior: 60, full: 60 },   // Apex Membership upkeep visits are shorter than a first detail
+  scents: ["New Car", "Black Ice", "Fresh Linen", "Vanilla"],   // interior scent choices (No scent is always offered too); Nick edits them in the dashboard
   addonPkgs: { pet: ["interior", "full"], stain: ["interior", "full"], lights: ["exterior", "full"], engine: ["exterior", "full"] },   // headlights + engine bay are outside work: not with an Interior (Nick, Nov 2)
   home: [40.060, -74.120],
   maxMiles: 30
@@ -110,7 +111,9 @@ function merge(list) {
 // Open start times (minutes after midnight) for a job on a day
 export function slotsFor(key, info, pkg, size, adds, nowMs) {
   const { y, m, d } = parseDay(key);
-  if (pkg !== "interior" && inWinter(y, m, d)) return [];
+  // booking winter (Nick's setting) stops outside work for one-off details. Member visits follow the Membership Terms' own
+  // winter instead (coverOn() already decided what the visit covers), so they skip this check.
+  if (pkg !== "interior" && inWinter(y, m, d) && !(adds || []).includes("_member")) return [];
   if (info.j >= (info.off ? RULES.maxJobsDayOff : RULES.maxJobs)) return [];
   const len = jobMin(pkg, size, adds), earliest = nowMs + RULES.noticeHours * 3600e3, out = [];
   for (let t = RULES.startMin; t + len <= info.end; t += RULES.stepMin) {

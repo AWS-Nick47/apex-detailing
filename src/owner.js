@@ -9,6 +9,7 @@ import { normEmail, newId } from "./accounts.js";
 import { squareOn, listPayments, listPayouts } from "./square.js";
 import { currentSettings, saveSettings, resetSettings } from "./settings.js";
 import { jobAction } from "./pay.js";
+import { NO_SCENT, scentApplies, scentFor, scentList, pickScent, photoStart, setPhotoPref, photoPref } from "./prefs.js";
 import { photoState, setAngle, addAngle, photoFile, hidePhoto, deletePhoto, deleteJobPhotos, sendPhotosEmail, storageOn } from "./photos.js";
 
 const json = (data, status) => new Response(JSON.stringify(data), { status: status || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -40,7 +41,8 @@ export function statusOf(b) {
 export function jobRow(b, H, full) {
   const r = { id: b.id, kind: b.kind || "detail", what: H.pkgName(b), pkg: b.pkg, size: b.size, start_utc: b.start_utc, end_utc: b.end_utc, day: b.day, name: b.name, town: b.town,
     car: [b.car, b.color].filter(Boolean).join(" · "), acked: !!b.acked_at, paid: !!b.paid_at, done: !!b.completed_at, started: !!b.started_at, state: statusOf(b), status: b.status,
-    custom: !!b.custom_name, owner: b.source === "owner", job: b.ack_token ? "/job/" + b.ack_token : null, customer_id: b.customer_id || null, cancelReason: b.cancel_reason || null };
+    custom: !!b.custom_name, owner: b.source === "owner", job: b.ack_token ? "/job/" + b.ack_token : null, customer_id: b.customer_id || null, cancelReason: b.cancel_reason || null,
+    scent: b.scent || null, photosOk: b.share_ok == null ? null : !!b.share_ok };
   if (b.quote != null) r.quote = b.quote;
   if (full) Object.assign(r, { phone: b.phone, email: realEmail(b.email), address: b.address, final: b.final_cents != null ? b.final_cents / 100 : null, tax: b.tax_cents ? b.tax_cents / 100 : 0, tip: b.tip_cents ? b.tip_cents / 100 : 0,
     method: b.paid_method, adds: JSON.parse(b.adds || "[]"), notes: b.notes, water: b.water, power: b.power, manage: b.token ? "/b/" + b.token : null });
@@ -139,7 +141,8 @@ async function customerDetail(env, H, id) {
   const m = (await env.DB.prepare("SELECT * FROM memberships WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1").bind(id).first());
   const card = c.card ? JSON.parse(c.card) : null;
   return json({ customer: { id: c.id, name: c.name || "", initials: initials(c.name || c.email), email: realEmail(c.email), phone: c.phone || "", address: c.address || "", town: c.town || "", owner_notes: c.owner_notes || "",
-      their_notes: c.notes || "", card: card ? card.brand + " ending " + card.last4 : null, sms_ok: !!c.sms_ok, since: c.created_at, archived: !!c.archived_at, account: !NOEMAIL.test(c.email || "") },
+      their_notes: c.notes || "", card: card ? card.brand + " ending " + card.last4 : null, sms_ok: !!c.sms_ok, since: c.created_at, archived: !!c.archived_at, account: !NOEMAIL.test(c.email || ""),
+      photos: await photoPref(env, c.id, c.email) },
     vehicles: vs.map(vOut), jobs, noshows: bs.filter(b => b.cancel_reason === "noshow").length,
     membership: m ? Object.assign(await memSummary(env, m, c), { id: m.id, cancelled: m.status === "cancelled" }) : null, log: await logFor(env, "c:" + id) });
 }
@@ -173,7 +176,7 @@ function readJob(body) {
   const f = { pkg: custom ? "full" : String(body.pkg || ""), customName: custom ? cl(body.customName, 40) : null, size: +body.size, adds: Array.isArray(body.adds) ? body.adds.map(x => cl(x, 20)) : [],
     day: cl(body.day, 10), start: Math.round(+body.start), duration: body.durationMin != null && body.durationMin !== "" ? Math.round(+body.durationMin) : null,
     price: body.price != null && body.price !== "" ? Math.round(+body.price) : null, notes: cl(body.notes, 1500), ownerNotes: cl(body.ownerNotes, 2000),
-    address: cl(body.address, 160), town: cl(body.town, 60), water: cl(body.water, 5), power: cl(body.power, 5), anyTime: body.anyTime === true, notify: body.notify !== false };
+    address: cl(body.address, 160), town: cl(body.town, 60), water: cl(body.water, 5), power: cl(body.power, 5), anyTime: body.anyTime === true, notify: body.notify !== false, scentIn: body.scent };
   if (!["exterior", "interior", "full"].includes(f.pkg)) throw new Error("Pick a package.");
   if (custom && !f.customName) throw new Error("Give the custom package a name.");
   if (![0, 1, 2].includes(f.size)) throw new Error("Pick Sedan, SUV or Truck.");
@@ -184,6 +187,7 @@ function readJob(body) {
   if (custom && f.price == null) throw new Error("Enter the price for the custom package (before tax).");
   if (f.duration != null && !(f.duration >= 15 && f.duration <= 720)) throw new Error("Length must be between 15 minutes and 12 hours.");
   if (f.price != null && !(f.price >= 0 && f.price <= 5000)) throw new Error("Enter a price between $0 and $5,000 (before tax).");
+  const sc = custom ? { scent: null } : pickScent(f.pkg, f.scentIn); if (sc.err) throw new Error(sc.err); f.scent = sc.scent;   // custom jobs: no scent
   return f;
 }
 
@@ -208,11 +212,13 @@ async function createJob(env, H, body, who) {
   const b = { id: H.code(6), token: H.secret(), ack_token: H.secret(), status: "confirmed", created_at: now, start_utc, end_utc: start_utc + len * 60000, day: f.day, pkg: f.pkg, size: f.size, adds: JSON.stringify(f.adds),
     quote, travel_fee: q && f.price == null ? q.travel : 0, miles: q ? q.miles : null, name: c.name || "Customer", phone: c.phone || "", email: c.email, address, town, car: v ? vname(v) : "", color: v ? v.color || "" : "",
     water: f.water || null, power: f.power || null, notes: f.notes || null, card_on_file: card ? 1 : 0, remind: c.remind == null ? 1 : c.remind, customer_id: c.id, card, vehicle_id: v ? v.id : null,
-    custom_name: f.customName, owner_notes: f.ownerNotes || null, source: "owner", kind: "detail", acked_at: now };
+    custom_name: f.customName, owner_notes: f.ownerNotes || null, source: "owner", kind: "detail", acked_at: now, scent: f.scent,
+    // marketing photos: whatever this customer said before; never "OK" by default here (they haven't agreed to the Terms online for this job)
+    ...(await photoStart(env, c.id, c.email, { optOut: false, agreed: false })) };
   await env.DB.prepare(`INSERT INTO bookings (id, token, ack_token, status, created_at, start_utc, end_utc, day, pkg, size, adds, quote, travel_fee, miles, name, phone, email, address, town, car, color, water, power, notes,
-      card_on_file, remind, customer_id, card, vehicle_id, custom_name, owner_notes, source, kind, acked_at) VALUES (${Array(34).fill("?").join(", ")})`)
+      card_on_file, remind, customer_id, card, vehicle_id, custom_name, owner_notes, source, kind, acked_at, scent, share_ok, share_at, share_by) VALUES (${Array(38).fill("?").join(", ")})`)
     .bind(b.id, b.token, b.ack_token, b.status, b.created_at, b.start_utc, b.end_utc, b.day, b.pkg, b.size, b.adds, b.quote, b.travel_fee, b.miles, b.name, b.phone, b.email, b.address, b.town, b.car, b.color, b.water, b.power, b.notes,
-      b.card_on_file, b.remind, b.customer_id, b.card, b.vehicle_id, b.custom_name, b.owner_notes, b.source, b.kind, b.acked_at).run();
+      b.card_on_file, b.remind, b.customer_id, b.card, b.vehicle_id, b.custom_name, b.owner_notes, b.source, b.kind, b.acked_at, b.scent, b.share_ok, b.share_at, b.share_by).run();
   const tasks = [H.calSave(env, b).catch(e => console.log("calendar save failed", e.message))];
   if (f.notify && realEmail(b.email)) tasks.push(H.emailCustomer(env, b, "new").catch(e => console.log("customer email failed", e.message)));
   await Promise.all(tasks);
@@ -235,6 +241,8 @@ async function jobDetail(env, H, b) {
     startsMembership: startsMem ? { id: startsMem.id, label: planLabel(startsMem.type, startsMem.freq, startsMem.size) } : null,
     payLink: b.pay_token && !b.paid_at ? env.SITE_URL + "/pay/" + b.pay_token : null, manageLink: env.SITE_URL + "/b/" + b.token, galleryLink: env.SITE_URL + "/b/" + b.token + "/photos",
     paidAt: b.paid_at, completedAt: b.completed_at, startedAt: b.started_at, cancelledAt: b.cancelled_at, receipt: b.receipt_url || null, termsAt: b.terms_at || null,
+    scentApplies: scentFor(b), scentOptions: [NO_SCENT, ...scentList()].concat(b.scent && b.scent !== NO_SCENT && !scentList().includes(b.scent) ? [b.scent] : []),
+    canEditScent: scentFor(b) && b.status === "confirmed" && !b.completed_at,
     canDelete: !b.paid_at && b.kind !== "member" && (b.status === "cancelled" || b.source === "owner") && !startsMem,
     photos: await photoState(env, b), log: await logFor(env, "j:" + b.id) });
   return json({ job: r });
@@ -243,6 +251,11 @@ async function jobDetail(env, H, b) {
 async function editJob(env, H, b, body, who) {
   const f = {};
   if (Object.hasOwn(body, "ownerNotes")) f.owner_notes = cl(body.ownerNotes, 2000) || null;
+  if (Object.hasOwn(body, "scent") && !Object.hasOwn(body, "pkg") && !(b.completed_at && Object.keys(body).length > 1)) {   // the scent alone can change until the job is done (even when paid)
+    if (b.status !== "confirmed" || b.completed_at) return bad("This job is " + (b.completed_at ? "done" : "cancelled") + ", so the scent can't change.");
+    if (!scentFor(b)) return bad("Scents are only for interior work (not custom jobs).");
+    const sc = pickScent(b.pkg, body.scent, b.scent); if (sc.err) return bad(sc.err); f.scent = sc.scent;
+  }
   const changing = ["pkg", "size", "adds", "price", "customName", "durationMin", "notes", "address", "town", "water", "power", "vehicleId"].some(k => Object.hasOwn(body, k));
   if (changing) {
     if (b.status !== "confirmed" || b.paid_at) return bad("This job is " + (b.paid_at ? "paid" : "cancelled") + ", so only your notes can change.");
@@ -270,6 +283,11 @@ async function editJob(env, H, b, body, who) {
       if (dur != null && !(dur >= 15 && dur <= 720)) return bad("Length must be between 15 minutes and 12 hours.");
       const len = dur || (custom ? Math.round((b.end_utc - b.start_utc) / 60000) : jobMin(pkg, size, adds));
       Object.assign(f, { pkg, size, adds: JSON.stringify(adds), custom_name: customName, end_utc: b.start_utc + len * 60000 });
+      // scent follows the package: none for an Exterior or a custom job; otherwise the one sent, or the job's current one.
+      // A done job keeps the scent it was done with.
+      if (b.completed_at) f.scent = b.scent || null;
+      else if (!scentApplies(pkg) || custom) f.scent = null;
+      else { const sc = pickScent(pkg, Object.hasOwn(body, "scent") ? body.scent : b.scent || NO_SCENT, b.scent); if (sc.err) return bad(sc.err); f.scent = sc.scent; }
       if (body.price != null && body.price !== "") { const p = Math.round(+body.price); if (!(p >= 0 && p <= 5000)) return bad("Enter a price between $0 and $5,000 (before tax)."); f.quote = p; f.travel_fee = 0; }
       else if (!custom && ["pkg", "size", "adds"].some(k => Object.hasOwn(body, k))) {
         const c = b.customer_id ? await env.DB.prepare("SELECT * FROM customers WHERE id = ?").bind(b.customer_id).first() : null;
@@ -280,8 +298,9 @@ async function editJob(env, H, b, body, who) {
   const k = Object.keys(f); if (!k.length) return json({ ok: true });
   await env.DB.prepare("UPDATE bookings SET " + k.map(x => x + " = ?").join(", ") + " WHERE id = ?").bind(...k.map(x => f[x]), b.id).run();
   Object.assign(b, f);
-  if (changing && b.status === "confirmed") await H.calSave(env, b).catch(() => {});
-  if (changing) await ownerLog(env, who, "Edited the job details", "j:" + b.id, k.filter(x => x !== "owner_notes").join(", "));
+  const touched = changing || Object.hasOwn(f, "scent");
+  if (touched && b.status === "confirmed") await H.calSave(env, b).catch(() => {});
+  if (touched) await ownerLog(env, who, changing ? "Edited the job details" : "Changed the scent to " + (f.scent || NO_SCENT), "j:" + b.id, k.filter(x => x !== "owner_notes").join(", "));
   return json({ ok: true });
 }
 
@@ -448,6 +467,12 @@ export async function moneyExtras(env) {
 }
 
 // ---------- backup ----------
+// one-off Exterior / Full Detail jobs already booked on what are now winter days (after Nick turns winter on or moves its dates)
+async function winterClashes(env, H) {
+  const rows = (await env.DB.prepare("SELECT * FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND pkg != 'interior' AND custom_name IS NULL AND completed_at IS NULL AND end_utc > ? ORDER BY start_utc").bind(Date.now()).all()).results || [];
+  return rows.filter(b => winterDay(b.day)).map(b => ({ id: b.id, day: b.day, name: b.name, what: H.pkgName(b), when: H.whenText(b) }));
+}
+
 async function exportAll(env) {
   const t = async q => ((await env.DB.prepare(q).all()).results || []);
   const data = { exportedAt: new Date().toISOString(), note: "Apex Detailing data backup. Photos are in Cloudflare R2 (download them per job from the dashboard).",
@@ -566,9 +591,11 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
       return json(r.ok ? r : Object.assign({ error: r.msg }, r), r.ok ? 200 : 400);
     }
     if (sub === "share" && M === "POST") {
-      const v = body.ok === true ? 1 : body.ok === false ? 0 : null;
-      await env.DB.prepare("UPDATE bookings SET share_ok = ?, share_at = ?, share_by = ? WHERE id = ?").bind(v, v == null ? null : Date.now(), v == null ? null : "owner", b.id).run();
-      await ownerLog(env, who, v == null ? "Cleared the OK-to-post answer" : v ? "Marked OK to post (customer said yes)" : "Marked NOT OK to post", "j:" + b.id);
+      if (!(body.ok === true || body.ok === false || body.ok === null)) return bad("Send ok: true, false or null.");
+      const v = body.ok;
+      const r = await setPhotoPref(env, b, v, "owner");   // a customer's answer covers all their jobs
+      if (!r.ok) return bad(r.msg || "Couldn't change it.");
+      await ownerLog(env, who, v == null ? "Cleared the marketing-photo answer" : v ? "Marked OK to feature (customer said yes)" : "Marked opted out of marketing photos", "j:" + b.id);
       return json({ ok: true });
     }
     if (sub === "send-photos" && M === "POST") {
@@ -599,7 +626,11 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
   }
   // settings
   if (p === "/settings/edit" && M === "GET") return json(currentSettings());
-  if (p === "/settings" && M === "POST") { try { const s = await saveSettings(env, body, who); await ownerLog(env, who, "Changed settings", "settings"); return json({ ok: true, settings: s }); } catch (e) { return bad(e.message); } }
+  if (p === "/settings" && M === "POST") {
+    let s; try { s = await saveSettings(env, body, who); } catch (e) { return bad(e.message); }
+    await ownerLog(env, who, "Changed settings", "settings");
+    return json({ ok: true, settings: s, winterJobs: await winterClashes(env, H) });
+  }
   if (p === "/settings/reset" && M === "POST") { const s = await resetSettings(env); await ownerLog(env, who, "Reset settings to the defaults", "settings"); return json({ ok: true, settings: s }); }
   if (p === "/export" && M === "GET") return exportAll(env);
   return null;

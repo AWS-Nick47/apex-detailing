@@ -2,6 +2,7 @@
 // "your photos are ready" email. Files live in the R2 bucket bound as PHOTOS; D1 keeps the index (photos, job_angles).
 // Nothing is ever deleted right away: a retake or a delete keeps the old files for 30 days (purgeTrash, hourly cron).
 import { send, layout, hero, para, note, buttons, h } from "./email.js";
+import { setPhotoPref } from "./prefs.js";
 
 export const storageOn = env => !!(env.PHOTOS && typeof env.PHOTOS.put === "function");
 const json = (d, s) => new Response(JSON.stringify(d), { status: s || 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -143,7 +144,8 @@ export async function sendPhotosEmail(env, b, H) {
   const subject = "Your before & after photos are ready";
   const body = hero("Your photos", `Here's the difference, ${h(first)}.`, `We took before and after photos of your ${h(H.pkgName(b))}${b.car ? " on your " + h(b.car) : ""}. They're all in one place, ready to save.`) +
     pic + buttons([[link, "See all your photos"]]) +
-    para("Love how it came out? We'd be grateful if we could feature your car on our Instagram. You can say yes or no on the photo page. We always hide plates and anything that shows your address.") +
+    para(b.share_ok === 0 ? "You opted out of marketing photos, so these are just for you." : b.share_ok == null ? "Love how it came out? Can we feature your before and after on our website and social media (plate and address hidden)? Say yes or no on the photo page."
+      : "Love how it came out? We may feature your before and after on our website and social media, with the plate and anything showing your address hidden. Prefer not? You can opt out on the photo page.") +
     note("The photos also protect you: they show your car's condition before and after the detail.");
   await send(env, { to: b.email, subject, html: layout(subject, body, "Your before and after photos are ready to see and save.", site) });
   return { sent: true, link };
@@ -153,9 +155,12 @@ export async function sendPhotosEmail(env, b, H) {
 export async function galleryRoute(req, env, url, b, sub, H) {
   if (sub === "share" && req.method === "POST") {
     const o = req.headers.get("Origin"); if (o && o !== url.origin) return new Response("Not allowed", { status: 403 });
-    const fd = await req.formData().catch(() => null), v = fd && fd.get("ok");
-    if (v === "1" || v === "0") await env.DB.prepare("UPDATE bookings SET share_ok = ?, share_at = ?, share_by = 'customer' WHERE id = ?").bind(+v, Date.now(), b.id).run();
-    return new Response(null, { status: 303, headers: { Location: "/b/" + b.token + "/photos?saved=1#share", "Cache-Control": "no-store" } });
+    const fd = await req.formData().catch(() => null), v = fd && fd.get("ok"), back = fd && fd.get("back") === "manage";
+    // their answer covers all their bookings (Terms §10: OK by default, opt out anytime)
+    const r = v === "1" || v === "0" ? await setPhotoPref(env, b, v === "1", "link") : { ok: false };
+    const code = r.signIn ? "photos_signin" : v === "1" ? "photos_on" : "photos_off";
+    const loc = back ? "/b/" + b.token + "?m=" + code + "#photos" : "/b/" + b.token + "/photos?saved=" + (r.signIn ? "signin" : "1") + "#share";
+    return new Response(null, { status: 303, headers: { Location: loc, "Cache-Control": "no-store" } });
   }
   const pm = sub && sub.match(/^p\/([a-f0-9-]{16,40})$/i);
   if (pm) {
@@ -168,7 +173,7 @@ export async function galleryRoute(req, env, url, b, sub, H) {
   if (sub !== "photos") return null;
   const head = `<h1>Your before &amp; after photos</h1><p class="sub">${h(H.pkgName(b))}${b.car ? " · " + h(b.car) : ""} · ${h(H.whenText(b))}</p>`;
   if (!b.photos_sent_at || !storageOn(env)) return H.html(H.page("Your photos", head + `<p class="note">Your photos aren't ready yet. We'll email you as soon as they are.</p>`));
-  const pairs = await sentPairs(env, b), src = (p, t) => "/b/" + b.token + "/p/" + p.id + (t ? "?t=1" : ""), saved = url.searchParams.get("saved") === "1";
+  const pairs = await sentPairs(env, b), src = (p, t) => "/b/" + b.token + "/p/" + p.id + (t ? "?t=1" : ""), saved = url.searchParams.get("saved") === "1", signin = url.searchParams.get("saved") === "signin";
   const card = a => {
     const both = a.before && a.after;
     const view = both ? `<div class="cmp" style="position:relative;border-radius:16px;overflow:hidden;aspect-ratio:${a.after.w && a.after.h ? a.after.w + "/" + a.after.h : "4/3"};background:#111;touch-action:pan-y">
@@ -182,9 +187,10 @@ export async function galleryRoute(req, env, url, b, sub, H) {
     return `<div style="margin-top:22px"><b style="display:block;margin-bottom:8px">${h(a.name)}</b>${view}<div style="display:flex;gap:8px;margin-top:10px">${dl}</div></div>`;
   };
   const share = b.share_ok == null ? `<form method="post" action="/b/${b.token}/share" style="display:flex;gap:8px;margin-top:12px"><button class="btn" name="ok" value="1" style="flex:1">Yes, feature my car</button><button class="btn g" name="ok" value="0" style="flex:1">No thanks</button></form>`
-    : `<p class="note" style="margin-top:10px">${saved ? "Thanks! " : ""}You said <b style="color:#ededed">${b.share_ok ? "yes" : "no"}</b>. <form method="post" action="/b/${b.token}/share" style="display:inline"><button class="lnk" name="ok" value="${b.share_ok ? 0 : 1}" style="border:0;background:none;color:#ededed;text-decoration:underline;font:inherit;cursor:pointer;padding:0">Change to ${b.share_ok ? "no" : "yes"}</button></form></p>`;
+    : `<p class="note" style="margin-top:10px">${signin ? "You opted out for all your bookings. To change that, sign in to your account (My details) or text us at (732) 206-7084." : (saved ? "Saved. " : "") + (b.share_ok ? "We may feature your car." : "You opted out, so we won't feature your car.")}</p>` +
+      `<form method="post" action="/b/${b.token}/share" style="margin-top:8px"><button class="btn g" name="ok" value="${b.share_ok ? 0 : 1}" style="width:100%">${b.share_ok ? "Opt out of marketing photos" : "OK, feature my car"}</button></form>`;
   const js = `<script>[].forEach.call(document.querySelectorAll(".cmp"),function(c){var a=c.querySelector(".aft"),bar=c.querySelector(".bar");function set(x){var r=c.getBoundingClientRect(),p=Math.max(0,Math.min(100,(x-r.left)/r.width*100));a.style.clipPath="inset(0 0 0 "+p+"%)";bar.style.left=p+"%";}
     var on=false;c.addEventListener("pointerdown",function(e){on=true;c.setPointerCapture(e.pointerId);set(e.clientX);});c.addEventListener("pointermove",function(e){if(on)set(e.clientX);});c.addEventListener("pointerup",function(){on=false;});c.addEventListener("pointercancel",function(){on=false;});});</script>`;
   return H.html(H.page("Your photos", head + `<p class="note">Drag across a photo to compare before and after. Tap Save to keep a full-size copy.</p>` + pairs.map(card).join("") +
-    `<h2 id="share">Can we feature your car?</h2><p class="note">We'd love to share your before and after on our website and Instagram. We always hide plates and anything that shows your address.</p>${share}` + js));
+    `<h2 id="share">Marketing photos</h2><p class="note">We'd love to share your before and after on our website and social media. We always hide the plate and anything that shows your address.</p>${share}` + js));
 }

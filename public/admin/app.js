@@ -17,6 +17,8 @@
   var QUICK_NOTES = ["Gate code", "Dog in yard", "Park on street", "Call when outside"];
 
   // ---------- helpers ----------
+  // the Apex Membership name always goes with the peak logo (brand rule)
+  function am(text) { return '<span class="am"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 L10 6 L13 11 L15.5 8 L22 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.3 9 L10 6 L11.8 9.2 L10 8.4 Z" fill="currentColor"/></svg>' + (text || "Apex Membership") + "</span>"; }
   function esc(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function svg(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + "</svg>"; }
   var IC = {
@@ -169,6 +171,7 @@
     return '<div class="card tap" data-href="#job/' + esc(j.id) + '" role="link" tabindex="0" aria-label="' + esc(j.what + ", " + j.name + ", " + whenUtc(j.start_utc)) + '"><div class="jrow">' + thumbHTML(j) +
       '<div class="jm"><div style="font-weight:650">' + esc(whenUtc(j.start_utc)) + "–" + esc(timeUtc(j.end_utc)) + "</div>" +
       "<div>" + esc(j.what) + (j.size != null ? " · " + esc(SIZES[j.size] || "") : "") + (j.quote != null && j.kind !== "member" && !j.paid ? ' <span class="muted small">est. ' + money(j.quote) + " + tax</span>" : "") + "</div>" +
+      (j.scent && j.scent !== "No scent" && j.status !== "cancelled" ? '<div class="small">Scent: <b>' + esc(j.scent) + "</b></div>" : "") +
       '<div class="muted small">' + esc(j.name) + (j.town ? " · " + esc(j.town) : "") + (j.car ? " · " + esc(j.car) : "") + (j.photos ? " · " + j.photos + " photo" + (j.photos > 1 ? "s" : "") : "") + "</div></div>" +
       '<div class="jb">' + jobBadges(j) + "</div></div></div>";
   }
@@ -335,18 +338,20 @@
     h += window.ApexPhotos ? window.ApexPhotos.checklistHTML(j) : '<div class="card empty">Photo tools didn\'t load. Refresh.</div>';
     // get paid
     if (!member && !cancelled) h += st === "scheduled" && !j.paid && !S.payOpen ? '<div class="acts" style="margin-top:14px"><button class="btn g sm" data-payopen>Take payment now</button></div>' : payCard(j);
-    if (member && !cancelled) h += '<div class="card" style="margin-top:14px">' + kv("Payment", "Included in their Apex Membership") + (j.membership ? kv("Plan", j.membership.label) : "") +
+    if (member && !cancelled) h += '<div class="card" style="margin-top:14px">' + kv("Payment", "Included in their " + am(), true) + (j.membership ? kv("Plan", j.membership.label) : "") +
       (st !== "done" ? '<div class="acts"><button class="btn" data-jobact="done">Mark visit done</button></div>' : '<div class="acts"><button class="btn g sm" data-jobact="not_done">Mark not done</button></div>') + "</div>";
     // details
     h += "<h2>Details</h2><div class=\"card\">" +
       kv("Customer", j.customer ? '<a href="#customer/' + esc(j.customer.id) + '" data-href="#customer/' + esc(j.customer.id) + '">' + esc(j.name) + "</a>" : esc(j.name), true) +
       kv("Package", j.what + " · " + (SIZES[j.size] || "")) + (j.adds && j.adds.length ? kv("Add-ons", j.adds.map(function (a) { return ADDN[a] || a; }).join(", ")) : "") +
+      (j.scentApplies ? kv("Scent", esc(j.scent || "Not chosen") + (j.canEditScent ? ' <button class="lnk" data-jscent>Change</button>' : ""), true) : "") +
+      kv("Marketing photos", j.photosOk == null ? "Not asked" : j.photosOk ? "OK to feature" : "Opted out") +
       kv("Vehicle", j.vehicle ? esc(j.vehicle.name + (j.vehicle.color ? " · " + j.vehicle.color : "")) + (j.vehicle.plate ? ' <span class="plate">' + esc(j.vehicle.plate) + "</span>" : "") : esc(j.car || "—"), true) +
       kv("Address", where || "—") + (j.miles != null ? kv("Distance", j.miles + " mi" + (j.travel ? " · $" + j.travel + " travel" : "")) : "") +
       (j.kind !== "member" ? kv("Estimate", money(j.estimate.sub) + " + " + money(j.estimate.tax) + " tax = " + money(j.estimate.total)) : "") +
       kv("Water / power", [j.water ? "Spigot: " + j.water : "", j.power ? "Outlet: " + j.power : ""].filter(Boolean).join(" · ") || "—") +
       (j.notes ? kv("Their notes", j.notes) : "") + (j.customer && j.customer.notes ? kv("Customer notes", j.customer.notes) : "") +
-      (j.startsMembership ? kv("Starts", "Apex Membership · " + j.startsMembership.label) : "") +
+      (j.startsMembership ? kv("Starts", am() + " · " + esc(j.startsMembership.label), true) : "") +
       kv("Booked", (j.owner ? "By you" : "Online") + (j.heard ? " · heard via " + j.heard : "")) + kv("Code", j.id) + "</div>";
     h += '<label class="f" style="margin-top:14px">Your notes (only you see these)<textarea id="jNotes" placeholder="Gate code, condition, what to upsell next time…">' + esc(j.ownerNotes) + "</textarea></label>" +
       '<div class="acts" style="margin-top:8px"><button class="btn g sm" data-savejnotes>Save notes</button></div>';
@@ -418,6 +423,11 @@
   // ---------- job sheets: book, reschedule, edit, cancel ----------
   function loadCustomers() { return CUSTS ? Promise.resolve(CUSTS) : api("/customers").then(function (d) { CUSTS = d.customers; return CUSTS; }); }
   var BK = null;
+  // the scents customers can pick (from Settings), cached until Settings are saved
+  var SCENTS_C = null;
+  function loadScents() { return SCENTS_C ? Promise.resolve(SCENTS_C) : api("/settings/edit").then(function (d) { SCENTS_C = (d.rules && d.rules.scents) || []; return SCENTS_C; }); }
+  function scentOpts(cur, list) { var all = ["No scent"].concat(list || []); if (cur && all.indexOf(cur) < 0) all.push(cur); return all.map(function (n) { return '<option' + (n === (cur || "No scent") ? " selected" : "") + ">" + esc(n) + "</option>"; }).join(""); }
+  function fillScent(cur) { loadScents().then(function (list) { var sel = document.getElementById("bkScent"); if (sel) sel.innerHTML = scentOpts(sel.dataset.cur || cur, list); }).catch(function () {}); }
   function openBook(pre) {
     pre = pre || {};
     var pk0 = ["exterior", "interior", "full"].indexOf(pre.pkg) > -1 ? pre.pkg : "full";
@@ -429,6 +439,7 @@
       '<div id="bkCustom" class="fg2" hidden><label class="f">Package name<input type="text" id="bkCname" maxlength="40" placeholder="e.g. Ceramic coating"></label><label class="f">Length<select id="bkDur">' + [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480].map(function (m) { return '<option value="' + m + '"' + (m === 120 ? " selected" : "") + ">" + hrs(m) + "</option>"; }).join("") + "</select></label></div>" +
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Size<div class="pills" id="bkSize">' + SIZES.map(function (s, i) { return '<button type="button" data-v="' + i + '" aria-pressed="' + (i === 0) + '">' + s + "</button>"; }).join("") + "</div></div>" +
       '<div id="bkAdds" class="fg" style="gap:8px"></div>' +
+      '<label class="f" id="bkScentRow">Scent<select id="bkScent">' + scentOpts("No scent", []) + "</select></label>" +
       '<label class="f">Date<input type="date" id="bkDay" value="' + BK.day + '"></label>' +
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Time<div id="bkTimes" class="pills"><span class="dim small">Pick a customer and package first.</span></div>' +
       '<label class="chk" style="font-size:14px;color:var(--fg)"><input type="checkbox" id="bkAny"> Any time (ignore my calendar)</label><input type="time" id="bkAt" step="900" hidden value="' + (BK.start != null ? hhmm(BK.start) : "09:00") + '"></div>' +
@@ -439,7 +450,7 @@
       '<label class="f">Your private notes<textarea id="bkOwn" maxlength="2000" style="min-height:60px"></textarea></label>' +
       '<label class="chk" id="bkNotifyRow"><input type="checkbox" id="bkNotify" checked> Email the customer a confirmation</label>' +
       '<p class="err" data-err hidden></p><button class="btn lg w" type="submit">Book it</button></form>');
-    drawBookCustomer(pre.customerId);
+    drawBookCustomer(pre.customerId); fillScent("No scent");
     drawAdds();
     return sh;
   }
@@ -494,6 +505,7 @@
     BK.adds = BK.adds.filter(function (a) { return ok.indexOf(a) > -1; });
     el.innerHTML = ok.length ? '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Add-ons<div class="pills" id="bkAddP">' + ok.map(function (a) { return '<button type="button" data-v="' + a + '" aria-pressed="' + (BK.adds.indexOf(a) > -1) + '">' + ADDN[a] + "</button>"; }).join("") + "</div></div>" : "";
     document.getElementById("bkCustom").hidden = BK.pkg !== "custom";
+    var sr = document.getElementById("bkScentRow"); if (sr) sr.hidden = BK.pkg === "exterior" || BK.pkg === "custom";   // custom jobs don't get a scent
     var ol = document.getElementById("bkOverL"); if (ol) ol.textContent = BK.pkg === "custom" ? "Price before tax (required for a custom package)" : "Price before tax (leave empty to use the estimate)";
   }
   var prevT = null;
@@ -521,7 +533,8 @@
     if (start == null) return sheetErr("Pick a time, or turn on “Any time”.");
     var body = { pkg: BK.pkg, size: BK.size, adds: BK.adds, day: document.getElementById("bkDay").value, start: start, anyTime: any, price: document.getElementById("bkOver").value,
       notes: document.getElementById("bkNotes").value, ownerNotes: document.getElementById("bkOwn").value, notify: document.getElementById("bkNotify").checked,
-      pay: (sheetRoot.querySelector("#bkPay [aria-pressed=true]") || {}).dataset ? sheetRoot.querySelector("#bkPay [aria-pressed=true]").dataset.v : "later" };
+      pay: (sheetRoot.querySelector("#bkPay [aria-pressed=true]") || {}).dataset ? sheetRoot.querySelector("#bkPay [aria-pressed=true]").dataset.v : "later",
+      scent: BK.pkg === "exterior" || BK.pkg === "custom" ? null : document.getElementById("bkScent").value };
     if (BK.pkg === "custom") { body.customName = document.getElementById("bkCname").value; body.durationMin = +document.getElementById("bkDur").value; if (body.price === "") return sheetErr("Enter the price for the custom package (before tax)."); }
     var vsel = document.getElementById("bkVeh").value;
     if (vsel === "new") body.newVehicle = readVeh(document.getElementById("bkNewVeh")); else if (vsel) body.vehicleId = vsel;
@@ -565,7 +578,7 @@
       ["us", "Weather or our side", member ? "They get a full credit for the visit." : "No charge. They're asked to pick a new time."],
       ["noshow", "No-show / couldn't do it", "No email. Counts on their record (your terms let you ask for a card on file next time)."]];
     openSheet("Cancel this job", '<form id="cxf" class="fg">' + opts.map(function (o, i) { return '<label class="card chk" style="align-items:flex-start;cursor:pointer"><input type="radio" name="why" value="' + o[0] + '"' + (i === 0 ? " checked" : "") + '><span><b>' + o[1] + '</b><span class="dim small" style="display:block">' + o[2] + "</span></span></label>"; }).join("") +
-      (j.startsMembership ? '<p class="note warnc">This job starts their Apex Membership (' + esc(j.startsMembership.label) + "). Cancelling it cancels the membership too, with no charge.</p>" : "") +
+      (j.startsMembership ? '<p class="note warnc">This job starts their ' + am() + " (" + esc(j.startsMembership.label) + "). Cancelling it cancels the membership too, with no charge.</p>" : "") +
       (j.email ? '<label class="chk"><input type="checkbox" id="cxNotify" checked> Email the customer</label>' : "") +
       '<p class="err" data-err hidden></p><button class="btn d lg w" type="submit">Cancel job</button></form>', { guard: false, close: "Keep it" });
   }
@@ -584,6 +597,8 @@
       '<div id="bkCustom" class="fg2"' + (pkg === "custom" ? "" : " hidden") + '><label class="f">Package name<input type="text" id="bkCname" maxlength="40" value="' + esc(j.customName || "") + '"></label><label class="f">Length<select id="bkDur">' + [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480, len].filter(function (m, i, a) { return a.indexOf(m) === i; }).sort(function (a, b) { return a - b; }).map(function (m) { return '<option value="' + m + '"' + (m === len ? " selected" : "") + ">" + hrs(m) + "</option>"; }).join("") + "</select></label></div>" +
       '<div class="f" style="display:grid;gap:6px;font-size:13.5px;color:var(--muted)">Size<div class="pills" id="bkSize">' + SIZES.map(function (s, i) { return '<button type="button" data-v="' + i + '" aria-pressed="' + (i === j.size) + '">' + s + "</button>"; }).join("") + "</div></div>" +
       '<div id="bkAdds" class="fg" style="gap:8px"></div>' +
+      '<label class="f" id="bkScentRow">Scent<select id="bkScent" data-cur="' + esc(j.scent || "No scent") + '"' + (j.scentApplies && !j.canEditScent ? " disabled" : "") + ">" + scentOpts(j.scent || "No scent", []) + "</select>" +
+        (j.scentApplies && !j.canEditScent ? '<span class="dim small">Locked: this job is ' + (j.status === "cancelled" ? "cancelled" : "done") + ".</span>" : "") + "</label>" +
       (j.final != null ? '<p class="note warnc">A pay link for ' + money(j.final + j.tax) + ' is out, so the package and price are locked. To change the amount, send a new pay link from Get paid.</p>' :
       '<label class="f">Price before tax<input type="number" id="ejPrice" inputmode="decimal" min="0" max="5000" value="' + esc(j.quote == null ? "" : j.quote) + '"><span class="dim small">Changing the package recalculates it unless you type a price.</span></label>');
     h += '<label class="f">Vehicle<select id="ejVeh"><option value="">Loading…</option></select></label>' +
@@ -592,7 +607,7 @@
       '<label class="f">Job notes<textarea id="ejNotes" maxlength="1500">' + esc(j.notes || "") + "</textarea></label>" +
       '<p class="err" data-err hidden></p><button class="btn lg w" type="submit">Save</button></form>';
     openSheet("Edit job", h);
-    if (!member) drawAdds();
+    if (!member) { drawAdds(); fillScent(j.scent || "No scent"); }
     if (j.customer) api("/customers/" + j.customer.id).then(function (d) {
       var sel = document.getElementById("ejVeh"); if (!sel) return;
       sel.innerHTML = '<option value="">' + (j.vehicle ? "No vehicle" : esc(j.car || "No vehicle") + (j.car ? " (as booked)" : "")) + "</option>" + d.vehicles.map(function (v) { return '<option value="' + esc(v.id) + '"' + (j.vehicle && j.vehicle.id === v.id ? " selected" : "") + ">" + esc(v.name + (v.color ? " · " + v.color : "")) + "</option>"; }).join("");
@@ -607,6 +622,8 @@
       if (BK.pkg === "custom") { body.pkg = "custom"; body.customName = document.getElementById("bkCname").value; body.durationMin = +document.getElementById("bkDur").value; }
       var pe = document.getElementById("ejPrice"), pr = pe ? pe.value : ""; if (pe && pr !== "" && +pr !== j.quote) body.price = pr;
       if (j.final != null) { delete body.pkg; delete body.size; delete body.adds; delete body.price; delete body.customName; delete body.durationMin; }
+      var ss = document.getElementById("bkScent"), sRow = document.getElementById("bkScentRow");
+      if (ss && sRow && !sRow.hidden && !ss.disabled && (body.pkg || ss.value !== (j.scent || "No scent"))) body.scent = ss.value;
     }
     var sb = form.querySelector('[type="submit"]'), done = busy(sb, "Saving…");
     post("/jobs/" + j.id + "/edit", body).then(function () { closeSheet(true); toast("Saved"); renderJob(j.id); }).catch(function (e) { done(); sheetErr(e.message); });
@@ -620,9 +637,9 @@
   };
   function drawPeople() {
     var d = PCACHE[S.people], q = S.q.toLowerCase().trim(), qd = tel(q);
-    var h = '<div class="row" style="align-items:flex-start"><div><h1>People</h1><p class="sub">' + (S.people === "members" ? "Everyone on Apex Membership." : S.archived ? "Archived customers (records kept)." : "Everyone who has booked, signed in, or you added.") + "</p></div>" +
+    var h = '<div class="row" style="align-items:flex-start"><div><h1>People</h1><p class="sub">' + (S.people === "members" ? "Everyone on " + am() + "." : S.archived ? "Archived customers (records kept)." : "Everyone who has booked, signed in, or you added.") + "</p></div>" +
       (S.people === "customers" && !S.archived ? '<button class="btn sm" data-newcust>+ Add</button>' : "") + "</div>";
-    h += '<div class="seg">' + [["customers", "Customers"], ["members", "Apex Members"]].map(function (s) { return '<button data-people="' + s[0] + '" aria-pressed="' + (s[0] === S.people) + '">' + s[1] + "</button>"; }).join("") + "</div>";
+    h += '<div class="seg">' + [["customers", "Customers"], ["members", am("Apex Members")]].map(function (s) { return '<button data-people="' + s[0] + '"' + (s[0] === "members" ? ' aria-label="Apex Members"' : "") + ' aria-pressed="' + (s[0] === S.people) + '">' + s[1] + "</button>"; }).join("") + "</div>";
     h += '<input type="search" id="pq" placeholder="Search name, phone, email, car or plate" value="' + esc(S.q) + '" style="margin-bottom:12px" aria-label="Search people">';
     var list = S.people === "members" ? d.members : d.customers;
     list = list.filter(function (x) { if (!q) return true; var hay = [x.name, x.email, x.phone, x.town, x.vehicle, x.car, x.label].concat(x.plates || []).join(" ").toLowerCase(); return hay.indexOf(q) > -1 || (qd.length >= 3 && tel(x.phone).indexOf(qd) > -1); });
@@ -662,13 +679,14 @@
       '<a href="https://maps.apple.com/?q=' + encodeURIComponent(where) + '" target="_blank" rel="noopener"' + (where ? "" : ' aria-disabled="true"') + ">" + IC.map + "Maps</a></div>";
     h += '<div class="acts" style="margin-top:14px">' + (c.archived ? '<button class="btn" data-restore="' + esc(c.id) + '">Restore</button>' : '<button class="btn" data-newjob data-cust="' + esc(c.id) + '">+ Book a job</button>') + '<button class="btn g" data-editcust>Edit</button></div>';
     h += '<div class="card" style="margin-top:14px">' + kv("Phone", c.phone || "—") + kv("Email", c.email || "No email") + kv("Address", where || "—") + kv("Card on file", c.card || "None") + kv("Texts", c.sms_ok ? "OK to text" : "Not opted in") +
+      kv("Marketing photos", !c.photos ? "Not asked" : c.photos.ok ? "OK to feature" + (c.photos.by === "terms" ? " (by booking)" : c.photos.by === "owner" ? " (you marked it)" : " (their choice)") : "Opted out" + (c.photos.by === "owner" ? " (you marked it)" : "")) +
       (c.their_notes ? kv("Their notes", c.their_notes) : "") + "</div>";
     h += '<label class="f" style="margin-top:14px">Your notes (gate codes, pets, preferences)<textarea id="cNotes">' + esc(c.owner_notes) + '</textarea></label><div class="pills" style="margin-top:8px">' + QUICK_NOTES.map(function (n) { return '<button type="button" data-qnote="' + esc(n) + '">+ ' + esc(n) + "</button>"; }).join("") + '</div><div class="acts" style="margin-top:8px"><button class="btn g sm" data-savecnotes>Save notes</button></div>';
     h += '<h2>Vehicles <button class="btn g sm r" data-addveh>+ Add</button></h2><div class="card">' + (d.vehicles.length ? d.vehicles.map(function (v) {
       return '<div class="vehicle"><div><b>' + esc(v.name) + "</b>" + (v.color ? ' <span class="muted">· ' + esc(v.color) + "</span>" : "") + (v.plate ? ' <span class="plate">' + esc(v.plate) + "</span>" : "") +
         '<div class="dim small">' + esc([v.size != null ? SIZES[v.size] : "", v.notes].filter(Boolean).join(" · ")) + '</div></div><button class="btn g sm" data-editveh="' + esc(v.id) + '">Edit</button></div>';
     }).join("") : '<p class="empty" style="padding:6px">No vehicles yet.</p>') + "</div>";
-    if (d.membership) { var m = d.membership; h += '<h2>Apex Membership</h2><div class="card tap" data-href="#member/' + esc(m.id) + '"><div class="row"><div><b>' + esc(m.label) + '</b><div class="muted small">' + money(m.monthly) + "/mo + tax" + (m.nextBill ? " · next charge " + esc(dlabel(m.nextBill)) : "") + "</div></div>" + stBadge(m.status) + "</div></div>"; }
+    if (d.membership) { var m = d.membership; h += '<h2>' + am() + '</h2><div class="card tap" data-href="#member/' + esc(m.id) + '"><div class="row"><div><b>' + esc(m.label) + '</b><div class="muted small">' + money(m.monthly) + "/mo + tax" + (m.nextBill ? " · next charge " + esc(dlabel(m.nextBill)) : "") + "</div></div>" + stBadge(m.status) + "</div></div>"; }
     h += "<h2>Jobs</h2>" + (d.jobs.length ? '<div class="list">' + d.jobs.map(function (j) { return jobCard(j); }).join("") + "</div>" : '<div class="card empty">No jobs yet.</div>');
     if (d.log && d.log.length) h += '<h2>History</h2><div class="card">' + d.log.map(function (l) { return '<div class="logl"><b>' + esc(dateUtc(l.at)) + "</b>" + esc(l.what) + "</div>"; }).join("") + "</div>";
     h += '<div class="acts" style="margin-top:22px">' + (c.archived ? "" : '<button class="btn d sm" data-delcust>Delete customer</button>') + "</div>";
@@ -833,6 +851,9 @@
       '<div class="fg2"><label class="f">Winter starts' + mdSel("r.ws", R.winter.start) + '</label><label class="f">Winter ends' + mdSel("r.we", R.winter.end) + "</label></div>" +
       '<p class="note" style="margin:0">This only changes what customers can book. Membership winter (Wash paused, Wash + interior billed at the Interior price, Dec 15 – Mar 1) is fixed by your Membership Terms.</p>' +
       '<div class="locked"><span><span class="lock-ic">LOCKED</span> Customers must book ' + L.noticeHours + ' hours ahead, and change for free until then</span><b>In your Terms</b></div></div>';
+    h += '<h2>Scents</h2><div class="card fg"><p class="dim small" style="margin:0">Customers pick one when they book interior work (Interior, Full Detail and member interior visits). "No scent" is always offered too. Up to 12.</p>' +
+      '<div id="scList" class="fg" style="gap:8px">' + (R.scents || []).map(function (n) { return scentInput(n); }).join("") + "</div>" +
+      '<div class="acts" style="margin-top:0"><button type="button" class="btn g sm" data-scadd>+ Add scent</button></div></div>';
     h += '<h2>Job lengths <span class="dim small" style="font-weight:500">minutes</span></h2><div class="card scroll"><table class="tbl"><thead><tr><th></th><th>Sedan</th><th>SUV</th><th>Truck</th></tr></thead><tbody>' +
       ["exterior", "interior", "full"].map(function (k) { return "<tr><td>" + PKG[k] + "</td>" + [0, 1, 2].map(function (i) { return "<td>" + num("r.base." + k + "." + i, R.baseMin[k][i], 'step="15" min="30" max="720"') + "</td>"; }).join("") + "</tr>"; }).join("") +
       '</tbody></table><div class="fg2" style="margin-top:12px">' + Object.keys(ADDN).map(function (a) { return '<label class="f">' + ADDN[a] + " (extra min)" + num("r.add." + a, R.addonMin[a], 'step="5" min="0" max="240"') + "</label>"; }).join("") + "</div>" +
@@ -846,7 +867,7 @@
       '<label class="f" style="margin-top:12px">Member add-on discount (%)' + num("p.memAdd", Math.round(P.memberAddonDiscount * 100), 'min="0" max="50"') + "</label>" +
       '<div class="fg3" style="margin-top:12px">' + P.zones.map(function (z, i) { return '<label class="f">Travel up to ' + z.max + " mi ($)" + num("p.zone." + i, z.fee, 'min="0" max="300"') + "</label>"; }).join("") + "</div>" +
       '<div class="locked"><span><span class="lock-ic">LOCKED</span> Travel zone distances (' + L.zoneMiles.join(" / ") + ' mi)</span><b>Drawn on your map</b></div></div>';
-    h += '<h2>Apex Membership prices</h2><div class="card">' +
+    h += '<h2>' + am() + ' prices</h2><div class="card">' +
       '<p class="dim small" style="margin-top:0">Each plan\'s monthly price per visit is a share of the matching package\'s regular price, rounded to $5. Changes apply to new members; current members keep their price.</p>' +
       '<div class="fg3">' + [["wash", "Wash (of Exterior)"], ["int", "Interior (of Interior)"], ["both", "Wash + interior (of Full)"]].map(function (x) { return '<label class="f">' + x[1] + " %" + num("m.pct." + x[0], Math.round(M.pct[x[0]] * 100), 'min="10" max="100"') + "</label>"; }).join("") + "</div>" +
       '<div class="fg2" style="margin-top:12px"><label class="f">Every-2-weeks discount %' + num("m.f2", Math.round(M.freqDiscount[2] * 100), 'min="0" max="50"') + '</label><label class="f">Weekly discount %' + num("m.f4", Math.round(M.freqDiscount[4] * 100), 'min="0" max="50"') + "</label></div>" +
@@ -864,6 +885,11 @@
     var mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return '<div class="fg2" style="gap:6px"><select name="' + name + 'm">' + mo.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === v[0] ? " selected" : "") + ">" + m + "</option>"; }).join("") + '</select><select name="' + name + 'd">' + Array.from({ length: 31 }, function (_, i) { return '<option' + (i + 1 === v[1] ? " selected" : "") + ">" + (i + 1) + "</option>"; }).join("") + "</select></div>";
   }
+  function scentInput(v) { return '<div style="display:flex;gap:8px"><input type="text" name="r.scent" maxlength="30" value="' + esc(v || "") + '" placeholder="Scent name" aria-label="Scent name" style="flex:1;min-width:0"><button type="button" class="btn g sm" data-scdel aria-label="Remove ' + esc(v || "scent") + '">Remove</button></div>'; }
+  function submitScent(form) {
+    var sb = form.querySelector('[type="submit"]'), done = busy(sb, "Saving…");
+    post("/jobs/" + JOB.id + "/edit", { scent: document.getElementById("jsSel").value }).then(function () { closeSheet(true); toast("Scent saved"); renderJob(JOB.id); }).catch(function (e) { done(); sheetErr(e.message); });
+  }
   function setVal(f, n) { var el = f.elements[n]; return el ? (el.type === "checkbox" ? el.checked : el.value) : null; }
   function readSettings(f) {
     var g = function (n) { return setVal(f, n); }, n = function (x) { var v = g(x); return v === "" || v == null ? "" : Number(v); }, pc = function (x) { var v = n(x); return v === "" ? "" : v / 100; };
@@ -871,7 +897,8 @@
     ["exterior", "interior", "full"].forEach(function (k) { base[k] = [0, 1, 2].map(function (i) { return n("r.base." + k + "." + i); }); reg[k] = [0, 1, 2].map(function (i) { return n("p.reg." + k + "." + i); }); lau[k] = [0, 1, 2].map(function (i) { return n("p.launch." + k + "." + i); }); });
     Object.keys(ADDN).forEach(function (a) { add[a] = n("r.add." + a); padd[a] = n("p.add." + a); });
     return { rules: { startMin: fromHHMM(g("r.startMin")), latestEnd: fromHHMM(g("r.latestEnd")), bySunset: g("r.bySunset"), gapMin: n("r.gapMin"), stepMin: n("r.stepMin"), maxJobs: n("r.maxJobs"), maxJobsDayOff: n("r.maxJobsDayOff"), horizonDays: n("r.horizonDays"),
-        winterOn: g("r.winterOn"), winter: { start: [n("r.wsm"), n("r.wsd")], end: [n("r.wem"), n("r.wed")] }, baseMin: base, addonMin: add, memberLessMin: { exterior: 0, interior: n("r.mem.interior"), full: n("r.mem.full") } },
+        winterOn: g("r.winterOn"), winter: { start: [n("r.wsm"), n("r.wsd")], end: [n("r.wem"), n("r.wed")] }, baseMin: base, addonMin: add, memberLessMin: { exterior: 0, interior: n("r.mem.interior"), full: n("r.mem.full") },
+        scents: [].map.call(f.querySelectorAll('[name="r.scent"]'), function (el) { return el.value; }) },
       pricing: { launchSale: g("p.launchSale"), regular: reg, launch: lau, addons: padd, memberAddonDiscount: pc("p.memAdd"), zoneFees: SET.edit.pricing.zones.map(function (_, i) { return n("p.zone." + i); }) },
       mem: { pct: { wash: pc("m.pct.wash"), int: pc("m.pct.int"), both: pc("m.pct.both") }, freqDiscount: { 2: pc("m.f2"), 4: pc("m.f4") } } };
   }
@@ -882,7 +909,9 @@
   }
   function saveSettings(f) {
     var b = f.querySelector('[type="submit"]'), done = busy(b, "Saving…"), err = document.getElementById("setErr"); err.hidden = true;
-    post("/settings", readSettings(f)).then(function () { done(); SH.dirty = false; toast("Saved. The site updates within 20 seconds."); RENDER.settings(); })
+    post("/settings", readSettings(f)).then(function (r) { done(); SH.dirty = false; SCENTS_C = null; toast("Saved. The site updates within 20 seconds."); RENDER.settings();
+        var wj = (r && r.winterJobs) || [];   // jobs already booked for outside work on what are now winter days
+        if (wj.length) setTimeout(function () { alert("Heads up: " + wj.length + " Exterior/Full Detail job" + (wj.length > 1 ? "s are" : " is") + " booked on winter days:\n\n" + wj.map(function (j) { return "• " + j.name + ": " + j.what + ", " + j.when + " (" + j.id + ")"; }).join("\n") + "\n\nThey stay booked. Move them to an Interior or another date, or let the customer know."); }, 300); })
       .catch(function (e) { done(); err.textContent = e.message; err.hidden = false; err.scrollIntoView({ block: "center" }); });
   }
 
@@ -936,6 +965,13 @@
     if (t.closest("[data-jrefund]")) { if (!confirm(/^in_person:(cash|other)/.test(JOB.method || "") ? "Did you give the money back? This cancels the job and takes it out of your sales tax and income." : "Did you already refund this in Square (Square app → Transactions → Refund)? This cancels the job and takes it out of your sales tax and income.")) return;
       post("/jobs/" + JOB.id + "/cancel", { reason: "refunded" }).then(function () { toast("Marked refunded"); renderJob(JOB.id); }).catch(function (e2) { toast(e2.message, true); }); return; }
     if (t.closest("[data-jedit]")) return openEditJob();
+    if (t.closest("[data-scadd]")) { var L2 = document.getElementById("scList"); if (L2.querySelectorAll("input").length >= 12) { toast("Up to 12 scents.", true); return; } L2.insertAdjacentHTML("beforeend", scentInput("")); L2.lastElementChild.querySelector("input").focus(); SH.dirty = true; return; }
+    if ((b = t.closest("[data-scdel]"))) { b.parentNode.remove(); SH.dirty = true; return; }
+    if (t.closest("[data-jscent]")) {
+      var cur = JOB.scent || "No scent";
+      openSheet("Scent", '<form id="jsf" class="fg"><label class="f">Scent for this job<select id="jsSel">' + scentOpts(cur, (JOB.scentOptions || []).filter(function (n) { return n !== "No scent"; })) + '</select></label><p class="err" data-err hidden></p><button class="btn lg w" type="submit">Save</button></form>');
+      return;
+    }
     if (t.closest("[data-jdel]")) { if (!confirm("Delete this job for good? Its photos are removed too.")) return; del("/jobs/" + JOB.id).then(function () { toast("Deleted"); JOB = null; goBack(); }).catch(function (e2) { toast(e2.message, true); }); return; }
     if ((b = t.closest("[data-savejnotes]"))) { var dn3 = busy(b, "Saving…"); post("/jobs/" + JOB.id + "/edit", { ownerNotes: document.getElementById("jNotes").value }).then(function () { dn3(); markSaved(document.getElementById("jNotes")); toast("Notes saved"); }).catch(function (e2) { dn3(); toast(e2.message); }); return; }
     // customer screen
@@ -990,7 +1026,7 @@
   });
   document.addEventListener("submit", function (e) {
     var f = e.target; e.preventDefault();
-    ({ bf: saveBlock, bkf: submitBook, mvf: submitMove, cxf: submitCancel, ejf: submitEditJob, cf: submitCustomer, vf: submitVehicle, msf: submitMem, setf: saveSettings }[f.id] || function () {})(f);
+    ({ bf: saveBlock, bkf: submitBook, mvf: submitMove, cxf: submitCancel, ejf: submitEditJob, cf: submitCustomer, vf: submitVehicle, msf: submitMem, setf: saveSettings, jsf: submitScent }[f.id] || function () {})(f);
   });
   window.addEventListener("beforeunload", function (e) { if ((SH.dirty && sheetRoot.innerHTML) || hasUnsaved(false)) { e.preventDefault(); e.returnValue = ""; } });
   document.querySelector(".tabs").addEventListener("keydown", function (e) {

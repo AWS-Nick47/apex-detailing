@@ -122,9 +122,9 @@ export async function me(req, env, extra) {
       .bind(cl(body.name, 80) || c.name, cl(body.phone, 30) || c.phone, cl(body.address, 160) || c.address, cl(body.town, 60) || c.town, cl(body.notes, 500), JSON.stringify(cars), body.remind === false ? 0 : 1, Date.now(), c.id).run();
     return json({ ok: true });
   }
-  const r = await env.DB.prepare("SELECT id, token, status, start_utc, end_utc, day, pkg, size, adds, quote, car, color, address, town, water, power, kind, paid_at, final_cents, tax_cents, tip_cents FROM bookings WHERE customer_id = ? OR email = ? ORDER BY start_utc DESC LIMIT 50").bind(c.id, c.email).all();
+  const r = await env.DB.prepare("SELECT id, token, status, start_utc, end_utc, day, pkg, size, adds, quote, car, color, address, town, water, power, kind, paid_at, final_cents, tax_cents, tip_cents, scent FROM bookings WHERE customer_id = ? OR email = ? ORDER BY start_utc DESC LIMIT 50").bind(c.id, c.email).all();
   const now = Date.now(), list = (r.results || []).map(b => ({ id: b.id, status: b.status === "cancelled" ? "cancelled" : b.end_utc < now ? "done" : "upcoming", start: b.start_utc, end: b.end_utc, day: b.day,
-    pkg: b.pkg, size: b.size, adds: JSON.parse(b.adds || "[]"), quote: b.quote, water: b.water, power: b.power, paid: b.paid_at && b.kind !== "member" && b.final_cents != null ? (b.final_cents + (b.tax_cents || 0) + (b.tip_cents || 0)) / 100 : null, car: b.car, color: b.color, address: b.address, town: b.town, manage: b.end_utc > now && b.status === "confirmed" ? env.SITE_URL + "/b/" + b.token : null }));
+    pkg: b.pkg, size: b.size, adds: JSON.parse(b.adds || "[]"), scent: b.scent || null, quote: b.quote, water: b.water, power: b.power, paid: b.paid_at && b.kind !== "member" && b.final_cents != null ? (b.final_cents + (b.tax_cents || 0) + (b.tip_cents || 0)) / 100 : null, car: b.car, color: b.color, address: b.address, town: b.town, manage: b.end_utc > now && b.status === "confirmed" ? env.SITE_URL + "/b/" + b.token : null }));
   const card = c.card ? JSON.parse(c.card) : null;
   return json({ signedIn: true, customer: { email: c.email, name: c.name, phone: c.phone, address: c.address, town: c.town, notes: c.notes, cars: JSON.parse(c.cars || "[]"), remind: !!c.remind,
     card: card ? { brand: card.brand, last4: card.last4 } : null }, bookings: list, member: null });

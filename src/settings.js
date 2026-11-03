@@ -18,7 +18,7 @@ let cache = { at: 0, raw: null };
 function apply(s) {
   const r = DEF.rules, p = DEF.pricing;
   Object.assign(RULES, { startMin: r.startMin, latestEnd: r.latestEnd, bySunset: r.bySunset, gapMin: r.gapMin, stepMin: r.stepMin, maxJobs: r.maxJobs, maxJobsDayOff: r.maxJobsDayOff,
-    horizonDays: r.horizonDays, winter: clone(r.winter), baseMin: clone(r.baseMin), addonMin: clone(r.addonMin), memberLessMin: clone(r.memberLessMin) });
+    horizonDays: r.horizonDays, winter: clone(r.winter), baseMin: clone(r.baseMin), addonMin: clone(r.addonMin), memberLessMin: clone(r.memberLessMin), scents: clone(r.scents) });
   Object.assign(PRICING, { launchSale: p.launchSale, regular: clone(p.regular), launch: clone(p.launch), addons: clone(p.addons), memberAddonDiscount: p.memberAddonDiscount, zones: clone(p.zones) });
   for (const k of PLANS) MEM.plans[k].pct = DEF.plans[k].pct;
   Object.assign(MEM.freqDiscount, clone(DEF.freqDiscount));
@@ -27,6 +27,7 @@ function apply(s) {
   for (const k of ["startMin", "latestEnd", "bySunset", "gapMin", "stepMin", "maxJobs", "maxJobsDayOff", "horizonDays"]) if (sr[k] != null) RULES[k] = sr[k];
   if (sr.winter) RULES.winter = sr.winterOn === false ? clone(NEVER) : clone(sr.winter);
   for (const k of ["baseMin", "addonMin", "memberLessMin"]) if (sr[k]) RULES[k] = clone(sr[k]);
+  if (Array.isArray(sr.scents)) RULES.scents = clone(sr.scents);
   for (const k of ["launchSale", "memberAddonDiscount"]) if (sp[k] != null) PRICING[k] = sp[k];
   for (const k of ["regular", "launch", "addons"]) if (sp[k]) PRICING[k] = clone(sp[k]);
   if (Array.isArray(sp.zoneFees)) PRICING.zones = DEF.pricing.zones.map((z, i) => ({ max: z.max, fee: sp.zoneFees[i] != null ? sp.zoneFees[i] : z.fee }));
@@ -50,7 +51,8 @@ export function currentSettings() {
   const w = RULES.winter, on = !(w.start[0] === w.end[0] && w.start[1] === w.end[1]), saved = cache.raw && cache.raw.rules && cache.raw.rules.winter;
   return {
     rules: { startMin: RULES.startMin, latestEnd: RULES.latestEnd, bySunset: RULES.bySunset, gapMin: RULES.gapMin, stepMin: RULES.stepMin, maxJobs: RULES.maxJobs, maxJobsDayOff: RULES.maxJobsDayOff,
-      horizonDays: RULES.horizonDays, winterOn: on, winter: on ? clone(w) : clone(saved || DEF.rules.winter), baseMin: clone(RULES.baseMin), addonMin: clone(RULES.addonMin), memberLessMin: clone(RULES.memberLessMin) },
+      horizonDays: RULES.horizonDays, winterOn: on, winter: on ? clone(w) : clone(saved || DEF.rules.winter), baseMin: clone(RULES.baseMin), addonMin: clone(RULES.addonMin), memberLessMin: clone(RULES.memberLessMin),
+      scents: clone(RULES.scents || []) },
     pricing: { launchSale: PRICING.launchSale, regular: clone(PRICING.regular), launch: clone(PRICING.launch), addons: clone(PRICING.addons), memberAddonDiscount: PRICING.memberAddonDiscount, zones: clone(PRICING.zones) },
     mem: { pct: Object.fromEntries(PLANS.map(k => [k, MEM.plans[k].pct])), freqDiscount: { 2: MEM.freqDiscount[2], 4: MEM.freqDiscount[4] } },
     locked: { noticeHours: RULES.noticeHours, maxMiles: RULES.maxMiles, zoneMiles: PRICING.zones.map(z => z.max), minPayments: MEM.minPayments, cancelFeeRate: MEM.cancelFeeRate, skipCreditRate: MEM.skipCreditRate,
@@ -63,7 +65,7 @@ export function currentSettings() {
 export function publicSettings() {
   return { pricing: { launchSale: PRICING.launchSale, regular: PRICING.regular, launch: PRICING.launch, addons: PRICING.addons, memberAddonDiscount: PRICING.memberAddonDiscount,
       membership: Object.fromEntries(PLANS.map(k => [k, { of: MEM.plans[k].of, pct: MEM.plans[k].pct }])), freqDiscount: MEM.freqDiscount },
-    sched: { winter: RULES.winter, baseMin: RULES.baseMin, addonMin: RULES.addonMin, zones: PRICING.zones } };
+    sched: { winter: RULES.winter, baseMin: RULES.baseMin, addonMin: RULES.addonMin, zones: PRICING.zones, scents: RULES.scents || [] } };
 }
 
 // ---------- validation ----------
@@ -88,6 +90,24 @@ function md(a, what) {
   return [m, d];
 }
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" }, SZ = ["Sedan", "SUV", "Truck"], AN = { pet: "Heavy pet hair", stain: "Heavy stain or odor", lights: "Headlight restoration", engine: "Engine bay" };
+
+// interior scents customers can pick (No scent is always offered on top): up to 12 names, 2-30 characters, no repeats
+function scents(list) {
+  if (!Array.isArray(list)) throw new Error("Scents: send a list.");
+  const out = [];
+  for (const raw of list) {
+    if (raw != null && typeof raw !== "string") throw new Error("Scent names must be text.");
+    const v = String(raw == null ? "" : raw).normalize("NFC").replace(/\s+/g, " ").trim();
+    if (!v) continue;   // an empty row is just skipped
+    if (/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff<>]/.test(v)) throw new Error("Scent names can't include < > or hidden characters (\"" + v.replace(/[^\x20-\x7e]/g, "?").slice(0, 30) + "\").");
+    if (v.length < 2 || v.length > 30) throw new Error("Scent names need 2 to 30 characters (\"" + v.slice(0, 30) + "\").");
+    if (/^(no scent|none|no)$/i.test(v)) throw new Error("\"No scent\" is always offered. You don't need to add it.");
+    if (out.some(x => x.toLowerCase() === v.toLowerCase())) throw new Error("\"" + v + "\" is in the list twice.");
+    out.push(v);
+  }
+  if (out.length > 12) throw new Error("Keep it to 12 scents or fewer.");
+  return out;
+}
 
 export function validate(input) {
   const i = input || {}, ir = i.rules || {}, ip = i.pricing || {}, im = i.mem || {};
@@ -114,6 +134,7 @@ export function validate(input) {
   for (const k of ADD) r.addonMin[k] = int(am[k], 0, 240, 5, AN[k] + " extra time");
   const ml = g(ir, "memberLessMin", cur.rules.memberLessMin); r.memberLessMin = {};
   for (const k of PK) { r.memberLessMin[k] = int(ml[k], 0, 240, 15, "Member visit time saved (" + NAMES[k] + ")"); if (r.memberLessMin[k] >= Math.min(...r.baseMin[k])) throw new Error("Member " + NAMES[k] + " visits would take no time. Lower the time saved."); }
+  r.scents = scents(g(ir, "scents", cur.rules.scents));
 
   p.launchSale = !!g(ip, "launchSale", cur.pricing.launchSale);
   for (const t of ["regular", "launch"]) {
