@@ -18,13 +18,13 @@ let cache = { at: 0, raw: null };
 function apply(s) {
   const r = DEF.rules, p = DEF.pricing;
   Object.assign(RULES, { startMin: r.startMin, latestEnd: r.latestEnd, bySunset: r.bySunset, gapMin: r.gapMin, stepMin: r.stepMin, maxJobs: r.maxJobs, maxJobsDayOff: r.maxJobsDayOff,
-    horizonDays: r.horizonDays, winter: clone(r.winter), baseMin: clone(r.baseMin), addonMin: clone(r.addonMin), memberLessMin: clone(r.memberLessMin), scents: clone(r.scents) });
+    horizonDays: r.horizonDays, minDaysAhead: r.minDaysAhead, winter: clone(r.winter), baseMin: clone(r.baseMin), addonMin: clone(r.addonMin), memberLessMin: clone(r.memberLessMin), scents: clone(r.scents) });
   Object.assign(PRICING, { launchSale: p.launchSale, regular: clone(p.regular), launch: clone(p.launch), addons: clone(p.addons), memberAddonDiscount: p.memberAddonDiscount, zones: clone(p.zones) });
   for (const k of PLANS) MEM.plans[k].pct = DEF.plans[k].pct;
   Object.assign(MEM.freqDiscount, clone(DEF.freqDiscount));
   if (!s) return;
   const sr = s.rules || {}, sp = s.pricing || {}, sm = s.mem || {};
-  for (const k of ["startMin", "latestEnd", "bySunset", "gapMin", "stepMin", "maxJobs", "maxJobsDayOff", "horizonDays"]) if (sr[k] != null) RULES[k] = sr[k];
+  for (const k of ["startMin", "latestEnd", "bySunset", "gapMin", "stepMin", "maxJobs", "maxJobsDayOff", "horizonDays", "minDaysAhead"]) if (sr[k] != null) RULES[k] = sr[k];
   if (sr.winter) RULES.winter = sr.winterOn === false ? clone(NEVER) : clone(sr.winter);
   for (const k of ["baseMin", "addonMin", "memberLessMin"]) if (sr[k]) RULES[k] = clone(sr[k]);
   if (Array.isArray(sr.scents)) RULES.scents = clone(sr.scents);
@@ -54,7 +54,7 @@ export function currentSettings() {
   const w = RULES.winter, on = !(w.start[0] === w.end[0] && w.start[1] === w.end[1]), saved = cache.raw && cache.raw.rules && cache.raw.rules.winter;
   return {
     rules: { startMin: RULES.startMin, latestEnd: RULES.latestEnd, bySunset: RULES.bySunset, gapMin: RULES.gapMin, stepMin: RULES.stepMin, maxJobs: RULES.maxJobs, maxJobsDayOff: RULES.maxJobsDayOff,
-      horizonDays: RULES.horizonDays, winterOn: on, winter: on ? clone(w) : clone(saved || DEF.rules.winter), baseMin: clone(RULES.baseMin), addonMin: clone(RULES.addonMin), memberLessMin: clone(RULES.memberLessMin),
+      horizonDays: RULES.horizonDays, minDaysAhead: RULES.minDaysAhead, winterOn: on, winter: on ? clone(w) : clone(saved || DEF.rules.winter), baseMin: clone(RULES.baseMin), addonMin: clone(RULES.addonMin), memberLessMin: clone(RULES.memberLessMin),
       scents: clone(RULES.scents || []) },
     pricing: { launchSale: PRICING.launchSale, regular: clone(PRICING.regular), launch: clone(PRICING.launch), addons: clone(PRICING.addons), memberAddonDiscount: PRICING.memberAddonDiscount, zones: clone(PRICING.zones) },
     mem: { pct: Object.fromEntries(PLANS.map(k => [k, MEM.plans[k].pct])), freqDiscount: { 2: MEM.freqDiscount[2], 4: MEM.freqDiscount[4] } },
@@ -68,7 +68,7 @@ export function currentSettings() {
 export function publicSettings() {
   return { pricing: { launchSale: PRICING.launchSale, regular: PRICING.regular, launch: PRICING.launch, addons: PRICING.addons, memberAddonDiscount: PRICING.memberAddonDiscount,
       membership: Object.fromEntries(PLANS.map(k => [k, { of: MEM.plans[k].of, pct: MEM.plans[k].pct }])), freqDiscount: MEM.freqDiscount },
-    sched: { winter: RULES.winter, baseMin: RULES.baseMin, addonMin: RULES.addonMin, zones: PRICING.zones, scents: RULES.scents || [] } };
+    sched: { winter: RULES.winter, minDaysAhead: RULES.minDaysAhead, baseMin: RULES.baseMin, addonMin: RULES.addonMin, zones: PRICING.zones, scents: RULES.scents || [] } };
 }
 
 // ---------- validation ----------
@@ -127,6 +127,7 @@ export function validate(input) {
   r.maxJobsDayOff = int(g(ir, "maxJobsDayOff", cur.rules.maxJobsDayOff), 1, 4, 0, "Jobs on a day off");
   if (r.maxJobsDayOff < r.maxJobs) throw new Error("Jobs on a full day off can't be fewer than on a normal day.");
   r.horizonDays = int(g(ir, "horizonDays", cur.rules.horizonDays), 7, 180, 0, "Booking window");
+  r.minDaysAhead = int(g(ir, "minDaysAhead", cur.rules.minDaysAhead), 1, 7, 0, "Earliest booking");
   r.winterOn = !!g(ir, "winterOn", cur.rules.winterOn);
   const w = g(ir, "winter", cur.rules.winter) || {};
   r.winter = { start: md(w.start, "Winter starts"), end: md(w.end, "Winter ends") };

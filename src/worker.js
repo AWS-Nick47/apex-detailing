@@ -367,7 +367,7 @@ async function api(req, env, url) {
     const fq = url.searchParams.get("from") || "", from = realDay(fq) && fq >= addDays(todayKey(), -1) ? fq : todayKey();
     const n = Math.min(70, Math.max(1, +url.searchParams.get("n") || 45));
     const s = await lastSync(env);
-    return json({ now: Date.now(), rules: { startMin: RULES.startMin, gapMin: RULES.gapMin, noticeHours: RULES.noticeHours, stepMin: RULES.stepMin, maxJobs: RULES.maxJobs, maxJobsDayOff: RULES.maxJobsDayOff, horizonDays: RULES.horizonDays },
+    return json({ now: Date.now(), rules: { startMin: RULES.startMin, gapMin: RULES.gapMin, noticeHours: RULES.noticeHours, minDaysAhead: RULES.minDaysAhead, stepMin: RULES.stepMin, maxJobs: RULES.maxJobs, maxJobsDayOff: RULES.maxJobsDayOff, horizonDays: RULES.horizonDays },
       calendar: calConfigured(env) ? (s ? "synced" : "pending") : "not-connected", syncedAt: s && s.at, days: await days(env, from, n) });
   }
 
@@ -390,6 +390,8 @@ async function api(req, env, url) {
       if (up.n >= 3) return json({ error: "You already have 3 upcoming details booked. Text us at (732) 206-7084 to add another." }, 429);
     }
     if (nyToUtc(f.day, f.start) < Date.now() + RULES.noticeHours * 3600e3) return json({ error: "That time is less than " + RULES.noticeHours + " hours away or has passed. Please pick another time.", taken: true }, 409);
+    const soonest = addDays(todayKey(), RULES.minDaysAhead || 1);   // a full day's notice (Settings → Earliest booking)
+    if (f.day < soonest) return json({ error: "We need a little notice to fit you in: the earliest you can book online is " + dayLabel(soonest, true) + ". For anything sooner, text us at (732) 206-7084.", taken: true }, 409);
     // An email that already has an account: adding Apex Membership or a card on file needs that account's sign-in code,
     // so nobody can start a membership on someone else's saved card or replace it (audit IA-001 / IA-002).
     // The website asks for the code right in the booking form, then sends the booking again signed in.

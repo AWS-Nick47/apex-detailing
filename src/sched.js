@@ -7,7 +7,8 @@ export const RULES = {
   latestEnd: 19 * 60,        // must be done by 7:00 PM ...
   bySunset: true,            // ... or by sundown, whichever is earlier
   gapMin: 60,                // free time before/after every calendar event and between jobs
-  noticeHours: 24,           // customers must book at least this far ahead
+  noticeHours: 24,           // customers must book at least this far ahead (and change/cancel online up to this: Terms §4)
+  minDaysAhead: 2,           // earliest day customers can book: today + this (2 = a full day in between; Nick, Nov 3). Settings.
   stepMin: 30,               // start times every 30 minutes
   maxJobs: 1,                // jobs per day normally
   maxJobsDayOff: 2,          // jobs per day when the calendar is otherwise empty
@@ -115,6 +116,7 @@ export function slotsFor(key, info, pkg, size, adds, nowMs) {
   // winter instead (coverOn() already decided what the visit covers), so they skip this check.
   if (pkg !== "interior" && inWinter(y, m, d) && !(adds || []).includes("_member")) return [];
   if (info.j >= (info.off ? RULES.maxJobsDayOff : RULES.maxJobs)) return [];
+  if (key < addDays(utcToNy(nowMs).key, RULES.minDaysAhead || 1)) return [];   // a full day's notice: nothing for today or tomorrow
   const len = jobMin(pkg, size, adds), earliest = nowMs + RULES.noticeHours * 3600e3, out = [];
   for (let t = RULES.startMin; t + len <= info.end; t += RULES.stepMin) {
     if (nyToUtc(key, t) < earliest) continue;

@@ -2164,7 +2164,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 
         <section class="bk-step" data-step="3" hidden>
           <h3>Pick a day and time</h3>
-          <p class="bk-lede">Only times we're free and can finish your <b data-f="pkgName">detail</b> (about <b data-f="durText"></b>) are shown.</p>
+          <p class="bk-lede">Only times we're free and can finish your <b data-f="pkgName">detail</b> (about <b data-f="durText"></b>) are shown. The earliest you can book is <b id="calSoonest">the day after tomorrow</b>. Sooner? Text <a href="sms:+17322067084">(732) 206-7084</a>.</p>
           <p class="bk-ferr bk-ferr-block" id="slotErr" role="alert" hidden style="margin:-8px 0 14px"></p>
           <div class="cal">
             <div class="cal-head"><button type="button" class="cal-nav" id="calPrev" aria-label="Previous month"><svg viewBox="0 0 20 20"><path d="M12 4 6 10l6 6"/></svg></button><b id="calMonth"></b><button type="button" class="cal-nav" id="calNext" aria-label="Next month"><svg viewBox="0 0 20 20"><path d="m8 4 6 6-6 6"/></svg></button></div>
@@ -2632,6 +2632,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   /* ================= SCHEDULING SETTINGS ================= */
   var SCHED = {
     winter: { start: [12, 15], end: [3, 1] },   // [month, day]: only Interior is bookable between these dates
+    minDaysAhead: 2,                            // earliest bookable day = today + this (2 = a full day in between; Settings)
     seasonOverride: (new URLSearchParams(location.search).get("season") || "").toLowerCase(),   // "winter" / "summer" to preview
     baseMin: { exterior: [90, 90, 150], interior: [210, 210, 210], full: [300, 300, 360] },   // job length in minutes
     addonMin: { pet: 40, stain: 40, lights: 45, engine: 30 },
@@ -2720,6 +2721,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (P.freqDiscount) PRICING.freqDiscount = { 1: +P.freqDiscount[1] || 0, 2: +P.freqDiscount[2] || 0, 4: +P.freqDiscount[4] || 0 };
       if (P.addons) ADDONS.forEach(function (a) { if (P.addons[a.id] != null) a.p = +P.addons[a.id]; });
       ["winter", "baseMin", "addonMin", "zones"].forEach(function (k) { if (D[k]) SCHED[k] = D[k]; });
+      if (+D.minDaysAhead >= 1) SCHED.minDaysAhead = +D.minDaysAhead;
       REG = PRICING.regular; PRICES = PRICING.launchSale ? PRICING.launch : PRICING.regular;
       Object.keys(TIMES).forEach(function (k) { if (SCHED.baseMin[k]) TIMES[k] = SCHED.baseMin[k].map(function (m) { var h = Math.round(m / 30) / 2; return "~" + h + (h === 1 ? " hr" : " hrs"); }); });
       ADDONS.forEach(function (a) { var el = document.querySelector('.achip[data-addon="' + a.id + '"] .ap'); if (el) el.textContent = "+$" + a.p; });
@@ -3535,7 +3537,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     function key(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
     function rnd(str, salt) { var h = 2166136261 ^ salt; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 10000) / 10000; }
     var today = new Date(); today.setHours(0, 0, 0, 0);
-    var first = new Date(today); first.setDate(first.getDate() + 1);
+    var ahead = function () { return Math.max(1, +((AV && AV.rules && AV.rules.minDaysAhead) || SCHED.minDaysAhead) || 1); };   // a full day's notice (Settings)
+    var first = new Date(today); first.setDate(first.getDate() + ahead());
+    function soonestTxt() { var el = document.getElementById("calSoonest"); if (el) el.textContent = first.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }); }
+    soonestTxt();
     var last = new Date(today); last.setDate(last.getDate() + 42);
     window.__bkLast = function () { return AV ? last : null; };
     // ---- real availability (live site): day summaries from /api/days, same rules as the server ----
@@ -3548,7 +3553,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       if (!force && AV && Date.now() - avAt < 120000) return Promise.resolve(AV);
       if (avLoading) return avLoading;
       avLoading = fetch("/api/days?from=" + key(first) + "&n=60", { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("days " + r.status); return r.json(); })
-        .then(function (j) { if (!j || !j.days || !j.rules) throw new Error("bad days"); AV = j; avAt = Date.now(); avLoading = null; first = new Date(today); first.setDate(first.getDate() + 1); last = new Date(today); last.setDate(last.getDate() + 59);
+        .then(function (j) { if (!j || !j.days || !j.rules) throw new Error("bad days"); AV = j; avAt = Date.now(); avLoading = null; first = new Date(today); first.setDate(first.getDate() + ahead()); soonestTxt(); last = new Date(today); last.setDate(last.getDate() + 59);
           if (!bk.hidden && step === 3) renderCal(); if (window.__openChip) window.__openChip(); return AV; })
         .catch(function () { avLoading = null; if (!bk.hidden && step === 3) renderCal(); if (window.__openChip) window.__openChip(); return null; });
       return avLoading;
