@@ -35,6 +35,9 @@ function apply(s) {
   if (sm.freqDiscount) for (const k of ["2", "4"]) if (sm.freqDiscount[k] != null) MEM.freqDiscount[k] = sm.freqDiscount[k];
 }
 
+// billing reads the winter dates from here: it checks this so a failed load never bills with the defaults
+export const settingsLoaded = () => !!cache.at;
+export const defaultWinter = () => clone(DEF.rules.winter);
 export async function loadSettings(env, force) {
   if (!env || !env.DB) return cache.raw;
   if (!force && cache.at && Date.now() - cache.at < 20000) return cache.raw;

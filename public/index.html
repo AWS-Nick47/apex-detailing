@@ -2042,7 +2042,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
               </div>
             </div></details>
           <details><summary>How long does it take?</summary><p>Every detail is done by hand by one person, so we take our time. Approximate times:</p><ul class="faq-list"><li><b>Exterior:</b> ~1.5 hours for sedans and SUVs, ~2.5 hours for trucks and 3-row SUVs.</li><li><b>Interior:</b> ~3.5 hours for any vehicle.</li><li><b>Full Detail:</b> ~5 hours for sedans and SUVs, ~6 hours for trucks and 3-row SUVs.</li><li><b>Heavy add-ons:</b> heavy pet hair or heavy stain/odor removal adds about 30–45 minutes each.</li><li><b>Apex Membership visits:</b> about 1 hour for a wash, about 1–1.5 hours for an interior refresh, and about 2 hours for a wash + interior refresh.</li></ul><p>These are estimates. A car in rough shape can take longer, and one that's kept up can take less. When you book, we'll give you an expected finish time. You don't need to stay outside with us.</p></details>
-          <details><summary>What if it rains or it's freezing?</summary><p>We'll reschedule exterior work for free. In winter (<span data-wspan>December 15 to March 1</span>) we only do Interior details: it's too cold to wash outside, since water freezes on the paint and sealant won't cure. Exterior and Full Details are back <span data-wback>March 1</span>. For <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span>, from December 15 to March 1 Wash plans pause with no charge, Wash + interior members get interior-only visits billed at the Interior plan price, and Interior plans carry on as normal.</p></details>
+          <details><summary>What if it rains or it's freezing?</summary><p>We'll reschedule exterior work for free. In winter (<span data-wspan>December 15 to March 1</span>) we only do Interior details: it's too cold to wash outside, since water freezes on the paint and sealant won't cure. Exterior and Full Details are back <span data-wback>March 1</span>. <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span> follows the same winter dates: Wash plans pause with no charge, Wash + interior members get interior-only visits billed at the Interior plan price, and Interior plans carry on as normal. Members get an email a week before winter starts and ends.</p></details>
           <details><summary><span class="faq-q">How does <span class="am"><svg aria-hidden="true"><use href="#peak"/></svg>Apex Membership</span> work?</span></summary>
             <div class="faq-a">
               <ol class="faq-steps">
@@ -2971,7 +2971,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     btn.setAttribute("aria-pressed", String(planState.added));
     var wOff = planWinterOff(planState.type); btn.classList.toggle("btn-ghost", wOff);
     document.querySelectorAll("#planType button, #bkMemType button").forEach(function (b) { var w = planWinterOff(b.dataset.v); b.classList.toggle("is-winter", w); if (w) b.dataset.back = "Back " + winterBack(); });
-    winterNote("planWinter", winterNow() ? "<b>Winter: only the Interior plan can start until " + winterBack() + ".</b> Wash plans begin with an Exterior or Full Detail, and those are back " + winterBack() + ". Current members' Wash visits pause Dec 15 – Mar 1 (Membership Terms)." : "");
+    winterNote("planWinter", winterNow() ? "<b>Winter: only the Interior plan can start until " + winterBack() + ".</b> Wash plans begin with an Exterior or Full Detail, and those are back " + winterBack() + ". Current members' Wash plans pause until then." : "");
     btn.innerHTML = wOff ? "Starts again " + winterBack() + " · pick Interior to start now" : planState.added ? "Added to your booking · $" + monthly + "/mo + tax"
       : "<span class=\"pb-part\">Start with " + (st === "exterior" ? "an Exterior" : st === "interior" ? "an Interior" : "a Full Detail") + " · $" + pkgPrice(st, size) + "</span> <span class=\"pb-part\"><span class=\"pb-arrow\">→</span> then $" + monthly + "/mo</span>";
     document.getElementById("planWhy").textContent = st === "full" ? "Wash + interior starts after a Full Detail, so every visit starts from a clean slate."
@@ -3343,17 +3343,18 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
           '<div class="dc-big">' + esc(M.label) + '</div><div class="dc-sub">$' + M.monthly + '/mo + ' + usd(M.monthlyTax || taxOf(M.monthly)) + ' tax' + (M.nextBill ? ' · next charge ' + esc(dnice(M.nextBill)) + (M.nextChargeTotal != null ? (M.nextChargeTotal ? ' (' + usd(M.nextChargeTotal) + (M.nextWinter || M.credit ? ' with ' + (M.nextWinter ? 'winter pricing' : 'your credit') : '') + ')' : ' (no charge, winter pause)') : '') : '') + '</div>' +
           '<div class="ml-rows" style="margin-top:8px">' +
           (M.periodStart ? '<div><span>Paid through</span><b>' + esc(dnice(dprev(M.periodEnd))) + '</b></div>' : '') +
-          '<div><span>Visits this month</span><b>' + (M.visitsAllowed ? M.visitsBooked + ' of ' + M.visitsAllowed + ' used' : M.status === "paused" ? "Paused" : M.status === "past_due" ? "On hold" : M.nextBill ? "Book from " + esc(dnice(M.nextBill)) : "—") + '</b></div>' +
+          '<div><span>Visits this month</span><b>' + (M.visitsAllowed ? M.visitsBooked + ' of ' + M.visitsAllowed + ' used' : M.winterCut ? "Credited (winter started)" : M.status === "paused" ? "Paused" : M.status === "past_due" ? "On hold" : M.nextBill ? "Book from " + esc(dnice(M.nextBill)) : "—") + '</b></div>' +
           (M.credit ? '<div><span>Credit</span><b>' + usd(M.credit) + ' off your next charge, before tax</b></div>' : '') +
           '<div><span>Payment</span><b>' + esc(M.card || "No card yet") + '</b></div>' +
           (M.minLeft && M.status !== "pending" ? '<div><span>3-month minimum</span><b>' + M.minLeft + ' payment' + (M.minLeft > 1 ? 's' : '') + ' left</b></div>' : '') +
-          (M.winterNow && M.type !== "int" ? '<div><span>Winter</span><b>' + (M.type === "wash" ? "Paused until Mar 1" : "Interior visits until Mar 1") + '</b></div>' : '') +
+          (M.winterNow && M.type !== "int" ? '<div><span>Winter</span><b>' + (M.type === "wash" ? "Paused, no charges" : "Interior visits at the Interior price") + (M.fullBack ? " · full plan back with your " + esc(dnice(M.fullBack)) + " charge" : M.winterEnds ? " until " + esc(dnice(M.winterEnds)) : "") + '</b></div>' : '') +
           '</div></div>';
         if (M.needsCard && M.paymentsMade === 0) html += '<div class="ml-warn">Add a card by <b>' + esc(dnice(M.cardDeadline)) + '</b> or your membership won\'t start. <button type="button" class="link-btn" data-tab-go="profile">Add a card</button></div>';
         if (M.status === "past_due") html += '<div class="ml-warn bad">Your last payment (' + usd(M.owed) + ') didn\'t go through. Update your card, then retry. Visits are paused until it\'s paid.<div class="dc-actions" style="margin-top:8px"><button type="button" class="btn btn-sm btn-ghost" data-tab-go="profile">Update card</button><button type="button" class="btn btn-sm" id="mlRetry">Retry payment</button></div></div>';
         html += '<div class="dcard"><div class="dc-k">Your visits</div>';
         html += M.upcoming.length ? M.upcoming.map(function (v) { var d = new Date(v.start); return '<div class="ml-visit"><span><b>' + d.toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" }) + '</b> · ' + d.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) + '</span><a class="link-btn" href="' + v.manage + '">Change or skip</a></div>'; }).join("") : '<p class="dc-sub">No visits booked yet.</p>';
         html += (M.visitsAllowed && M.visitsBooked < M.visitsAllowed ? '<button type="button" class="btn" id="mlBook" style="margin-top:8px">Book a visit</button>' : '') + '<div id="mlSlots"></div></div>';
+        html += upgradeCard(M);
         html += '<div class="dash-grid2">' +
           (M.canPause ? '<button type="button" class="dact" id="mlPause"><b>Pause Apex Membership</b><span>Up to 3 months, keep your price</span></button>' : '') +
           '<button type="button" class="dact" data-tab-go="profile"><b>Payment method</b><span>' + esc(M.card || "Add a card") + '</span></button>' +
@@ -3376,6 +3377,22 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       }
       box.innerHTML = html;
       if (CANSTART && !(M && M.status !== "cancelled")) msUpdate();
+    }
+    // Interior → Wash + interior (starts after an Exterior Detail; first upgraded month MEM.upgradePct off)
+    function upgradeCard(M) {
+      var U = M.upgrade; if (!U) return "";
+      var pct = U.pct ? Math.round(U.pct * 100) + "% off" : "", head = '<div class="dcard" id="mlUpgrade"><div class="dc-k">Upgrade</div><div class="dc-t">Add Wash visits: ' + esc(U.label) + '</div>';
+      var what = function (k) { return k === "full" ? "Full Detail" : "Exterior Detail"; };
+      if (U.pending) return head + '<div class="dc-sub">Set. After your ' + what(U.pending.pkg) + ' on ' + esc(dnice(U.pending.day)) + ', your plan becomes Wash + interior. First upgraded charge ' + esc(dnice(U.pending.bill)) + ': $' + U.first + ' + tax' + (pct ? ' (' + pct + '), then $' + U.monthly + '/mo + tax.' : ', then the same every month.') + '</div><button type="button" class="link-btn danger" id="upCancel" style="margin-top:8px">Cancel the upgrade</button></div>';
+      if (U.winter && !U.detail) return head + '<div class="dc-sub">Wash visits open again when winter ends (' + esc(window.__winter.back()) + ').' + (pct ? ' Upgrade then and your first upgraded month is ' + pct + '.' : ' You can upgrade then.') + '</div></div>';
+      if (!U.detail) return head + '<div class="dc-big" style="margin-top:6px">$' + U.monthly + '/mo <small style="font-size:14px;color:var(--muted)">+ tax</small></div><div class="dc-sub">' + (pct ? 'Your first upgraded month is ' + pct + ': $' + U.first + ' + tax. ' : '') + 'It starts after an Exterior Detail, so the outside of your car starts from a clean slate too.</div><button type="button" class="btn" id="upBook" style="margin-top:10px">Book an Exterior Detail</button></div>';
+      var when = esc(dnice(U.detail.bill));
+      return head + '<div class="dc-big" style="margin-top:6px">$' + U.monthly + '/mo <small style="font-size:14px;color:var(--muted)">+ tax</small></div><div class="dc-sub">Starts after your ' + what(U.detail.pkg) + ' on ' + esc(dnice(U.detail.day)) + '. Your first upgraded charge is ' + when + (pct ? ': $' + U.first + ' + tax (' + pct + ').' : '.') + '</div>' +
+        '<label class="acct-check" style="margin-top:10px;align-items:flex-start;font-size:14px;color:var(--muted)"><input type="checkbox" id="upAuth" style="margin-top:3px"> <span>I authorize Apex Detailing LLC to charge my card ' +
+        (pct ? '<b>' + usd(withTax(U.first)) + '</b> ($' + U.first + ' + ' + usd(taxOf(U.first)) + ' ' + TAX.name + ') on ' + when + ', then <b>' + usd(withTax(U.monthly)) + '/mo</b> ($' + U.monthly + ' + ' + usd(taxOf(U.monthly)) + ') on that date every month'
+             : '<b>' + usd(withTax(U.monthly)) + '/mo</b> ($' + U.monthly + ' + ' + usd(taxOf(U.monthly)) + ' ' + TAX.name + ') starting ' + when + ' and on that date every month') +
+        ' instead of my Interior price, until I cancel, as described in the <a href="membership-terms.html" target="_blank" rel="noopener">Membership Terms</a>. My 3-month minimum doesn\'t restart.</span></label>' +
+        '<button type="button" class="btn" id="upGo" style="margin-top:10px">Upgrade</button></div>';
     }
     function msUpdate() {
       var t = $("#msType [aria-pressed=true]"), f = $("#msFreq [aria-pressed=true]"); if (!t || !f) return;
@@ -3417,7 +3434,24 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
         return;
       }
       if (t.closest("#mlRetry")) { post("/api/member/retry").then(function (x) { toast(x.j.message || x.j.error); loadMe().then(function () { fill(); tab("plan"); }); }); return; }
-      if (t.closest("#mlChange")) { toast("To change your plan, text us at (732) 206-7084 for now"); return; }
+      if (t.closest("#mlChange")) { var uc = document.getElementById("mlUpgrade"); if (uc) { uc.scrollIntoView({ behavior: "smooth", block: "center" }); return; } toast("To change your plan, text us at (732) 206-7084 for now"); return; }
+      if (t.closest("#upGo")) {
+        if (!$("#upAuth").checked) { toast("Check the box to authorize the new monthly price"); return; }
+        var ug = t.closest("#upGo"); ug.disabled = true;
+        post("/api/member/upgrade", { auth: true }).then(function (x) { ug.disabled = false; toast(x.ok ? x.j.message : x.j.error); if (x.ok) loadMe().then(function () { fill(); tab("plan"); }); });
+        return;
+      }
+      if (t.closest("#upCancel")) {
+        if (!confirm("Cancel the upgrade? Your plan stays Interior.")) return;
+        post("/api/member/upgrade", { cancel: true }).then(function (x) { toast(x.ok ? x.j.message : x.j.error); if (x.ok) loadMe().then(function () { fill(); tab("plan"); }); });
+        return;
+      }
+      if (t.closest("#upBook")) {
+        var ex = document.getElementById("q-pkg-exterior"); if (ex && !ex.disabled) { ex.checked = true; selectPkg("exterior", true); }
+        updateQuote(); close(true);
+        window.__bk.open({ step: 1, focusBack: document.querySelector(".acct-btn"), note: "Book your Exterior Detail. Then tap Upgrade in your account: your plan becomes Wash + interior with your first charge after it." });
+        return;
+      }
       if (t.closest("#mlPause")) {
         memPanel('<div class="dcard"><div class="dc-t">Pause for how long?</div><div class="dc-sub">Your price stays the same. No charges or visits while paused.</div><div class="ml-seg" style="margin-top:8px">' + [1, 2, 3].map(function (n) { return '<button type="button" data-pause="' + n + '">' + n + ' month' + (n > 1 ? 's' : '') + '</button>'; }).join("") + '</div></div>');
         return;

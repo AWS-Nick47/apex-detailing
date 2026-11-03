@@ -7,14 +7,14 @@ import { authStart, authVerify, authLogout, me, upsertFromBooking, normEmail, cu
 import { jobRoute, payPage, payApi, publicConfig, emailReceipt, emailPayLink } from "./pay.js";
 import { squareOn, saveCard, removeCard } from "./square.js";
 import { adminApi, accessUser, blockoutBusy } from "./admin.js";
-import { loadSettings, publicSettings } from "./settings.js";
+import { loadSettings, publicSettings, settingsLoaded } from "./settings.js";
 import { galleryRoute, purgeTrash } from "./photos.js";
 import { syncSquare } from "./owner.js";
 import { NO_SCENT, scentApplies, scentFor, scentList, pickScent, photoStart, setPhotoPref, photoPref, photoWords } from "./prefs.js";
-import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge, mailWelcome, previewMail, notifyNick } from "./membership.js";
+import { MEM, createMembership, activeFor, summary as memSummary, visitSlots, runBilling, cancelMembership, pauseMembership, retryNow, coverOn, visitCover, startUpgrade, cancelUpgrade, addMonths, qualifyingFor, moveWithDetail, cancelWithDetail, planLabel, firstCharge, mailWelcome, previewMail, notifyNick } from "./membership.js";
 
 const NAMES = { exterior: "Exterior", interior: "Interior", full: "Full Detail" };
-const TERMS_VERSION = "2026-11-02b";   // b: marketing photos are opt-out (Terms §10)   // bump when terms.html / membership-terms.html / privacy.html change
+const TERMS_VERSION = "2026-11-03";   // Nov 3: membership winter = the dates we set, upgrades (Membership Terms §6); Nov 2b: marketing photos are opt-out (Terms §10)   // bump when terms.html / membership-terms.html / privacy.html change
 const SIZES = ["Sedan / Coupe", "SUV / Crossover", "Truck / 3-row"];
 const VISIT_NAMES = { exterior: "Wash visit", interior: "Interior visit", full: "Wash + interior visit" };
 const pkgName = b => b.kind === "member" ? VISIT_NAMES[b.pkg] : b.custom_name || NAMES[b.pkg];   // jobs Nick adds can have a custom package name
@@ -339,7 +339,7 @@ async function managePage0(env, b, msg) {
     if (hoursLeft < RULES.noticeHours) return page("Your visit", head + skip + `<p class="note">To move it instead, text or call <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a>.</p>`);
     const from = addDays(todayKey(), 1), n = Math.max(1, Math.min(35, Math.round((nyToUtc(member.period_end || from, 0) - nyToUtc(from, 0)) / 864e5)));
     const info = await days(env, from, n, b.id), opts = [];
-    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = coverOn(member.type, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, ["_member"], Date.now()).filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
+    for (const k of Object.keys(info)) { if (member.period_end && k >= member.period_end) break; const cv = visitCover(member, k); if (!cv) continue; const sl = slotsFor(k, info[k], MEM.visitPkg[cv], b.size, ["_member"], Date.now()).filter(t => !(k === b.day && t === utcToNy(b.start_utc).min)); if (sl.length) opts.push([k, sl]); if (opts.length >= 8) break; }
     const pick = opts.length ? `<div class="days">${opts.map(([k, sl]) => `<div class="day"><b>${h(dayLabel(k, true))}</b><div class="ts">${sl.slice(0, 8).map(t => moveForm(b, k, t)).join("")}</div></div>`).join("")}</div>` : `<p class="note">No other open times left in this month's period.</p>`;
     return page("Your visit", head + `<h2>Pick a new time</h2>${pick}${skip}`);
   }
@@ -555,7 +555,7 @@ async function memberApi(req, env, url) {
     const sl = await visitSlots(env, m, { days });
     const d = (sl.days || []).find(x => x.day === day);
     if (!d || !d.slots.includes(start)) return json({ error: sl.reason || "That time isn't available anymore. Pick another." }, 409);
-    const pkg = MEM.visitPkg[coverOn(m.type, day)];
+    const pkg = MEM.visitPkg[visitCover(m, day)];
     const sc = pickScent(pkg, body.scent); if (sc.err) return json({ error: sc.err, field: "scent", scents: scentList() }, 400);
     if (!(await slotOpen(env, day, start, pkg, m.size, ["_member"]))) return json({ error: "That time was just taken. Pick another." }, 409);
     const last = await env.DB.prepare("SELECT * FROM bookings WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1").bind(c.id).first() || {};
@@ -580,6 +580,15 @@ async function memberApi(req, env, url) {
   }
   if (action === "pause" && req.method === "POST") {
     try { return json(Object.assign({ ok: true }, await pauseMembership(env, m, body.months))); } catch (e) { return json({ error: e.message }, 400); }
+  }
+  if (action === "upgrade" && req.method === "POST") {   // Interior → Wash + interior after an Exterior Detail (Membership Terms §6)
+    const o = req.headers.get("Origin"); if (o && o !== url.origin) return json({ error: "Not allowed" }, 403);
+    try {
+      if (await overLimit(env, req, "upgrade:" + m.id, 6, 86400e3)) return json({ error: "Too many changes today. Text us at (732) 206-7084." }, 429);   // each one emails the member and Nick
+      if (body.cancel === true) return json(Object.assign({ ok: true }, await cancelUpgrade(env, m)));
+      if (body.auth !== true) return json({ error: "Please check the box to authorize the new monthly price." }, 400);
+      return json(Object.assign({ ok: true }, await startUpgrade(env, m, c, { version: TERMS_VERSION, at: Date.now(), ip: req.headers.get("CF-Connecting-IP") || "" })));
+    } catch (e) { return json({ error: e.message }, 400); }
   }
   if (action === "retry" && req.method === "POST") {
     if (m.status !== "past_due") return json({ ok: true, message: "Nothing to retry." });
@@ -647,6 +656,18 @@ async function devEmails(env) {
   await add("mem-cancelled-free", "Membership: cancelled before the first charge", mk("cancelled_free"));
   await add("mem-detail-cancelled", "Membership: cancelled with its first detail", mk("detail_cancelled", { byUs: false }));
   await add("mem-cancel-fee", "Membership: cancelled now (fee)", mk("cancel_fee", { fee: 10500, ends: addDays(todayKey(), 12), card }));
+  const MW = Object.assign({}, M, { type: "wash", monthly_cents: 6000 }), MI = Object.assign({}, M, { type: "int", monthly_cents: 6500 }), mw = (m, kind, o) => E => previewMail(E, m, kind, o);
+  await add("mem-winter-soon", "Membership: winter starts in 7 days (Wash + interior)", mk("winter_soon", { day: addDays(todayKey(), 7), ends: "2027-03-01", intMonthly: 6500 }));
+  await add("mem-winter-soon-wash", "Membership: winter starts in 7 days (Wash)", mw(MW, "winter_soon", { day: addDays(todayKey(), 7), ends: "2027-03-01" }));
+  await add("mem-winter-start", "Membership: winter started (Wash + interior, credit)", mk("winter_start", { adj: { credit: 4000, left: 1, changed: [{ day: addDays(todayKey(), 4), what: "interior" }] }, ends: "2027-03-01", back: "2027-03-05", intMonthly: 6500 }));
+  await add("mem-winter-start-wash", "Membership: winter started (Wash paused)", mw(MW, "winter_start", { adj: { credit: 6000, left: 1, changed: [{ day: addDays(todayKey(), 4), what: "cancelled" }] }, ends: "2027-03-01", back: "2027-03-05" }));
+  await add("mem-winter-start-ending", "Membership: winter started (Wash, ending, refund)", mw(Object.assign({}, MW, { status: "ending", cancel_mode: "after_min", payments_made: 4 }), "winter_start", { adj: { credit: 5500, left: 1, changed: [], refund: true }, ends: "2027-03-01", back: "2027-03-05" }));
+  await add("mem-winter-over-soon", "Membership: winter ends in 7 days", mk("winter_over_soon", { day: addDays(todayKey(), 7), back: addDays(todayKey(), 12) }));
+  await add("mem-winter-end", "Membership: winter ended, plan back", mk("winter_end", { back: addDays(todayKey(), 5) }));
+  await add("mem-upgrade-offer", "Membership: all plans open, upgrade offer", mw(MI, "upgrade_offer", {}));
+  await add("mem-upgrade-set", "Membership: upgrade set", mw(MI, "upgrade_set", { up: { pkg: "exterior", day: addDays(todayKey(), 6), first: 90, monthly: 105, pct: 0.15 }, bill: addDays(todayKey(), 9) }));
+  await add("mem-upgrade-dropped", "Membership: upgrade cancelled with its detail", mw(MI, "upgrade_dropped", { up: { pkg: "exterior", day: addDays(todayKey(), 6) } }));
+  await add("mem-receipt-upgrade", "Membership: receipt, first upgraded month", mk("receipt", { amount: 9000, tax: 596, credit: 0, full: 9000, listed: 10500, disc: 0.15, period: [todayKey(), addDays(todayKey(), 30)], cover: "both", card }));
   await add("nick-new", "Nick: new booking", E => emailNick(E, B({ _mem: mem, _locFlag: "The address pin is 9 mi from Brick. Check the address and the travel fee.", _photos: [{ name: "concern-1.jpg", data: "" }] }), "new"));
   await add("nick-move", "Nick: rescheduled", E => emailNick(E, B(), "move", "Saturday, November 7, 9:00 AM – 2:00 PM"));
   await add("nick-cancel", "Nick: cancelled", E => emailNick(E, B(), "cancel"));
@@ -754,7 +775,7 @@ async function manage(req, env, url) {
   const adds = b.kind === "member" ? ["_member"] : JSON.parse(b.adds || "[]");
   if (b.kind === "member") {
     const mm = await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first();
-    const cv = mm && coverOn(mm.type, day);
+    const cv = mm && visitCover(mm, day);
     if (!mm || !cv || (mm.period_end && day >= mm.period_end)) return html(await managePage(env, b, "Pick a day in this month's period."));
     b.pkg = MEM.visitPkg[cv];
   }
@@ -844,7 +865,7 @@ async function scheduledRun(event, env, ctx) {
   {
     ctx.waitUntil(syncBusy(env).then(r => console.log("sync", JSON.stringify(r))).catch(e => console.log("sync failed", e.message)));
     ctx.waitUntil(reminders(env).catch(e => console.log("reminders failed", e.message)));
-    ctx.waitUntil(runBilling(env).then(l => l.length && console.log("billing", JSON.stringify(l))).catch(e => console.log("billing failed", e.message)));
+    ctx.waitUntil(runBilling(env, { settingsOk: settingsLoaded(), calSave: b => calConfigured(env) ? calSave(env, b) : Promise.resolve(), deleteJob: href => deleteJob(env, href) }).then(l => l.length && console.log("billing", JSON.stringify(l))).catch(e => console.log("billing failed", e.message)));
     if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() < 10) {   // once an hour
       ctx.waitUntil(cleanup(env).catch(e => console.log("cleanup failed", e.message)));
       ctx.waitUntil(purgeTrash(env).catch(e => console.log("photo trash failed", e.message)));

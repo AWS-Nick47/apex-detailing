@@ -732,7 +732,10 @@
     h += '<div class="card" style="margin-top:14px">' + kv("Since", dlabel(m.since)) + (m.nextBill ? kv("Next charge", dlabel(m.nextBill) + " · " + money(m.nextChargeTotal) + " with tax" + (m.nextWinter ? " (winter pricing)" : "")) : "") +
       kv("Payments made", m.paymentsMade + (m.minLeft ? " (" + m.minLeft + " left in the " + m.minPayments + "-month minimum)" : "")) + (m.periodStart ? kv("Paid period", dlabel(m.periodStart) + " – " + dlabel(addD(m.periodEnd, -1))) : "") +
       kv("Visits this period", m.visitsBooked + " of " + m.visitsAllowed + " booked") + kv("Credit", money(m.credit)) + (m.owed ? kv("Owes", money(m.owed)) : "") + (m.endsOn ? kv("Ends", dlabel(m.endsOn)) : "") + (m.pauseUntil ? kv("Paused until", dlabel(m.pauseUntil)) : "") +
-      kv("Card", m.card || "None on file") + kv("Car", (m.car || "") + " · " + SIZES[m.size]) + "</div>";
+      kv("Card", m.card || "None on file") + kv("Car", (m.car || "") + " · " + SIZES[m.size]) +
+      (m.winterNow && m.type !== "int" ? kv("Winter", (m.type === "wash" ? "Paused" : "Interior visits at the Interior price") + (m.fullBack ? "; full plan back with the " + dlabel(m.fullBack) + " charge" : "")) : "") +
+      (m.winterCut ? kv("This month", "Winter cut it short; the rest was credited") : "") +
+      (m.upgrade && m.upgrade.pending ? kv("Upgrade", "To " + esc(m.upgrade.label) + " after the " + (m.upgrade.pending.pkg === "full" ? "Full Detail" : "Exterior Detail") + " on " + dlabel(m.upgrade.pending.day) + "; first upgraded charge " + dlabel(m.upgrade.pending.bill) + " · " + money(m.upgrade.first) + " + tax (" + Math.round(m.upgrade.pct * 100) + "% off), then " + money(m.upgrade.monthly) + "/mo", true) : "") + "</div>";
     if (live) {
       h += '<h2>Change it</h2><div class="menu">';
       if (m.status === "past_due") h += '<button class="btn" data-mem="retry">Retry the failed payment now</button>';
@@ -885,6 +888,13 @@
     var mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return '<div class="fg2" style="gap:6px"><select name="' + name + 'm">' + mo.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === v[0] ? " selected" : "") + ">" + m + "</option>"; }).join("") + '</select><select name="' + name + 'd">' + Array.from({ length: 31 }, function (_, i) { return '<option' + (i + 1 === v[1] ? " selected" : "") + ">" + (i + 1) + "</option>"; }).join("") + "</select></div>";
   }
+  // what new winter dates will email Apex members (from /settings/impact), in plain words
+  function impactSay(im) {
+    var say = [], K = { start: "winter mode started", end: "winter mode ended" };
+    if (im && im.now && im.now.count) say.push(im.now.count + " Apex member" + (im.now.count > 1 ? "s get" : " gets") + " a \"" + K[im.now.kind] + "\" email at the next billing run (every 10 minutes from 9 AM)" + (im.now.kind === "start" ? " (Wash plans pause, Wash + interior switches to interior visits, and the rest of this month is credited)" : " (plans go back to normal with their next charge; Interior members who joined this winter get the upgrade offer)") + ".");
+    if (im && im.soon && im.soon.count) say.push(im.soon.count + " Apex member" + (im.soon.count > 1 ? "s get" : " gets") + " a heads-up that winter " + (im.soon.kind === "start" ? "starts" : "ends") + " " + dlabel(im.soon.day) + ".");
+    return say;
+  }
   function scentInput(v) { return '<div style="display:flex;gap:8px"><input type="text" name="r.scent" maxlength="30" value="' + esc(v || "") + '" placeholder="Scent name" aria-label="Scent name" style="flex:1;min-width:0"><button type="button" class="btn g sm" data-scdel aria-label="Remove ' + esc(v || "scent") + '">Remove</button></div>'; }
   function submitScent(form) {
     var sb = form.querySelector('[type="submit"]'), done = busy(sb, "Saving…");
@@ -908,8 +918,13 @@
     el.textContent = "Sedan, monthly: " + Object.keys(of).map(function (k) { return PLANN[k] + " $" + r5(s.pricing.regular[of[k]][0] * s.mem.pct[k]); }).join(" · ") + " (+ tax)";
   }
   function saveSettings(f) {
-    var b = f.querySelector('[type="submit"]'), done = busy(b, "Saving…"), err = document.getElementById("setErr"); err.hidden = true;
-    post("/settings", readSettings(f)).then(function (r) { done(); SH.dirty = false; SCENTS_C = null; toast("Saved. The site updates within 20 seconds."); RENDER.settings();
+    var b = f.querySelector('[type="submit"]'), done = busy(b, "Saving…"), err = document.getElementById("setErr"), body = readSettings(f); err.hidden = true;
+    // new winter dates can email Apex members (today, or a heads-up for a change within 7 days): say so before saving
+    post("/settings/impact", body).then(function (im) {
+      var say = impactSay(im);
+      if (say.length && !confirm(say.join("\n\n") + "\n\nSave these settings?")) { done(); return null; }
+      return post("/settings", body);
+    }).then(function (r) { if (!r) return; done(); SH.dirty = false; SCENTS_C = null; toast("Saved. The site updates within 20 seconds."); RENDER.settings();
         var wj = (r && r.winterJobs) || [];   // jobs already booked for outside work on what are now winter days
         if (wj.length) setTimeout(function () { alert("Heads up: " + wj.length + " Exterior/Full Detail job" + (wj.length > 1 ? "s are" : " is") + " booked on winter days:\n\n" + wj.map(function (j) { return "• " + j.name + ": " + j.what + ", " + j.when + " (" + j.id + ")"; }).join("\n") + "\n\nThey stay booked. Move them to an Interior or another date, or let the customer know."); }, 300); })
       .catch(function (e) { done(); err.textContent = e.message; err.hidden = false; err.scrollIntoView({ block: "center" }); });
@@ -992,7 +1007,14 @@
       if (act === "retry") { var dn5 = busy(b, "Charging…"); post("/members/" + MEMB.member.id + "/retry").then(function (r) { toast(r.message, true); renderMember(MEMB.member.id); }).catch(function (e2) { dn5(); toast(e2.message, true); }); return; }
       return memSheet(act);
     }
-    if (t.closest("[data-resetset]")) { if (!confirm("Put every setting back to the original defaults?")) return; post("/settings/reset").then(function () { toast("Reset"); RENDER.settings(); }).catch(function (e2) { toast(e2.message); }); return; }
+    if (t.closest("[data-resetset]")) {   // the default winter dates can email Apex members too: say so first
+      post("/settings/impact", { reset: true }).then(function (im) {
+        var say = impactSay(im);
+        if (!confirm("Put every setting back to the original defaults?" + (say.length ? "\n\n" + say.join("\n\n") : ""))) return;
+        return post("/settings/reset").then(function () { toast("Reset"); RENDER.settings(); });
+      }).catch(function (e2) { toast(e2.message); });
+      return;
+    }
     if (t.closest("[data-qretry]")) { if (window.ApexPhotos) window.ApexPhotos.retry(); toast("Retrying uploads"); return; }
   });
   document.addEventListener("keydown", function (e) {

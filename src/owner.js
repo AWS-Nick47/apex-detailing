@@ -3,11 +3,11 @@
 // Called from adminApi (admin.js) after the Cloudflare Access check. Returns null for paths it doesn't handle.
 import { RULES, jobMin, nyToUtc, utcToNy, addDays, parseDay, townCoords, milesFromHome, inWinter } from "./sched.js";
 import { PRICING, TAX, quote as priceQuote, withTax } from "./pricing.js";
-import { MEM, planLabel, planPrice, activeFor, cancelMembership, retryNow, cancelWithDetail, moveWithDetail, summary as memSummary, coverOn, cancelWaived, pauseByOwner, resumeByOwner, changePlan } from "./membership.js";
+import { MEM, planLabel, planPrice, activeFor, cancelMembership, retryNow, cancelWithDetail, moveWithDetail, summary as memSummary, coverOn, visitCover, seasonImpact, cancelWaived, pauseByOwner, resumeByOwner, changePlan } from "./membership.js";
 import { deleteJob } from "./cal.js";
 import { normEmail, newId } from "./accounts.js";
 import { squareOn, listPayments, listPayouts } from "./square.js";
-import { currentSettings, saveSettings, resetSettings } from "./settings.js";
+import { currentSettings, saveSettings, resetSettings, validate as checkSettings, defaultWinter } from "./settings.js";
 import { jobAction } from "./pay.js";
 import { NO_SCENT, scentApplies, scentFor, scentList, pickScent, photoStart, setPhotoPref, photoPref } from "./prefs.js";
 import { photoState, setAngle, addAngle, photoFile, hidePhoto, deletePhoto, deleteJobPhotos, sendPhotosEmail, storageOn } from "./photos.js";
@@ -310,7 +310,7 @@ async function moveJob(env, H, b, body, who) {
   if (!realDay(day) || !(start >= 0 && start < 1440)) return bad("Pick a new date and time.");
   let pkg = b.pkg, len = Math.round((b.end_utc - b.start_utc) / 60000);
   if (b.kind === "member") {
-    const mm = await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first(), cv = mm && coverOn(mm.type, day);
+    const mm = await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first(), cv = mm && visitCover(mm, day);
     if (!cv) return bad("That membership has no visits on that date (winter pause).");
     if (MEM.visitPkg[cv] !== pkg) { pkg = MEM.visitPkg[cv]; len = jobMin(pkg, b.size, ["_member"]); }
   }
@@ -626,6 +626,11 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
   }
   // settings
   if (p === "/settings/edit" && M === "GET") return json(currentSettings());
+  if (p === "/settings/impact" && M === "POST") {   // before saving: which Apex members new winter dates would email (today / within 7 days)
+    if (body.reset === true) return json(await seasonImpact(env, defaultWinter()));   // "Reset to defaults" puts winter back to the default dates
+    let s; try { s = checkSettings(body); } catch (e) { return bad(e.message); }
+    return json(await seasonImpact(env, s.rules.winterOn ? s.rules.winter : { start: [1, 1], end: [1, 1] }));
+  }
   if (p === "/settings" && M === "POST") {
     let s; try { s = await saveSettings(env, body, who); } catch (e) { return bad(e.message); }
     await ownerLog(env, who, "Changed settings", "settings");
