@@ -988,6 +988,16 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .res-jobs button[aria-pressed="true"] { background: var(--sel-bg); color: var(--fg); box-shadow: var(--sel-sh); }
 .res-jobs .new { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 1px 6px; border-radius: 999px; }
 .res-meta h3 { margin: 0; font-size: 24px; letter-spacing: -.01em; }
+.res-car { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.res-car h3 { min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.res-car h3 .new { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 2px 7px; border-radius: 999px; }
+.res-carnav { display: flex; align-items: center; gap: 2px; flex: none; margin: -6px -8px -6px 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.res-carnav[hidden] { display: none; }
+.res-carnav button { width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--fg); display: grid; place-items: center; cursor: pointer; }
+.res-carnav button:hover { background: var(--well); }
+.res-carnav span { min-width: 38px; text-align: center; white-space: nowrap; }
+.ba-car { position: absolute; top: 58px; left: 50%; z-index: 3; transform: translate(-50%, -6px); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.6); color: #f5f5f5; backdrop-filter: blur(8px); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; }
+.ba-car.on { opacity: 1; transform: translate(-50%, 0); }
 .res-meta p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
 .res-thumbs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .res-thumbs button { position: relative; border: 0; padding: 0; border-radius: 14px; overflow: hidden; cursor: pointer; aspect-ratio: 4 / 5; background: var(--well);
@@ -1962,17 +1972,18 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <div class="res reveal" id="res">
         <div class="res-stage">
           <div class="ba" id="ba">
-            <img class="layer after" id="baAfter" src="img/r-rav4-dash-after.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
-            <img class="layer before" id="baBefore" src="img/r-rav4-dash-before.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
+            <img class="layer after" id="baAfter" src="img/r-altima-dash-after.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
+            <img class="layer before" id="baBefore" src="img/r-altima-dash-before.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
             <button type="button" class="label l" data-snap="100">Before</button><button type="button" class="label r" data-snap="0">After</button>
+            <div class="ba-car" id="baCar" aria-hidden="true"></div>
             <div class="handle" id="baHandle"><div class="knob"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M7 5 L2 10 L7 15 M13 5 L18 10 L13 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
             <input type="range" id="baRange" min="0" max="100" value="50" aria-label="Before and after comparison: drag left for after, right for before">
-            <div class="ba-nav"><button type="button" id="baPrev" aria-label="Previous photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="baCount">1 / 4</span><button type="button" id="baNext" aria-label="Next photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="ba-nav"><button type="button" id="baPrev" aria-label="Previous photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="baCount">1 / 3</span><button type="button" id="baNext" aria-label="Next photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div>
         </div>
         <div class="res-side panel">
           <div class="res-jobs" role="group" aria-label="Job"></div>
-          <div class="res-meta"><h3 id="resTitle">Toyota RAV4</h3><p id="resSub">SUV / Crossover · Full Detail</p></div>
+          <div class="res-meta"><div class="res-car"><h3 id="resTitle">Nissan Altima</h3><div class="res-carnav" id="resCarNav" hidden><button type="button" id="resCarPrev" aria-label="Previous car"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="resCarN" aria-live="polite">1 of 2</span><button type="button" id="resCarNext" aria-label="Next car"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div><p id="resSub">Sedan / Coupe · Interior</p></div>
           <div class="res-thumbs" id="resThumbs" role="group" aria-label="Photo"></div>
           <div class="res-incl"><h4>Included in this detail</h4><ul id="resIncl"></ul></div>
           <div class="res-cta">
@@ -3130,7 +3141,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       since: "Oct 2026", plan: "Wash + interior, every 2 weeks", planType: "both", planFreq: 2, billDate: "Nov 25", card: "Visa ending 4242",
       next: { date: "Sunday, Nov 8", time: "9:00 AM", what: "Wash + interior · RAV4" },
       history: [
-        { date: "Oct 25, 2026", pkg: "full", size: 1, car: "2021 Toyota RAV4", adds: ["pet"], img: "img/r-rav4-front-after-t.webp", job: 0 },
+        { date: "Oct 25, 2026", pkg: "full", size: 1, car: "2021 Toyota RAV4", adds: ["pet"], img: "img/r-rav4-front-after-t.webp", job: "rav4" },
         { date: "Aug 16, 2026", pkg: "exterior", size: 1, car: "2021 Toyota RAV4", adds: [], img: null }
       ]
     };
@@ -3288,7 +3299,7 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       var ns = e.target.closest("[data-slot]"); if (ns) { var sp = ns.dataset.slot.split("|"); rebook(DEMO.history[0], { date: sp[0], time: +sp[1] }); return; }
       var rb = e.target.closest("[data-rebook]"); if (rb) rebook(DEMO.history[+rb.dataset.rebook]);
       if (e.target.closest("[data-histbook]")) { close(true); window.__bk.open({ step: 1, focusBack: document.querySelector(".acct-btn") }); }
-      var pt = e.target.closest("[data-photos]"); if (pt) { close(); var jb = document.querySelectorAll(".res-jobs button")[+pt.dataset.photos]; if (jb) jb.click(); document.getElementById("results").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
+      var pt = e.target.closest("[data-photos]"); if (pt) { close(); if (window.__resJob) window.__resJob(pt.dataset.photos); document.getElementById("results").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
     });
     document.getElementById("acctPhotos").addEventListener("change", function () {
       var cb = this, on = cb.checked; if (!LIVE) return;
@@ -4161,15 +4172,19 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   });
 
   /* ---------- Results gallery: before / after slider ---------- */
-  var JOBS = [
-    { id: "rav4", name: "Toyota RAV4", isNew: true, size: 1, pkg: "full", shots: [
+  var JOBS = [   // newest first; photos are lined up and cropped, plates/VIN stickers/personal items blurred, never retouched
+    { id: "altima", name: "Nissan Altima", isNew: true, size: 0, pkg: "interior", shots: [
+      { k: "altima-dash", label: "Dash", alt: "Steering wheel, dash and driver seat of a Nissan Altima" },
+      { k: "altima-front", label: "Front seats", alt: "Driver seat and center console of a Nissan Altima, seen from the open door" },
+      { k: "altima-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Nissan Altima" } ] },
+    { id: "rav4", name: "Toyota RAV4", size: 1, pkg: "full", shots: [
       { k: "rav4-dash", label: "Dash", alt: "Steering wheel, dash and center console of a Toyota RAV4" },
       { k: "rav4-front", label: "Front seats", alt: "Front seats and floor of a Toyota RAV4" },
       { k: "rav4-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Toyota RAV4" },
       { k: "rav4-ext", label: "Exterior", alt: "Front of a red Toyota RAV4 in a driveway" } ] }
   ];
-  if (JOBS.length < 2) document.querySelector(".res-jobs").style.display = "none";
-  else { document.getElementById("resH").textContent = "Real jobs. Real driveways."; document.getElementById("resP").textContent = "Unedited photos from recent Apex details. Drag the slider to see the difference."; }
+  document.querySelector(".res-jobs").style.display = "none";   // cars switch from the title row and the photo arrows (no extra space)
+  if (JOBS.length > 1) { document.getElementById("resH").textContent = "Real jobs. Real driveways."; document.getElementById("resP").textContent = "Real photos from recent Apex details, never retouched. Drag the slider to see the difference."; document.getElementById("resCarNav").hidden = false; }
   var ba = document.getElementById("ba"), range = document.getElementById("baRange"), before = document.getElementById("baBefore"), after = document.getElementById("baAfter"),
       handle = document.getElementById("baHandle"), count = document.getElementById("baCount"), nav = document.querySelector(".ba-nav"),
       jobsEl = document.querySelector(".res-jobs"), thumbs = document.getElementById("resThumbs");
@@ -4191,9 +4206,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     };
     if (quiet) go(); else { ba.classList.add("swap"); setTimeout(go, 180); }
     count.textContent = (si + 1) + " / " + job.shots.length;
-    nav.classList.toggle("single", job.shots.length < 2);
-    jobsEl.querySelectorAll("button").forEach(function (b, i) { b.setAttribute("aria-pressed", String(i === ji)); });
-    document.getElementById("resTitle").textContent = job.name;
+    nav.classList.toggle("single", JOBS.reduce(function (n, j) { return n + j.shots.length; }, 0) < 2);
+    document.getElementById("resTitle").innerHTML = job.name + (job.isNew && JOBS.length > 1 ? '<span class="new">New</span>' : "");
+    document.getElementById("resCarN").textContent = (ji + 1) + " of " + JOBS.length;
     document.getElementById("resSub").textContent = SIZES[job.size] + " · " + NAMES[job.pkg];
     // this job's own package and size (audit IA-042)
     window.__resPrice = function () { var j = JOBS[cur.job], now = pkgPrice(j.pkg, j.size), reg = REG[j.pkg][j.size]; document.querySelector(".res-price > span").textContent = NAMES[j.pkg] + " · " + VEH[j.size] + " from"; document.getElementById("resPrice").textContent = "$" + now; var rg = document.getElementById("resReg"); rg.textContent = "$" + reg; rg.hidden = now >= reg; };
@@ -4210,12 +4225,19 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       thumbs.appendChild(b);
     });
   }
-  JOBS.forEach(function (j, i) {
-    var b = document.createElement("button"); b.type = "button"; b.innerHTML = j.name + (j.isNew ? '<span class="new">New</span>' : "");
-    b.addEventListener("click", function () { if (i !== cur.job) { show(i, 0); tweenBA(50, 300); } });
-    jobsEl.appendChild(b);
-  });
-  function step(d) { var n = JOBS[cur.job].shots.length; show(cur.job, (cur.shot + d + n) % n); tweenBA(50, 300); }
+  // the car's name flashes on the photo when the arrows move on to another car
+  var carT = null, carEl = document.getElementById("baCar");
+  function carChip(name) { carEl.textContent = name; carEl.classList.add("on"); clearTimeout(carT); carT = setTimeout(function () { carEl.classList.remove("on"); }, 1600); }
+  function goCar(ji, si) { if (ji === cur.job && si === cur.shot) return; if (ji !== cur.job) carChip(JOBS[ji].name); show(ji, si); tweenBA(50, 300); }
+  // photo arrows: past the last photo of a car go on to the next car (and back from the first to the previous car's last)
+  function step(d) {
+    var j = cur.job, s = cur.shot + d, n = JOBS[j].shots.length;
+    if (s >= n || s < 0) { if (JOBS.length > 1) { j = (j + (s < 0 ? -1 : 1) + JOBS.length) % JOBS.length; s = s < 0 ? JOBS[j].shots.length - 1 : 0; } else s = (s + n) % n; }
+    goCar(j, s);
+  }
+  document.getElementById("resCarPrev").addEventListener("click", function () { goCar((cur.job - 1 + JOBS.length) % JOBS.length, 0); });
+  document.getElementById("resCarNext").addEventListener("click", function () { goCar((cur.job + 1) % JOBS.length, 0); });
+  window.__resJob = function (id) { for (var i = 0; i < JOBS.length; i++) if (JOBS[i].id === id) { goCar(i, 0); return; } };
   document.getElementById("baPrev").addEventListener("click", function () { step(-1); });
   document.getElementById("baNext").addEventListener("click", function () { step(1); });
   range.addEventListener("input", function () { cancelAnimationFrame(anim); setBA(+range.value); });
