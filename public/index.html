@@ -1972,18 +1972,18 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <div class="res reveal" id="res">
         <div class="res-stage">
           <div class="ba" id="ba">
-            <img class="layer after" id="baAfter" src="img/r-altima-dash-after.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
-            <img class="layer before" id="baBefore" src="img/r-altima-dash-before.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
+            <img class="layer after" id="baAfter" src="img/r-rav4-dash-after.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
+            <img class="layer before" id="baBefore" src="img/r-rav4-dash-before.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
             <button type="button" class="label l" data-snap="100">Before</button><button type="button" class="label r" data-snap="0">After</button>
             <div class="ba-car" id="baCar" aria-hidden="true"></div>
             <div class="handle" id="baHandle"><div class="knob"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M7 5 L2 10 L7 15 M13 5 L18 10 L13 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
             <input type="range" id="baRange" min="0" max="100" value="50" aria-label="Before and after comparison: drag left for after, right for before">
-            <div class="ba-nav"><button type="button" id="baPrev" aria-label="Previous photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="baCount">1 / 3</span><button type="button" id="baNext" aria-label="Next photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="ba-nav"><button type="button" id="baPrev" aria-label="Previous photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="baCount">1 / 4</span><button type="button" id="baNext" aria-label="Next photo"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div>
         </div>
         <div class="res-side panel">
           <div class="res-jobs" role="group" aria-label="Job"></div>
-          <div class="res-meta"><div class="res-car"><h3 id="resTitle">Nissan Altima</h3><div class="res-carnav" id="resCarNav" hidden><button type="button" id="resCarPrev" aria-label="Previous car"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="resCarN" aria-live="polite">1 of 2</span><button type="button" id="resCarNext" aria-label="Next car"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div><p id="resSub">Sedan / Coupe · Interior</p></div>
+          <div class="res-meta"><div class="res-car"><h3 id="resTitle">Toyota RAV4</h3><div class="res-carnav" id="resCarNav" hidden><button type="button" id="resCarPrev" aria-label="Previous car"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M12 4 L6 10 L12 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="resCarN" aria-live="polite">1 of 2</span><button type="button" id="resCarNext" aria-label="Next car"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M8 4 L14 10 L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div><p id="resSub">SUV / Crossover · Full Detail</p></div>
           <div class="res-thumbs" id="resThumbs" role="group" aria-label="Photo"></div>
           <div class="res-incl"><h4>Included in this detail</h4><ul id="resIncl"></ul></div>
           <div class="res-cta">
@@ -4172,16 +4172,16 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   });
 
   /* ---------- Results gallery: before / after slider ---------- */
-  var JOBS = [   // newest first; photos are lined up and cropped, plates/VIN stickers/personal items blurred, never retouched
-    { id: "altima", name: "Nissan Altima", isNew: true, size: 0, pkg: "interior", shots: [
-      { k: "altima-dash", label: "Dash", alt: "Steering wheel, dash and driver seat of a Nissan Altima" },
-      { k: "altima-front", label: "Front seats", alt: "Driver seat and center console of a Nissan Altima, seen from the open door" },
-      { k: "altima-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Nissan Altima" } ] },
+  var JOBS = [   // RAV4 first (the bigger difference, Nick Nov 3), newer jobs after with a New tag; photos are lined up and cropped, plates/VIN stickers/personal items blurred, never retouched
     { id: "rav4", name: "Toyota RAV4", size: 1, pkg: "full", shots: [
       { k: "rav4-dash", label: "Dash", alt: "Steering wheel, dash and center console of a Toyota RAV4" },
       { k: "rav4-front", label: "Front seats", alt: "Front seats and floor of a Toyota RAV4" },
       { k: "rav4-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Toyota RAV4" },
-      { k: "rav4-ext", label: "Exterior", alt: "Front of a red Toyota RAV4 in a driveway" } ] }
+      { k: "rav4-ext", label: "Exterior", alt: "Front of a red Toyota RAV4 in a driveway" } ] },
+    { id: "altima", name: "Nissan Altima", isNew: true, size: 0, pkg: "interior", shots: [
+      { k: "altima-dash", label: "Dash", alt: "Steering wheel, dash and driver seat of a Nissan Altima" },
+      { k: "altima-front", label: "Front seats", alt: "Driver seat and center console of a Nissan Altima, seen from the open door" },
+      { k: "altima-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Nissan Altima" } ] }
   ];
   document.querySelector(".res-jobs").style.display = "none";   // cars switch from the title row and the photo arrows (no extra space)
   if (JOBS.length > 1) { document.getElementById("resH").textContent = "Real jobs. Real driveways."; document.getElementById("resP").textContent = "Real photos from recent Apex details, never retouched. Drag the slider to see the difference."; document.getElementById("resCarNav").hidden = false; }
