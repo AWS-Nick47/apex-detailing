@@ -990,7 +990,8 @@ body.bk-open main, body.bk-open header.nav, body.bk-open footer, body.bk-open .p
 .res-meta h3 { margin: 0; font-size: 24px; letter-spacing: -.01em; }
 .res-car { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .res-car h3 { min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.res-car h3 .new { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 2px 7px; border-radius: 999px; }
+.res-meta p .new { display: inline-block; vertical-align: 2px; margin-right: 8px; line-height: 1.5; }
+.res-car h3 .new, .res-meta p .new { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 2px 7px; border-radius: 999px; }
 .res-carnav { display: flex; align-items: center; gap: 2px; flex: none; margin: -6px -8px -6px 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 .res-carnav[hidden] { display: none; }
 .res-carnav button { width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--fg); display: grid; place-items: center; cursor: pointer; }
@@ -1972,8 +1973,8 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       <div class="res reveal" id="res">
         <div class="res-stage">
           <div class="ba" id="ba">
-            <img class="layer after" id="baAfter" src="img/r-rav4-dash-after.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
-            <img class="layer before" id="baBefore" src="img/r-rav4-dash-before.webp" alt="" width="960" height="1200" loading="lazy" decoding="async">
+            <img class="layer after" id="baAfter" src="img/r-rav4-dash-after.webp" sizes="(min-width: 1120px) 640px, (min-width: 761px) calc(100vw - 460px), calc(100vw - 32px)" alt="" width="960" height="1200" loading="lazy" decoding="async">
+            <img class="layer before" id="baBefore" src="img/r-rav4-dash-before.webp" sizes="(min-width: 1120px) 640px, (min-width: 761px) calc(100vw - 460px), calc(100vw - 32px)" alt="" width="960" height="1200" loading="lazy" decoding="async">
             <button type="button" class="label l" data-snap="100">Before</button><button type="button" class="label r" data-snap="0">After</button>
             <div class="ba-car" id="baCar" aria-hidden="true"></div>
             <div class="handle" id="baHandle"><div class="knob"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M7 5 L2 10 L7 15 M13 5 L18 10 L13 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
@@ -4183,9 +4184,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       { k: "rav4-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Toyota RAV4" },
       { k: "rav4-ext", label: "Exterior", alt: "Front of a red Toyota RAV4 in a driveway" } ] },
     { id: "altima", name: "Nissan Altima", isNew: true, size: 0, pkg: "interior", shots: [
-      { k: "altima-dash", label: "Dash", alt: "Steering wheel, dash and driver seat of a Nissan Altima" },
-      { k: "altima-front", label: "Front seats", alt: "Driver seat and center console of a Nissan Altima, seen from the open door" },
-      { k: "altima-rear", label: "Rear seats", alt: "Rear bench seat and floor of a Nissan Altima" } ] }
+      { k: "altima-dash", hd: 1440, label: "Dash", alt: "Steering wheel, dash and driver seat of a Nissan Altima" },
+      { k: "altima-front", hd: 1440, label: "Front seats", alt: "Driver seat and center console of a Nissan Altima, seen from the open door" },
+      { k: "altima-rear", hd: 1440, label: "Rear seats", alt: "Rear bench seat and floor of a Nissan Altima" } ] }
   ];
   document.querySelector(".res-jobs").style.display = "none";   // cars switch from the title row and the photo arrows (no extra space)
   if (JOBS.length > 1) { document.getElementById("resH").textContent = "Real jobs. Real driveways."; document.getElementById("resP").textContent = "Real photos from recent Apex details, never retouched. Drag the slider to see the difference."; document.getElementById("resCarNav").hidden = false; }
@@ -4203,6 +4204,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     var job = JOBS[ji], shot = job.shots[si];
     cur = { job: ji, shot: si };
     var go = function () {
+      // photos with a full-size original also come in a sharper version for big / high-res screens (shot.hd = its width)
+      var set = function (tag) { return shot.hd ? "img/r-" + shot.k + "-" + tag + ".webp 960w, img/r-" + shot.k + "-" + tag + "-hd.webp " + shot.hd + "w" : ""; };
+      after.srcset = set("after"); before.srcset = set("before");
       after.src = "img/r-" + shot.k + "-after.webp"; before.src = "img/r-" + shot.k + "-before.webp";
       after.alt = shot.alt + ", after the detail"; before.alt = shot.alt + ", before the detail";
       var done = 0, fin = function () { if (++done === 2) ba.classList.remove("swap"); };
@@ -4211,9 +4215,9 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
     if (quiet) go(); else { ba.classList.add("swap"); setTimeout(go, 180); }
     count.textContent = (si + 1) + " / " + job.shots.length;
     nav.classList.toggle("single", JOBS.reduce(function (n, j) { return n + j.shots.length; }, 0) < 2);
-    document.getElementById("resTitle").innerHTML = job.name + (job.isNew && JOBS.length > 1 ? '<span class="new">New</span>' : "");
+    document.getElementById("resTitle").textContent = job.name;
     document.getElementById("resCarN").textContent = (ji + 1) + " of " + JOBS.length;
-    document.getElementById("resSub").textContent = SIZES[job.size] + " · " + NAMES[job.pkg];
+    document.getElementById("resSub").innerHTML = (job.isNew && JOBS.length > 1 ? '<span class="new">New</span>' : "") + SIZES[job.size] + " · " + NAMES[job.pkg];   // tag on the subtitle line so the title never wraps on phones
     // this job's own package and size (audit IA-042)
     window.__resPrice = function () { var j = JOBS[cur.job], now = pkgPrice(j.pkg, j.size), reg = REG[j.pkg][j.size]; document.querySelector(".res-price > span").textContent = NAMES[j.pkg] + " · " + VEH[j.size] + " from"; document.getElementById("resPrice").textContent = "$" + now; var rg = document.getElementById("resReg"); rg.textContent = "$" + reg; rg.hidden = now >= reg; };
     window.__resPrice();
