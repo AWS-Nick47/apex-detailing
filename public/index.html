@@ -2512,10 +2512,14 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
   var track = document.getElementById("heroTrack"), hero = document.getElementById("hero");
   var copy = document.getElementById("heroCopy"), hint = document.getElementById("scrollHint");
   var bgImg = document.getElementById("bgImg"), socials = document.getElementById("heroSocials"), ticking = false;
+  var lastP = -1;
   function layoutHero() {
     var range = Math.max(1, track.offsetHeight - hero.offsetHeight);
     var p = reduce ? 0 : Math.min(1, Math.max(0, window.scrollY / range));
     if (document.body.classList.contains("bk-open")) p = 1;   // booking open: photo sits at its fully scrolled blur
+    // past the hero nothing here changes, so don't touch the styles: re-setting the photo's blur every scroll frame made some
+    // phones (Safari) redraw the blurred full-screen photo all the way down the page (Nov 3)
+    if (p === lastP) { ticking = false; return; } lastP = p;
     var z = p * p * (3 - 2 * p), e = p * (2 - p);
     bgImg.style.setProperty("--z", (1 + 0.08 * z).toFixed(4));
     bgImg.style.filter = e > 0.002 ? "blur(" + (14 * e).toFixed(1) + "px) brightness(" + (1 - 0.32 * e).toFixed(3) + ") saturate(" + (1 + 0.1 * e).toFixed(3) + ")" : "";
@@ -4263,11 +4267,20 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
 /* 3D package visualizer. Watches #covArt's data-show / data-size (set by the picker script) and mirrors them in 3D. */
 const art = document.getElementById("covArt"), stage = document.getElementById("stage3d");
 let started = false;
-const io = new IntersectionObserver(es => { for (const e of es) { if (e.isIntersecting && !started) { started = true; boot(); } window.__s3vis = e.isIntersecting; } }, { rootMargin: "500px 0px" });
+// Performance (Nov 3): the one-time setup (WebGL, lighting, first car) is heavy on phones, so it runs while the page is idle
+// and never in the middle of a scroll; the picture is identical, it just stops stealing frames while you scroll.
+let lastScroll = 0; addEventListener("scroll", () => { lastScroll = performance.now(); }, { passive: true });
+const still = (ms = 220) => new Promise(res => { (function chk() { const w = lastScroll + ms - performance.now(); if (w <= 0) res(); else setTimeout(chk, w + 16); })(); });
+const idle = (t = 1200) => new Promise(res => ("requestIdleCallback" in window ? requestIdleCallback(() => res(), { timeout: t }) : setTimeout(res, 60)));
+const calm = async () => { await still(); await idle(); await still(); };   // scrolling has paused and the main thread is free
+const start = async () => { if (started) return; started = true; await calm(); boot(); };
+let wake3d = () => {};   // restarts the 3D frame loop (it sleeps while nothing moves)
+const io = new IntersectionObserver(es => { for (const e of es) { if (e.isIntersecting && !started) start(); window.__s3vis = e.isIntersecting; if (e.isIntersecting) wake3d(); } }, { rootMargin: "500px 0px" });
 io.observe(art);
+addEventListener("load", () => setTimeout(start, 2400), { once: true });   // after the hero intro; before most people scroll down
 // booking overlay: start the viewer if it hasn't started, and show a small copy of it in the booking panel
 let miniStep = 0, miniOn = false, place = null;
-window.__s3boot = () => { if (!started) { started = true; boot(); } };
+window.__s3boot = () => { if (!started) { started = true; boot(); } };   // booking panel: right away
 window.__s3mini = n => { miniStep = n; if (place) place(); };
 
 async function boot() {
@@ -4277,6 +4290,7 @@ async function boot() {
     THREE = await import("three");
     ({ GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js"));
     ({ MeshoptDecoder } = await import("three/addons/libs/meshopt_decoder.module.js"));
+    try { if (MeshoptDecoder.useWorkers) MeshoptDecoder.useWorkers(Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1))); } catch (e) {}   // unpack models off the main thread
     ({ RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js"));
   } catch (e) { console.warn("3D unavailable", e); return; }
   art.classList.add("has3d", "s3wait");
@@ -4285,8 +4299,11 @@ async function boot() {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia("(pointer: coarse)").matches ? 1.5 : 1.75));
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.localClippingEnabled = true;
+  renderer.debug.checkShaderErrors = false;   // reading shader logs forces each shader to finish compiling right away (a freeze); our shaders are fixed
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // redrawn in tick() only when the scene moves
   stage.prepend(renderer.domElement);
+  let redraw = 2; const invalidate = (n = 1) => { redraw = Math.max(redraw, n); renderer.shadowMap.needsUpdate = true; wake3d(); };
   const scene = new THREE.Scene();
   const table = new THREE.Group(); scene.add(table);   // slow 360 turntable the cars sit on
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.02).texture;
@@ -4354,7 +4371,7 @@ async function boot() {
     const glassMat = new THREE.MeshPhysicalMaterial({ name: "Windows", color: 0x07080a, roughness: .08, metalness: 0, specularIntensity: .35, envMapIntensity: .6, transparent: true, side: THREE.DoubleSide });
     const paint = new THREE.MeshPhysicalMaterial({ color: cfg.color, metalness: .08, roughness: .28, clearcoat: 1, clearcoatRoughness: .03, envMapIntensity: 1.1 });
     const tl = new THREE.TextureLoader(), texFor = {};
-    for (const [n, f] of Object.entries(cfg.tex)) { const t = tl.load(f); t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texFor[n] = t; }
+    for (const [n, f] of Object.entries(cfg.tex)) { const t = tl.load(f, () => invalidate(2)); t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texFor[n] = t; }
     const cabinZone = new Set(["Interior", "Infotainment", "BlueAmbientLED"]), inWheel = new Map();
     model.traverse(o => { if (!o.isMesh) return; let p = o.parent, w = false; while (p) { if (pivots.includes(p)) w = true; p = p.parent; }
       const e = inWheel.get(o.material) || [0, 0]; e[w ? 0 : 1]++; inWheel.set(o.material, e); });
@@ -4409,7 +4426,9 @@ async function boot() {
   }
 
   const ORDER = ["sedan", "suv", "truck"], cars = {}, pending = {};
-  const loadCar = k => pending[k] || (pending[k] = loadModelCar(MODELS[k]).then(c => (cars[k] = c)).catch(e => { console.warn("model failed", k, e); }));
+  const loadCar = k => pending[k] || (pending[k] = loadModelCar(MODELS[k]).then(async c => {
+    try { await renderer.compileAsync(c.root, camera, scene); } catch (e) {}   // shaders build without blocking (KHR_parallel_shader_compile)
+    return (cars[k] = c); }).catch(e => { console.warn("model failed", k, e); }));
   const S = { pkg: art.dataset.show || "full", car: ORDER[+art.dataset.size || 0] };
   const TARGET = { exterior: { ext: 1, glass: 1, far: .5, wheels: 1, cabin: 1, door: 0 }, full: { ext: 1, glass: 1, far: .5, wheels: 1, cabin: 1, door: 1 }, interior: { ext: .07, glass: 0, far: 0, wheels: .28, cabin: 1, door: 1 } };
   const Z = { ...TARGET[S.pkg] };
@@ -4441,13 +4460,14 @@ async function boot() {
   // doors are held shut while a car is driving; the turntable spins only once a car has settled
   let hold = true, spinOn = false, spinAng = 0, unwind = null, busy = false, wantCar = null;
   const SPIN = Math.PI * 2 / 48;   // one full turn every 48 s
-  const retarget = d => { zt = { from: { ...Z }, t0: now, d }; };
+  const retarget = d => { zt = { from: { ...Z }, t0: now, d }; wake3d(); };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const waitSim = async sec => { const t = now + sec; while (now < t) await sleep(40); };
+  let simWait = 0;   // things waiting on the animation clock keep the loop running
+  const waitSim = async sec => { const t = now + sec; simWait++; wake3d(); try { while (now < t) await sleep(40); } finally { simWait--; } };
   const unwindSpin = () => new Promise(res => {
     const to = Math.round(spinAng / (Math.PI * 2)) * Math.PI * 2, delta = Math.abs(to - spinAng);
     if (delta < .002 || reduce) { spinAng = to; res(); return; }
-    unwind = { from: spinAng, to, t0: now, d: Math.max(.6, Math.min(1.6, delta / 1.6)), res };
+    unwind = { from: spinAng, to, t0: now, d: Math.max(.6, Math.min(1.6, delta / 1.6)), res }; wake3d();
   });
   const waitArrive = async k => { while (!cars[k] || (cars[k].anim && !cars[k].anim.arrived)) await sleep(40); };
   function settled() {
@@ -4472,8 +4492,8 @@ async function boot() {
     settled();
   }
   function goCam(instant) { const car = cars[S.car]; if (!car) return; const to = camPose(car, S.pkg);
-    if (instant || !cam || reduce) { cam = { p: to.p.clone(), t: to.t.clone() }; camAnim = null; return; }
-    camAnim = { from: { p: cam.p.clone(), t: cam.t.clone() }, to, t0: now, d: 1.0 }; }
+    if (instant || !cam || reduce) { cam = { p: to.p.clone(), t: to.t.clone() }; camAnim = null; wake3d(); return; }
+    camAnim = { from: { p: cam.p.clone(), t: cam.t.clone() }, to, t0: now, d: 1.0 }; wake3d(); }
   const ease = t => .5 - .5 * Math.cos(Math.PI * t);
 
   async function showCar(k) {
@@ -4484,7 +4504,7 @@ async function boot() {
     const fresh = !(incoming.root.visible && incoming.x < 0.5);
     incoming.root.visible = true;
     if (fresh) { incoming.x = incoming.prevX = 16; incoming.root.position.x = 16; }
-    const first = !cam; incoming.anim = { type: "in", t0: now + (first ? .15 : .22), x0: incoming.x };
+    const first = !cam; incoming.anim = { type: "in", t0: now + (first ? .15 : .22), x0: incoming.x }; wake3d();
     if (first) goCam(true); else setTimeout(() => goCam(false), 120);
   }
 
@@ -4518,7 +4538,7 @@ async function boot() {
   }
   let host = stage;
   function resize() { const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (cam && !camAnim) goCam(true); }
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (cam && !camAnim) goCam(true); invalidate(2); }
   const ro = new ResizeObserver(resize); ro.observe(stage); resize();
   // move the one canvas between the Services section and the booking panel (no second 3D context, no second download)
   place = () => {
@@ -4544,10 +4564,25 @@ async function boot() {
   }).observe(art, { attributes: true, attributeFilter: ["data-show", "data-size"] });
 
   const clock = new THREE.Clock();
+  // what's on screen: the camera, and everything that moves or casts shadows. A frame is drawn only when one of them changed
+  // (or a texture/resize asked for it), so a still car costs nothing while you scroll. Same picture as drawing every frame.
+  let lastScene = "", lastCam = "", paused = true;
+  const sceneSig = () => { let s = table.rotation.y.toFixed(5); for (const key in cars) { const c = cars[key]; s += "|" + (c.root.visible ? 1 : 0) + "," + c.root.position.x.toFixed(4) + "," + c.root.rotation.z.toFixed(5) + "," + c.ang.toFixed(4); }
+    for (const z in Z) s += "|" + Z[z].toFixed(4); return s; };
+  const camSig = () => cam.p.x.toFixed(4) + "," + cam.p.y.toFixed(4) + "," + cam.p.z.toFixed(4) + "," + cam.t.x.toFixed(4) + "," + cam.t.y.toFixed(4) + "," + cam.t.z.toFixed(4) + "," + camera.aspect.toFixed(5);
+  // The loop runs only while something moves (or waits on the animation clock) and sleeps otherwise: a loop that asked for
+  // a frame forever kept the browser doing full frames (and repainting other parts of the page) even with nothing changing.
+  let looping = false;
+  wake3d = () => { if (looping) return; looping = true; clock.getDelta(); requestAnimationFrame(tick); };
+  new MutationObserver(() => { if (!document.body.classList.contains("acct-open")) wake3d(); }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   function tick() {
-    requestAnimationFrame(tick);
+    let again = false;
+    try { again = step(); } finally { if (again) requestAnimationFrame(tick); else looping = false; }
+  }
+  function step() {
     const dt = Math.min(clock.getDelta(), .1);
-    if (!cam || (!miniOn && (window.__s3vis === false || document.body.classList.contains("acct-open")))) return;   // paused while scrolled away or covered by an overlay (unless shown in the booking panel)
+    if (!cam || (!miniOn && (window.__s3vis === false || document.body.classList.contains("acct-open")))) { paused = true; return false; }   // asleep while scrolled away or covered by an overlay (unless shown in the booking panel)
+    if (paused) { paused = false; redraw = Math.max(redraw, 2); renderer.shadowMap.needsUpdate = true; }
     now += dt; animateCars(); applyZones(dt);
     if (unwind) { const k = Math.min(1, (now - unwind.t0) / unwind.d); spinAng = unwind.from + (unwind.to - unwind.from) * ease(k);
       if (k >= 1) { const r = unwind.res; unwind = null; r(); } }
@@ -4555,15 +4590,21 @@ async function boot() {
     table.rotation.y = spinAng;
     if (camAnim) { const k = Math.min(1, (now - camAnim.t0) / camAnim.d), e = ease(k);
       cam.p.lerpVectors(camAnim.from.p, camAnim.to.p, e); cam.t.lerpVectors(camAnim.from.t, camAnim.to.t, e); if (k >= 1) camAnim = null; }
-    camera.position.copy(cam.p); camera.lookAt(cam.t); renderer.render(scene, camera);
+    camera.position.copy(cam.p); camera.lookAt(cam.t);
+    const sg = sceneSig(), cg = camSig();
+    if (sg !== lastScene) { renderer.shadowMap.needsUpdate = true; lastScene = sg; redraw = Math.max(redraw, 1); }
+    if (cg !== lastCam) { lastCam = cg; redraw = Math.max(redraw, 1); }
+    if (redraw > 0) { renderer.render(scene, camera); redraw--; }
+    let moving = false; for (const key in cars) if (cars[key].anim) moving = true;
+    return redraw > 0 || moving || !!camAnim || !!zt || !!unwind || (spinOn && !reduce) || simWait > 0;
   }
-  tick();
+  wake3d();
   await showCar(S.car);
   art.classList.remove("s3wait"); const ld = stage.querySelector(".s3-load"); if (ld) { ld.style.opacity = 0; setTimeout(() => ld.remove(), 500); }
   if (miniStep) place();
   if (!cars[S.car]) { art.classList.remove("has3d"); return; }   // model failed: fall back to the drawing
   waitArrive(S.car).then(() => { if (!busy) settled(); });
-  for (const k of ORDER) await loadCar(k);   // fetch the other cars in the background so switching stays instant (phones too, once the first car is up; Nick's call, audit IA-052)
+  for (const k of ORDER) { if (!pending[k]) await calm(); await loadCar(k); }   // fetch the other cars in the background so switching stays instant (phones too, once the first car is up; Nick's call, audit IA-052) — between scrolls, not during them
 }
 window.__s3 = () => ({ ok: true });
 </script>
