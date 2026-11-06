@@ -156,7 +156,7 @@ export async function notifyNick(env, subject, list) {
 export async function summary(env, m, customer) {
   if (!m) return null;
   const today = todayNY().key, card = customer.card ? JSON.parse(customer.card) : null;
-  const visits = await env.DB.prepare("SELECT id, token, status, start_utc, end_utc, day, pkg FROM bookings WHERE membership_id = ? AND kind = 'member' ORDER BY start_utc").bind(m.id).all();
+  const visits = await env.DB.prepare("SELECT id, token, status, start_utc, end_utc, day, pkg, started_at, completed_at FROM bookings WHERE membership_id = ? AND kind = 'member' ORDER BY start_utc").bind(m.id).all();
   const list = (visits.results || []);
   const inPeriod = m.period_start ? list.filter(v => v.day >= m.period_start && v.day < m.period_end) : [];   // skipped visits count as used (they earn a credit instead)
   const allowed = m.period_start && ["active", "ending", "paused"].includes(m.status) && today < m.period_end && m.period_type !== "off" ? m.freq : 0;
@@ -179,7 +179,7 @@ export async function summary(env, m, customer) {
     winterNow: winterDay(today), winterEnds: winterDay(today) ? nextFlip(today, 400) : null, winterStarts: winterDay(today) ? null : nextFlip(today, 400),
     fullBack: winterDay(today) && m.type !== "int" ? billOnOrAfter(m, nextFlip(today, 400) || today) : null,
     upgrade: await upgradeInfo(env, m, today),
-    upcoming: list.filter(v => v.status === "confirmed" && v.end_utc > Date.now()).map(v => ({ id: v.id, start: v.start_utc, end: v.end_utc, day: v.day, pkg: v.pkg, manage: env.SITE_URL + "/b/" + v.token })),
+    upcoming: list.filter(v => v.status === "confirmed" && !v.completed_at && !v.started_at && v.end_utc > Date.now()).map(v => ({ id: v.id, start: v.start_utc, end: v.end_utc, day: v.day, pkg: v.pkg, manage: env.SITE_URL + "/b/" + v.token })),
     canPause: m.status === "active" && m.payments_made >= MEM.minPayments
   };
 }

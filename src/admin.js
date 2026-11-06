@@ -121,7 +121,7 @@ export async function adminApi(req, env, url, H, who) {
   if (p === "/home" && M === "GET") {
     const now = Date.now(), today = todayKey();
     const next = (await env.DB.prepare("SELECT * FROM bookings WHERE status = 'confirmed' AND ((end_utc > ? AND completed_at IS NULL) OR (day = ? AND started_at IS NOT NULL AND completed_at IS NULL)) ORDER BY start_utc LIMIT 5").bind(now, today).all()).results || [];
-    const unacked = (await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE status = 'confirmed' AND acked_at IS NULL AND end_utc > ?").bind(now).first()).n;
+    const unacked = (await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE status = 'confirmed' AND acked_at IS NULL AND completed_at IS NULL AND end_utc > ?").bind(now).first()).n;
     const unpaid = (await env.DB.prepare("SELECT id, ack_token, pkg, kind, name, day, quote FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND paid_at IS NULL AND end_utc < ? ORDER BY start_utc DESC LIMIT 10").bind(now).all()).results || [];
     const pastDue = (await env.DB.prepare("SELECT COUNT(*) n FROM memberships WHERE status = 'past_due'").first()).n;
     const month = today.slice(0, 7), m0 = nyToUtc(month + "-01", 0);
@@ -186,7 +186,8 @@ export async function adminApi(req, env, url, H, who) {
 
   if (p === "/jobs" && M === "GET") {
     const scope = url.searchParams.get("scope") || "upcoming", now = Date.now(), lim = Math.max(20, Math.min(1000, +url.searchParams.get("limit") || 100));
-    const q = scope === "past" ? "status = 'confirmed' AND end_utc <= ? ORDER BY start_utc DESC" : scope === "cancelled" ? "status = 'cancelled' AND ? > 0 ORDER BY COALESCE(cancelled_at, start_utc) DESC" : "status = 'confirmed' AND end_utc > ? ORDER BY start_utc";
+    // a job marked Done is past even if its booked time hasn't come yet
+    const q = scope === "past" ? "status = 'confirmed' AND (completed_at IS NOT NULL OR end_utc <= ?) ORDER BY start_utc DESC" : scope === "cancelled" ? "status = 'cancelled' AND ? > 0 ORDER BY COALESCE(cancelled_at, start_utc) DESC" : "status = 'confirmed' AND completed_at IS NULL AND end_utc > ? ORDER BY start_utc";
     const r = (await env.DB.prepare("SELECT * FROM bookings WHERE " + q + " LIMIT " + (lim + 1)).bind(now).all()).results || [];
     return json({ more: r.length > lim, jobs: await withThumbs(env, r.slice(0, lim).map(b => jobRow(b, H, true))) });
   }

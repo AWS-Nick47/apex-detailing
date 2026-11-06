@@ -2,6 +2,7 @@
 import { squareOn, saveCard, charge, ensureSquareCustomer } from "./square.js";
 import { send, layout, rows, buttons, hero, para, note, heading, h } from "./email.js";
 import { TAX, taxCents } from "./pricing.js";
+import { finishedEarly } from "./jobtime.js";
 
 const methodLabel = m => m === "card_on_file" ? "card on file" : m === "online" ? "paid online" : /^in_person/.test(m || "") ? "in person (" + (m.split(":")[1] || "") + ")" : (m || "");
 const money = c => "$" + (c / 100).toFixed(c % 100 ? 2 : 0);
@@ -86,7 +87,8 @@ const BUSY_MSG = "A payment for this job is going through right now. Refresh thi
 // Used by the job page (forms) and the owner dashboard (JSON). input: { amount, how, big }. Returns { ok, msg }.
 export async function jobAction(env, b, action, input, H) {
   input = input || {};
-  const doneAt = b.start_utc <= Date.now() ? Date.now() : null;   // paid before the job starts (prepay): not done yet
+  const wasDone = !!b.completed_at;
+  const doneAt = b.started_at || b.start_utc <= Date.now() ? Date.now() : null;   // paid before the job starts (prepay): not done yet; paid once started: done
   const c = await customerFor(env, b), card = b.card ? JSON.parse(b.card) : null;
   let msg = "That can't be done for this job right now.", ok = false, payLink = null;
   if (action === "weather" && b.status === "confirmed" && !b.paid_at) {
@@ -141,6 +143,7 @@ export async function jobAction(env, b, action, input, H) {
     }
   }
 
+  if (ok && !wasDone && b.completed_at) await finishedEarly(env, b, b.completed_at, H && H.calSave ? x => H.calSave(env, x) : null).catch(e => console.log("retime failed", e.message));
   return { ok, msg, payLink };
 }
 
@@ -260,7 +263,7 @@ export async function payPage(req, env, url, H) {
   </script>`));
 }
 
-export async function payApi(req, env, url) {
+export async function payApi(req, env, url, H) {
   const t = url.pathname.split("/")[3] || "";
   const b = /^[a-f0-9]{36}$/.test(t) ? await env.DB.prepare("SELECT * FROM bookings WHERE pay_token = ?").bind(t).first() : null;
   if (!b) return json({ error: "Link not found." }, 404);
@@ -289,7 +292,8 @@ export async function payApi(req, env, url) {
     const B = bill(b), due = B.total;
     const p = await charge(env, { source, amount: due + tip, customerId: sqCust, reference: b.id, note: "Apex Detailing " + jobName(b) + " · " + b.id + " · " + money(B.sub) + " + " + money(B.tax) + " " + TAX.name + (tip ? " + " + money(tip) + " tip" : ""), email: b.email, idem: "pay-" + b.id + "-" + (due + tip) }); charged = true;
     await env.DB.prepare("UPDATE bookings SET paid_at = ?, paid_method = 'online', payment_id = ?, receipt_url = ?, final_cents = ?, tax_cents = ?, tip_cents = ?, completed_at = COALESCE(completed_at, ?)" + (await clearClaim(env)) + " WHERE id = ?")
-      .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, b.start_utc <= Date.now() ? Date.now() : null, b.id).run();
+      .bind(Date.now(), p.id, p.receipt, B.sub, B.tax, tip, b.started_at || b.start_utc <= Date.now() ? Date.now() : null, b.id).run();
+    if (!b.completed_at && (b.started_at || b.start_utc <= Date.now())) await finishedEarly(env, Object.assign(b, { completed_at: Date.now() }), Date.now(), H && H.calSave ? x => H.calSave(env, x) : null).catch(e => console.log("retime failed", e.message));
     await emailReceipt(env, Object.assign(b, { tip_cents: tip }), { amount: B.sub, tax: B.tax, tip, method: (p.brand || "Card") + " ending " + (p.last4 || ""), receipt: p.receipt, offerTip: false }).catch(() => {});
     return json({ ok: true, message: b.email && !/\.invalid$/i.test(b.email) ? "We emailed your receipt to " + b.email + "." : "Thanks for choosing Apex!" });
   } catch (e) { if (!charged) await releaseBill(env, b.id); return json({ error: charged ? "Your payment went through, but we couldn't save it. Please text us at (732) 206-7084 so we can send your receipt." : e.message }, charged ? 500 : 402); }

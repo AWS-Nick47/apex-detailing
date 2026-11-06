@@ -55,7 +55,7 @@ async function cachedBusy(env, fromMs, toMs) {
   return r.results || [];
 }
 async function jobsBetween(env, fromMs, toMs, exceptId) {
-  const r = await env.DB.prepare("SELECT id, start_utc, end_utc FROM bookings WHERE status = 'confirmed' AND end_utc > ? AND start_utc < ?").bind(fromMs, toMs).all();
+  const r = await env.DB.prepare("SELECT id, start_utc, end_utc FROM bookings WHERE status = 'confirmed' AND completed_at IS NULL AND end_utc > ? AND start_utc < ?").bind(fromMs, toMs).all();   // a finished job frees its time
   return (r.results || []).filter(x => x.id !== exceptId);
 }
 
@@ -251,7 +251,7 @@ async function emailNick(env, b, kind, extra) {
 // Two bookings saved at nearly the same moment for overlapping times: the later one steps back (audit IA-038).
 async function lostRace(env, b) {
   const gap = RULES.gapMin * 60000;
-  const other = await env.DB.prepare("SELECT id FROM bookings WHERE status = 'confirmed' AND id != ? AND start_utc < ? AND end_utc > ? AND (created_at < ? OR (created_at = ? AND id < ?)) LIMIT 1")
+  const other = await env.DB.prepare("SELECT id FROM bookings WHERE status = 'confirmed' AND completed_at IS NULL AND id != ? AND start_utc < ? AND end_utc > ? AND (created_at < ? OR (created_at = ? AND id < ?)) LIMIT 1")
     .bind(b.id, b.end_utc + gap, b.start_utc - gap, b.created_at, b.created_at, b.id).first();
   return !!other;
 }
@@ -330,6 +330,12 @@ function prefsHtml(b) {
 async function managePage0(env, b, msg) {
   if (b.status === "cancelled") return b.kind === "member" ? page("Skipped", `<h1>This visit is skipped</h1><p class="sub">${msg ? h(msg) + " " : ""}It counts as this month's visit. <a href="/#account" style="color:#ededed">Your account</a> shows your membership and next visits.</p>${summaryCard(b)}`)
     : page("Cancelled", `<h1>This booking is cancelled</h1><p class="sub">${msg ? h(msg) + " " : ""}Want a new time? <a href="/#book" style="color:#ededed">Book again</a>.</p>${summaryCard(b)}`);
+  // started or finished (Nick's status on the job): nothing left to change or cancel online
+  if (b.completed_at || b.started_at) {
+    const done = !!b.completed_at, what = b.kind === "member" ? "visit" : "detail";
+    return page(done ? "Your " + what + " is done" : "We're on it", `<h1>${done ? "Your " + what + " is done" : "We're working on it"}</h1><p class="sub">${h(whenText(b))}</p>${msg ? `<p class="note" style="color:#c8f7c5">${h(msg)}</p>` : ""}${summaryCard(b)}` +
+      `<p class="note" style="margin-top:18px">${done ? (b.photos_sent_at ? "Thanks for choosing Apex! Your before and after photos are below." : "Thanks for choosing Apex! We'll email your before and after photos.") : "We've started on your " + h(pkgName(b)) + ". Questions? Text us at <a href=\"sms:7322067084\" style=\"color:#ededed\">(732) 206-7084</a>."}</p>`);
+  }
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
   const head = `<h1>Your ${h(pkgName(b))}</h1><p class="sub">${h(whenText(b))}</p>${msg ? `<p class="note" style="color:#c8f7c5">${h(msg)}</p>` : ""}${summaryCard(b)}`;
   const member = b.kind === "member" ? await env.DB.prepare("SELECT * FROM memberships WHERE id = ?").bind(b.membership_id).first() : null;
@@ -354,6 +360,7 @@ async function managePage0(env, b, msg) {
     : `<p class="note">No other open times in the next 3 weeks. Text us at (732) 206-7084 and we'll work something out.</p>`;
   const firstOf = await env.DB.prepare("SELECT * FROM memberships WHERE qualifying_booking = ? AND status IN ('pending','active') AND payments_made = 0").bind(b.id).first();
   const memWarn = firstOf ? `<p class="note" style="color:#ffd27a">This detail starts your Apex Membership (${h(planLabel(firstOf.type, firstOf.freq, firstOf.size))}). Cancelling it cancels the membership too. You won't be charged. Moving it to a new time keeps the membership and moves its first charge.</p>` : "";
+  if (b.paid_at) return page("Your booking", head + `<h2>Pick a new time</h2>${pick}<h2>Cancel</h2><p class="note">It's already paid, so to cancel, text or call us at <a href="sms:7322067084" style="color:#ededed">(732) 206-7084</a> and we'll refund you.</p>`);
   return page("Your booking", head + `<h2>Pick a new time</h2>${pick}<h2>Cancel</h2>${memWarn}<form method="post" action="/b/${b.token}/cancel" onsubmit="return confirm('${firstOf ? "Cancel this detail and your Apex Membership?" : "Cancel this detail?"}')"><button class="btn d" style="width:100%">Cancel my detail</button></form><p class="note">Free to change or cancel up to 24 hours before.</p>`);
 }
 
@@ -386,7 +393,7 @@ async function api(req, env, url) {
     if (!(await humanOk(env, body.ts, ipOf(req), url.hostname))) return json({ error: HUMAN_MSG, needHuman: true }, 403);
     if (limitsOn(env, req)) {   // at most 3 upcoming details per email and per phone number
       const digits = f.phone.replace(/\D/g, "").slice(-10);
-      const up = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND end_utc > ? AND (email = ? OR substr(replace(replace(replace(replace(replace(phone,'(',''),')',''),' ',''),'-',''),'+',''), -10) = ?)").bind(Date.now(), normEmail(f.email), digits).first();
+      const up = await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE status = 'confirmed' AND kind != 'member' AND completed_at IS NULL AND end_utc > ? AND (email = ? OR substr(replace(replace(replace(replace(replace(phone,'(',''),')',''),' ',''),'-',''),'+',''), -10) = ?)").bind(Date.now(), normEmail(f.email), digits).first();
       if (up.n >= 3) return json({ error: "You already have 3 upcoming details booked. Text us at (732) 206-7084 to add another." }, 429);
     }
     if (nyToUtc(f.day, f.start) < Date.now() + RULES.noticeHours * 3600e3) return json({ error: "That time is less than " + RULES.noticeHours + " hours away or has passed. Please pick another time.", taken: true }, 409);
@@ -527,7 +534,7 @@ async function api(req, env, url) {
     try { const card = await saveCard(env, c, String(body.token || ""), String(body.postal || "").slice(0, 10)); return json({ ok: true, card: { brand: card.brand, last4: card.last4 } }); }
     catch (e) { return json({ error: e.message }, 402); }
   }
-  if (p.startsWith("/api/pay/") && req.method === "POST") return payApi(req, env, url);
+  if (p.startsWith("/api/pay/") && req.method === "POST") return payApi(req, env, url, { calSave: (E, b) => calConfigured(E) ? calSave(E, b) : null });
 
   // (the old public /api/status moved to /api/admin/status, behind Cloudflare Access: audit IA-035)
 
@@ -700,7 +707,7 @@ export async function cancelByUs(env, b) {
 async function reminders(env) {
   const now = utcToNy(Date.now()); if (now.min < 18 * 60) return;
   const tmr = addDays(now.key, 1);
-  const r = await env.DB.prepare("SELECT * FROM bookings WHERE status = 'confirmed' AND day = ? AND remind = 1 AND reminded_at IS NULL").bind(tmr).all();
+  const r = await env.DB.prepare("SELECT * FROM bookings WHERE status = 'confirmed' AND day = ? AND remind = 1 AND reminded_at IS NULL AND started_at IS NULL AND completed_at IS NULL").bind(tmr).all();
   for (const b of r.results || []) {
     const res = await emailCustomer(env, b, "remind").catch(e => ({ error: e.message }));
     if (res && res.error) { console.log("reminder failed, will retry", b.id, String(res.error).slice(0, 200)); continue; }   // try again on the next run
@@ -758,6 +765,8 @@ async function manage(req, env, url) {
     return backTo(b, "scent", "#scent");
   }
   if (b.status !== "confirmed") return html(await managePage(env, b));
+  if (b.completed_at || b.started_at) return html(await managePage(env, b, b.completed_at ? "This one's already done, so it can't be changed." : "We've already started, so it can't be changed online."));
+  if (m[2] === "cancel" && b.paid_at && b.kind !== "member") return html(await managePage(env, b, "It's already paid, so text us at (732) 206-7084 to cancel and we'll refund you."));
   const hoursLeft = (b.start_utc - Date.now()) / 3600e3;
   if (hoursLeft < RULES.noticeHours && !(b.kind === "member" && m[2] === "cancel")) return html(await managePage(env, b, "It's too close to change online."));
   if (fixedLength(b)) return html(await managePage(env, b, "Text us to change this one."));
@@ -852,7 +861,7 @@ async function handle(req, env) {
         const who = await accessUser(req, env).catch(e => { console.log("job auth error", e.message); return null; });
         if (!who) return html(page("Owner only", "<h1>Owner only</h1><p class='sub'>Sign in through Cloudflare Access to open this job.</p>"), 403);
         if (url.pathname.startsWith("/ack/")) return await ack(req, env, url);
-        return await jobRoute(req, env, url, { page, summaryCard, whenText, cancelByUs, pkgName });
+        return await jobRoute(req, env, url, { page, summaryCard, whenText, cancelByUs, pkgName, calSave: OWNER_H.calSave });
       }
       if (url.pathname.startsWith("/pay/")) return await payPage(req, env, url, { page, summaryCard, whenText });
       if ((url.pathname === "/" || url.pathname === "/index.html") && (req.method === "GET" || req.method === "HEAD")) return await homePage(req, env);

@@ -9,6 +9,7 @@ import { normEmail, newId } from "./accounts.js";
 import { squareOn, listPayments, listPayouts } from "./square.js";
 import { currentSettings, saveSettings, resetSettings, validate as checkSettings, defaultWinter } from "./settings.js";
 import { jobAction } from "./pay.js";
+import { finishedEarly, backToBooked } from "./jobtime.js";
 import { NO_SCENT, scentApplies, scentFor, scentList, pickScent, photoStart, setPhotoPref, photoPref } from "./prefs.js";
 import { photoState, setAngle, addAngle, photoFile, hidePhoto, deletePhoto, deleteJobPhotos, sendPhotosEmail, storageOn } from "./photos.js";
 
@@ -356,20 +357,23 @@ async function cancelJob(env, H, b, body, who) {
   return json({ ok: true, credit: credit / 100, membershipCancelled: !!memC });
 }
 
-async function setStatus(env, b, to, who) {
+async function setStatus(env, H, b, to, who) {
   if (b.status !== "confirmed") return bad("This job is cancelled.");
-  const now = Date.now();
+  const now = Date.now(); let moved = null, restored = null;
   if (to === "in_progress") { if (b.completed_at) return bad("It's already done."); await env.DB.prepare("UPDATE bookings SET started_at = COALESCE(started_at, ?) WHERE id = ?").bind(now, b.id).run(); }
   else if (to === "scheduled") { if (b.completed_at) return bad("It's already done."); await env.DB.prepare("UPDATE bookings SET started_at = NULL WHERE id = ?").bind(b.id).run(); }
   else if (to === "done") {
     if (b.kind === "member") await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), started_at = COALESCE(started_at, ?), paid_at = COALESCE(paid_at, ?), paid_method = 'membership', final_cents = 0 WHERE id = ?").bind(now, now, now, b.id).run();
     else await env.DB.prepare("UPDATE bookings SET completed_at = COALESCE(completed_at, ?), started_at = COALESCE(started_at, ?) WHERE id = ?").bind(now, now, b.id).run();
+    if (!b.completed_at) moved = await finishedEarly(env, b, now, x => H.calSave(env, x));
   } else if (to === "not_done") {
     if (b.paid_at && b.kind !== "member") return bad("It's paid, so it stays done.");
     await env.DB.prepare("UPDATE bookings SET completed_at = NULL" + (b.kind === "member" ? ", paid_at = NULL, paid_method = NULL, final_cents = NULL" : "") + " WHERE id = ?").bind(b.id).run();
+    b.completed_at = null; restored = await backToBooked(env, b, x => H.calSave(env, x));
   } else return bad("Unknown status.");
-  await ownerLog(env, who, { in_progress: "Started the job", scheduled: "Moved back to scheduled", done: "Marked done", not_done: "Marked not done" }[to], "j:" + b.id);
-  return json({ ok: true });
+  await ownerLog(env, who, { in_progress: "Started the job", scheduled: "Moved back to scheduled", done: "Marked done", not_done: "Marked not done" }[to] +
+    (moved ? " (finished early: moved to when it happened, " + moved + ")" : restored ? " (back to its booked time, " + restored + ")" : ""), "j:" + b.id);
+  return json({ ok: true, movedTo: moved, restoredTo: restored });
 }
 
 async function deleteJobRow(env, b, who) {
@@ -528,7 +532,7 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
         await env.DB.batch([env.DB.prepare("DELETE FROM vehicles WHERE customer_id = ?").bind(id), env.DB.prepare("DELETE FROM sessions WHERE customer_id = ?").bind(id), env.DB.prepare("DELETE FROM customers WHERE id = ?").bind(id)]);
         return json({ ok: true, deleted: true });
       }
-      const live = (await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE (customer_id = ? OR email = ?) AND status = 'confirmed' AND end_utc > ?").bind(id, c.email, Date.now()).first()).n;
+      const live = (await env.DB.prepare("SELECT COUNT(*) n FROM bookings WHERE (customer_id = ? OR email = ?) AND status = 'confirmed' AND completed_at IS NULL AND end_utc > ?").bind(id, c.email, Date.now()).first()).n;
       const act = await activeFor(env, id);
       if (live || act) return bad("They have " + (live ? live + " upcoming job" + (live > 1 ? "s" : "") : "an active Apex Membership") + ". Cancel " + (live ? "those" : "it") + " first.", 409);
       await env.DB.prepare("UPDATE customers SET archived_at = ?, updated_at = ? WHERE id = ?").bind(Date.now(), Date.now(), id).run();
@@ -584,7 +588,7 @@ export async function ownerApi(req, env, url, H, p, M, body, who) {
     if (sub === "edit" && M === "POST") return editJob(env, H, b, body, who);
     if (sub === "move" && M === "POST") return moveJob(env, H, b, body, who);
     if (sub === "cancel" && M === "POST") return cancelJob(env, H, b, body, who);
-    if (sub === "status" && M === "POST") return setStatus(env, b, String(body.to || ""), who);
+    if (sub === "status" && M === "POST") return setStatus(env, H, b, String(body.to || ""), who);
     if (sub === "pay" && M === "POST") {
       const r = await jobAction(env, b, String(body.action || ""), { amount: body.amount, how: body.how, tip: body.tip, big: body.big ? "1" : "0" }, H);
       if (r.ok) await ownerLog(env, who, r.msg, "j:" + b.id);
