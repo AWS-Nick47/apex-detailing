@@ -4192,10 +4192,10 @@ footer { border-top: 1px solid var(--line); padding-block: 48px 64px; color: var
       { k: "altima-dash", hd: 1440, label: "Dash", alt: "Steering wheel, dash and driver seat of a Nissan Altima" },
       { k: "altima-front", hd: 1440, label: "Front seats", alt: "Driver seat and center console of a Nissan Altima, seen from the open door" },
       { k: "altima-rear", hd: 1440, label: "Rear seats", alt: "Rear bench seat and floor of a Nissan Altima" } ] },
-    { id: "crv", name: "Honda CR-V", isNew: true, size: 1, pkg: "interior", shots: [   // Nov 5; afters shot after dark (white balance corrected only)
-      { k: "crv-front", hd: 1440, label: "Front seats", alt: "Driver and passenger seats of a Honda CR-V, seen from the open driver door" },
-      { k: "crv-rear", hd: 1440, label: "Rear seats", alt: "Rear bench seat and floor of a Honda CR-V" },
-      { k: "crv-dash", hd: 1440, label: "Dash", alt: "Steering wheel, dash and driver seat of a Honda CR-V" } ] }
+    { id: "crv", name: "Honda CR-V", isNew: true, size: 1, pkg: "interior", shots: [   // Nov 5; afters shot after dark: white balance + overall brightness only; befores lined up by perspective + crop only, no bending (crv2 = Nov 6 redo)
+      { k: "crv2-front", hd: 1440, label: "Front seats", alt: "Driver and passenger seats of a Honda CR-V, seen from the open driver door" },
+      { k: "crv2-rear", hd: 1440, label: "Rear seats", alt: "Rear bench seat and floor of a Honda CR-V" },
+      { k: "crv2-dash", hd: 1440, label: "Dash", alt: "Steering wheel, dash and driver seat of a Honda CR-V" } ] }
   ];
   document.querySelector(".res-jobs").style.display = "none";   // cars switch from the title row and the photo arrows (no extra space)
   if (JOBS.length > 1) { document.getElementById("resH").textContent = "Real jobs. Real driveways."; document.getElementById("resP").textContent = "Real photos from recent Apex details, never retouched. Drag the slider to see the difference."; document.getElementById("resCarNav").hidden = false; }
