@@ -11,4 +11,4 @@ Mobile car detailing in Brick & Ocean County, NJ. Runs on Cloudflare Workers.
 
 Secrets are set in the Cloudflare dashboard, never in this repo: `ICLOUD_USER`, `ICLOUD_APP_PASSWORD`, `RESEND_API_KEY`.
 
-Deploy: `npm run deploy` (applies database migrations, then deploys).
+Deploy: pushing to `main` deploys automatically (Cloudflare Workers Builds runs `npx wrangler deploy`). `npm run deploy` does the same by hand. Database migrations are never applied automatically: the live D1 has no `d1_migrations` table, so apply a new migration file by hand after Nick's OK.

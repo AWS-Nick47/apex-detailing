@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler d1 migrations apply apex --remote && wrangler deploy"
+    "deploy": "wrangler deploy",
+    "migrate:remote": "echo Apply new migrations by hand after checking them: wrangler d1 execute apex --remote --file migrations/<file>.sql"
   },
   "dependencies": { "ical.js": "2.2.1" },
   "devDependencies": { "wrangler": "4.156.0" }
